@@ -119,8 +119,8 @@ async def _get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
             ttl_string = f"{ttl_seconds}s"
 
             # Ensure model name for cache creation is just the model ID, not prefixed with 'models/'
-            # The client.caches.create expects the pure model ID like 'gemini-1.5-flash-001'
-            # while cache.model from a get() call returns 'models/gemini-1.5-flash-001'.
+            # The client.caches.create expects the pure model ID like 'gemini-2.5-flash-preview-05-20-001'
+            # while cache.model from a get() call returns 'models/gemini-2.5-flash-preview-05-20-001'.
             model_id_for_creation = settings.LLM_MODEL_NAME
             if model_id_for_creation.startswith("models/"):
                 model_id_for_creation = model_id_for_creation.split("/")[-1]
