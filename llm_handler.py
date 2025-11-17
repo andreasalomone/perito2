@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import os
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 import httpx  # For timeout in native async call
 from google import genai
@@ -38,7 +38,7 @@ RETRIABLE_GEMINI_EXCEPTIONS = (
 )
 
 
-async def _get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
+def _get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
     """Retries an existing prompt cache or creates a new one.
 
     Checks for a cache name in settings. If found, tries to retrieve it.
@@ -67,7 +67,7 @@ async def _get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
             def _get_cache_with_retry():
                 return client.caches.get(name=cache_name_for_get)
 
-            cache = await asyncio.to_thread(_get_cache_with_retry)
+            cache = _get_cache_with_retry()
             # Enhanced cache validation
             logger.info(
                 f"Retrieved cache: {cache.name}, model: {cache.model}, expires_time: {getattr(cache, 'expire_time', 'unknown')}"
@@ -144,7 +144,7 @@ async def _get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
                     },
                 )
 
-            new_cache = await asyncio.to_thread(_create_cache_with_retry)
+            new_cache = _create_cache_with_retry()
             active_cache_name = new_cache.name
             logger.info(
                 f"Successfully created new cache: {active_cache_name} with TTL: {ttl_string}"
@@ -183,7 +183,9 @@ async def generate_report_from_content(
     active_cache_name_for_generation: Optional[str] = None
 
     try:
-        active_cache_name_for_generation = await _get_or_create_prompt_cache(client)
+        active_cache_name_for_generation = await asyncio.to_thread(
+            _get_or_create_prompt_cache, client
+        )
 
         if not active_cache_name_for_generation:
             logger.warning(
@@ -546,7 +548,7 @@ async def generate_report_from_content(
             # logger.debug(f"Full response object on AttributeError: {response}")
 
         if not report_content:
-            logger.warning(f"Gemini response did not yield usable text content.")
+            logger.warning("Gemini response did not yield usable text content.")
             # Log the full response separately if needed for debugging
             # logger.debug(f"Full response object when no usable text: {response}")
             if response.prompt_feedback and response.prompt_feedback.block_reason:

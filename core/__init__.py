@@ -2,4 +2,4 @@
 # By adding imports here, we can make them available at the package level.
 
 # Import models to ensure they are registered with SQLAlchemy
-from . import models
+from . import models  # noqa: F401

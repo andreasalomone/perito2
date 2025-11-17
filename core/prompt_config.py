@@ -28,3 +28,7 @@ _schema_report_path = os.path.join(_current_dir, "schema_report.txt")
 SYSTEM_INSTRUCTION: str = _load_prompt_from_file(_system_instruction_path)
 GUIDA_STILE_TERMINOLOGIA_ED_ESEMPI: str = _load_prompt_from_file(_style_guide_path)
 SCHEMA_REPORT: str = _load_prompt_from_file(_schema_report_path)
+
+# Backwards-compatible aliases for tests/LLM cache config helpers.
+PREDEFINED_STYLE_REFERENCE_TEXT: str = GUIDA_STILE_TERMINOLOGIA_ED_ESEMPI
+REPORT_STRUCTURE_PROMPT: str = SCHEMA_REPORT

@@ -10,7 +10,7 @@ from docx.enum.table import (  # Per l'allineamento verticale nelle celle
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Cm, Inches, Pt, RGBColor
+from docx.shared import Cm, Pt, RGBColor
 
 from core.config import settings
 
@@ -133,8 +133,6 @@ def create_styled_docx(plain_text_report_content: str) -> io.BytesIO:
 
     # --- Elaborazione del Contenuto Testuale Generato dall'LLM ---
     lines: List[str] = plain_text_report_content.split("\n")
-
-    recipient_block_active = True
     subject_line_pattern = re.compile(r"^\s*Oggetto\s*:\s*(.*)", re.IGNORECASE)
     date_line_pattern = re.compile(
         r"^\s*Genova,\s*\d{1,2}\s+[a-zà-ú]+\s+\d{4}\s*$", re.IGNORECASE

@@ -19,7 +19,6 @@ from flask import (
     current_app,
     flash,
     g,
-    get_flashed_messages,
     redirect,
     render_template,
     request,

@@ -1,6 +1,5 @@
 import base64  # Added for decoding attachments
 import functools
-import io
 import logging
 import mimetypes  # Added for MIME type guessing
 import os
@@ -247,9 +246,7 @@ def process_eml_file(eml_path: str, upload_folder: str) -> List[Dict[str, Any]]:
                 # Remove previous counter if exists to avoid names like file_1_2_3
                 if name_part.endswith(f"_{counter-1}") and counter > 1:
                     name_part = name_part[: -(len(str(counter - 1)) + 1)]
-                temp_path = (
-                    attachments_output_dir / f"{name_part}_{counter}{ext_part}"
-                )
+                temp_path = attachments_output_dir / f"{name_part}_{counter}{ext_part}"
                 counter += 1
             attachment_save_path = temp_path
 

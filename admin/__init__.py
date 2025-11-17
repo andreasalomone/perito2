@@ -8,4 +8,4 @@ admin_bp = Blueprint(
     static_url_path="/admin/static",
 )
 
-from . import routes
+from . import routes  # noqa: E402,F401  # Import routes to register blueprint views

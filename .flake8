@@ -6,7 +6,8 @@ max-line-length = 88
 
 # W503 and E203 are two common errors to ignore for black compatibility.
 # E203: whitespace before ':' (black adds it in slices)
-extend-ignore = E203, W503
+# E501: line too long (handled separately via formatter)
+extend-ignore = E203, W503, E501
 
 # Directories/files to exclude from linting
 exclude =
@@ -14,7 +15,8 @@ exclude =
     __pycache__,
     .venv,
     build,
-    dist
+    dist,
+    tests
 
 # Optional: Set a max complexity for functions (default is 10)
 max-complexity = 10

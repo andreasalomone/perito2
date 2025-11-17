@@ -1,7 +1,9 @@
 # A minimal pyproject.toml for tool config only
 [tool.black]
 line-length = 88
+extend-exclude = "tests/"
 
 [tool.isort]
 profile = "black"
 line_length = 88
+skip = ["tests", ".venv"]

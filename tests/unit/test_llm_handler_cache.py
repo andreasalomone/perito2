@@ -40,12 +40,16 @@ class TestGetOrCreatePromptCache(unittest.TestCase):
         self.original_model_name = settings.LLM_MODEL_NAME
         self.original_cache_ttl_days = settings.CACHE_TTL_DAYS
         self.original_cache_display_name = settings.CACHE_DISPLAY_NAME
+        self.original_retry_attempts = settings.LLM_API_RETRY_ATTEMPTS
+        self.original_retry_wait = settings.LLM_API_RETRY_WAIT_SECONDS
 
         # Set default test values (can be overridden in specific tests)
         settings.LLM_MODEL_NAME = "gemini-test-model"
         settings.CACHE_TTL_DAYS = 1
         settings.CACHE_DISPLAY_NAME = "TestCacheDisplayName"
         settings.REPORT_PROMPT_CACHE_NAME = None  # Default to no existing cache
+        settings.LLM_API_RETRY_ATTEMPTS = 1  # Deterministic tests (no retries)
+        settings.LLM_API_RETRY_WAIT_SECONDS = 0
 
     def tearDown(self):
         """Clean up after each test method."""
@@ -53,6 +57,8 @@ class TestGetOrCreatePromptCache(unittest.TestCase):
         settings.LLM_MODEL_NAME = self.original_model_name
         settings.CACHE_TTL_DAYS = self.original_cache_ttl_days
         settings.CACHE_DISPLAY_NAME = self.original_cache_display_name
+        settings.LLM_API_RETRY_ATTEMPTS = self.original_retry_attempts
+        settings.LLM_API_RETRY_WAIT_SECONDS = self.original_retry_wait
 
     @patch("llm_handler.genai.Client")
     def test_create_cache_success_no_existing_name(self, MockGenaiClient):

@@ -2,9 +2,7 @@ import argparse
 import sys
 
 from docx import Document
-from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Cm, Pt
 
 
 def get_font_info(font):
@@ -69,7 +67,7 @@ def inspect_docx_styles(file_path: str):
             f"  - Page Size: {section.page_width.cm:.2f}cm (width) x {section.page_height.cm:.2f}cm (height)"
         )
         print(f"  - Orientation: {str(section.orientation)}")
-        print(f"  - Margins:")
+        print("  - Margins:")
         print(f"    - Top:    {section.top_margin.cm:.2f}cm")
         print(f"    - Bottom: {section.bottom_margin.cm:.2f}cm")
         print(f"    - Left:   {section.left_margin.cm:.2f}cm")
@@ -87,7 +85,7 @@ def inspect_docx_styles(file_path: str):
             print(f"\n--- Style: '{style.name}' (Paragraph) ---")
             p_fmt = style.paragraph_format
             if p_fmt:
-                print(f"  - Paragraph:")
+                print("  - Paragraph:")
                 print(f"    - Alignment: {p_fmt.alignment}")
                 line_spacing_val = (
                     f"{p_fmt.line_spacing:.2f}"
