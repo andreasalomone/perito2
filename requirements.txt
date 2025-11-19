@@ -54,4 +54,5 @@ Hypercorn>=0.16.0
 Flask-SQLAlchemy==3.1.1
 SQLAlchemy==2.0.31
 wsproto==1.2.0
-psycopg[binary] 
+psycopg[binary]
+prometheus_client 

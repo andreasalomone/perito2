@@ -1,5 +1,6 @@
 from typing import Optional, Set
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,6 +11,10 @@ class Settings(BaseSettings):
 
     GEMINI_API_KEY: Optional[str] = None
     FLASK_SECRET_KEY: str
+    DATABASE_URL: Optional[str] = None
+    
+    AUTH_USERNAME: str = Field(default="admin", validation_alias="BASIC_AUTH_USERNAME")
+    AUTH_PASSWORD: str = Field(default="defaultpassword", validation_alias="BASIC_AUTH_PASSWORD")
 
     ALLOWED_EXTENSIONS: Set[str] = {
         "png",
