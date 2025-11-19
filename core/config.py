@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     MAX_TOTAL_UPLOAD_SIZE_MB: int = (
         100  # Maximum total size for all files in a single upload request
     )
+    UPLOAD_FOLDER: str = "uploads"  # Directory for persistent storage of uploaded files
     MAX_EXTRACTED_TEXT_LENGTH: int = (
         1000000  # Maximum characters for combined extracted text sent to LLM
     )

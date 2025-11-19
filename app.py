@@ -184,6 +184,10 @@ for handler in logging.root.handlers:
 REPORTS_DIR = os.path.join(tempfile.gettempdir(), "generated_reports_data")
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
+# Ensure the persistent upload directory exists
+UPLOAD_BASE_DIR = os.path.abspath(settings.UPLOAD_FOLDER)
+os.makedirs(UPLOAD_BASE_DIR, exist_ok=True)
+
 
 def allowed_file(filename: str) -> bool:
     return (
@@ -468,8 +472,14 @@ async def upload_files() -> Union[str, FlaskResponse]:
             db.session.commit()
             return redirect(request.url)
 
-        temp_dir = tempfile.mkdtemp()
-        logger.info(f"Created temporary directory: {temp_dir}")
+        # Create a persistent directory for this upload session, organized by date
+        today_str = datetime.now().strftime("%Y/%m/%d")
+        upload_session_dir = os.path.join(UPLOAD_BASE_DIR, today_str, str(uuid.uuid4()))
+        os.makedirs(upload_session_dir, exist_ok=True)
+        
+        # We still call it temp_dir for variable consistency in the loop, but it's now persistent
+        temp_dir = upload_session_dir 
+        logger.info(f"Created persistent upload directory: {temp_dir}")
 
         for file_storage in files:
             if not file_storage or not file_storage.filename:
@@ -574,16 +584,16 @@ async def upload_files() -> Union[str, FlaskResponse]:
         db.session.commit()
         return redirect(url_for("index"))
     finally:
-        if temp_dir and os.path.exists(temp_dir):
-            try:
-                # In a real scenario with permanent storage, you'd copy files out of temp_dir
-                # before deleting it. For now, we accept the stored_filepath becomes invalid.
-                await asyncio.to_thread(shutil.rmtree, temp_dir)
-                logger.info(f"Successfully removed temporary directory: {temp_dir}")
-            except Exception as e:
-                logger.error(
-                    f"Error removing temporary directory {temp_dir}: {e}", exc_info=True
-                )
+        # We no longer delete the directory as we want to keep the files for admin/audit purposes
+        # if temp_dir and os.path.exists(temp_dir):
+        #     try:
+        #         await asyncio.to_thread(shutil.rmtree, temp_dir)
+        #         logger.info(f"Successfully removed temporary directory: {temp_dir}")
+        #     except Exception as e:
+        #         logger.error(
+        #             f"Error removing temporary directory {temp_dir}: {e}", exc_info=True
+        #         )
+        pass
 
 
 # Add this new function somewhere after the /upload route in app.py

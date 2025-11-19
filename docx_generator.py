@@ -51,6 +51,10 @@ def remove_table_borders(table):
             tcPr.append(tcBorders)
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 def add_logo_to_header(header, logo_path, width=None, height=None):
     """Aggiunge un logo all'header, allineato a sinistra."""
     paragraph = header.paragraphs[0] if header.paragraphs else header.add_paragraph()
@@ -71,11 +75,11 @@ def add_logo_to_header(header, logo_path, width=None, height=None):
         # L'allineamento del paragrafo a sinistra è il massimo che possiamo fare standard.
         run.add_picture(logo_path, width=width, height=height)
     except FileNotFoundError:
-        print(
+        logger.error(
             f"ERRORE: File logo non trovato in {logo_path}. Il logo non sarà aggiunto."
         )
     except Exception as e:
-        print(f"ERRORE durante l'aggiunta del logo: {e}. Il logo non sarà aggiunto.")
+        logger.error(f"ERRORE durante l'aggiunta del logo: {e}. Il logo non sarà aggiunto.")
 
 
 def create_styled_docx(plain_text_report_content: str) -> io.BytesIO:
