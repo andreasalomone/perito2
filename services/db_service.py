@@ -1,17 +1,19 @@
 import asyncio
 import logging
-from typing import Optional, List
+from typing import List, Optional
 
 from flask import current_app
+
 from core.database import db
-from core.models import ReportLog, ReportStatus, DocumentLog
+from core.models import DocumentLog, ReportLog, ReportStatus
 
 logger = logging.getLogger(__name__)
+
 
 async def create_initial_report_log() -> ReportLog:
     """Creates and returns a new ReportLog entry."""
     app = current_app._get_current_object()
-    
+
     def _sync_create():
         with app.app_context():
             report_log = ReportLog()
@@ -27,18 +29,19 @@ async def create_initial_report_log() -> ReportLog:
     logger.info(f"Created initial ReportLog entry with ID: {report_log.id}")
     return report_log
 
+
 async def update_report_status(
-    report_log_id: int, 
-    status: ReportStatus, 
+    report_log_id: int,
+    status: ReportStatus,
     error_message: Optional[str] = None,
     llm_raw_response: Optional[str] = None,
     final_report_text: Optional[str] = None,
     generation_time_seconds: Optional[float] = None,
-    api_cost_usd: Optional[float] = None
+    api_cost_usd: Optional[float] = None,
 ) -> None:
     """Updates the status and other fields of a ReportLog."""
     app = current_app._get_current_object()
-    
+
     def _sync_update():
         with app.app_context():
             report_log = db.session.get(ReportLog, report_log_id)
@@ -57,20 +60,18 @@ async def update_report_status(
                 report_log.generation_time_seconds = generation_time_seconds
             if api_cost_usd is not None:
                 report_log.api_cost_usd = api_cost_usd
-            
+
             db.session.commit()
 
     await asyncio.to_thread(_sync_update)
 
+
 async def create_document_log(
-    report_id: int,
-    original_filename: str,
-    stored_filepath: str,
-    file_size_bytes: int
+    report_id: int, original_filename: str, stored_filepath: str, file_size_bytes: int
 ) -> DocumentLog:
     """Creates and returns a new DocumentLog entry."""
     app = current_app._get_current_object()
-    
+
     def _sync_create_doc():
         with app.app_context():
             doc_log = DocumentLog(
@@ -87,10 +88,11 @@ async def create_document_log(
 
     return await asyncio.to_thread(_sync_create_doc)
 
+
 async def get_report_log(report_log_id: int) -> Optional[ReportLog]:
     """Retrieves a ReportLog by ID."""
     app = current_app._get_current_object()
-    
+
     def _sync_get():
         with app.app_context():
             report_log = db.session.get(ReportLog, report_log_id)

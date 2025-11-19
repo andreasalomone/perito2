@@ -1,7 +1,10 @@
 import logging
 import sys
+
 from flask import g
+
 from core.config import settings
+
 
 class RequestIdFilter(logging.Filter):
     def filter(self, record):
@@ -17,6 +20,7 @@ class RequestIdFilter(logging.Filter):
 
         record.request_id = effective_request_id
         return True
+
 
 def configure_logging(app):
     # Main application logging format that includes request_id

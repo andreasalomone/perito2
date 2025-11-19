@@ -55,6 +55,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 def add_logo_to_header(header, logo_path, width=None, height=None):
     """Aggiunge un logo all'header, allineato a sinistra."""
     paragraph = header.paragraphs[0] if header.paragraphs else header.add_paragraph()
@@ -79,7 +80,9 @@ def add_logo_to_header(header, logo_path, width=None, height=None):
             f"ERRORE: File logo non trovato in {logo_path}. Il logo non sarà aggiunto."
         )
     except Exception as e:
-        logger.error(f"ERRORE durante l'aggiunta del logo: {e}. Il logo non sarà aggiunto.")
+        logger.error(
+            f"ERRORE durante l'aggiunta del logo: {e}. Il logo non sarà aggiunto."
+        )
 
 
 def create_styled_docx(plain_text_report_content: str) -> io.BytesIO:

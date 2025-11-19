@@ -1,20 +1,23 @@
+import logging
 import os
 import uuid
-import logging
 from datetime import datetime
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-from flask import flash, url_for, render_template, session
+from flask import flash, render_template, session, url_for
 from werkzeug.datastructures import FileStorage
 
-from core.models import ReportStatus
-from core.config import settings
 import llm_handler
-from services import file_service, db_service
+from core.config import settings
+from core.models import ReportStatus
+from services import db_service, file_service
 
 logger = logging.getLogger(__name__)
 
-async def handle_file_upload(files: List[FileStorage], upload_base_dir: str) -> Tuple[Optional[str], Optional[str]]:
+
+async def handle_file_upload(
+    files: List[FileStorage], upload_base_dir: str
+) -> Tuple[Optional[str], Optional[str]]:
     """
     Orchestrates the file upload and report generation process.
     Returns a tuple (redirect_url, rendered_template).
@@ -27,8 +30,10 @@ async def handle_file_upload(files: List[FileStorage], upload_base_dir: str) -> 
     validation_error = file_service.validate_file_list(files)
     if validation_error:
         flash(validation_error[0], validation_error[1])
-        await db_service.update_report_status(report_log.id, ReportStatus.ERROR, error_message=validation_error[0])
-        return None, None # Caller should handle redirect to request.url or index
+        await db_service.update_report_status(
+            report_log.id, ReportStatus.ERROR, error_message=validation_error[0]
+        )
+        return None, None  # Caller should handle redirect to request.url or index
 
     processed_file_data: List[Dict[str, Any]] = []
     uploaded_filenames_for_display: List[str] = []
@@ -48,7 +53,9 @@ async def handle_file_upload(files: List[FileStorage], upload_base_dir: str) -> 
             error_msg = f"Total upload size exceeds the limit of {settings.MAX_TOTAL_UPLOAD_SIZE_MB} MB."
             logger.warning(f"{error_msg} ({total_upload_size} bytes)")
             flash(error_msg, "error")
-            await db_service.update_report_status(report_log.id, ReportStatus.ERROR, error_message=error_msg)
+            await db_service.update_report_status(
+                report_log.id, ReportStatus.ERROR, error_message=error_msg
+            )
             return None, None
 
         # Create persistent directory
@@ -76,7 +83,7 @@ async def handle_file_upload(files: List[FileStorage], upload_base_dir: str) -> 
                     report_id=report_log.id,
                     original_filename=file_storage.filename,
                     stored_filepath="SKIPPED_DUE_TO_SIZE",
-                    file_size_bytes=current_file_size
+                    file_size_bytes=current_file_size,
                 )
                 continue
 
@@ -96,15 +103,15 @@ async def handle_file_upload(files: List[FileStorage], upload_base_dir: str) -> 
                     report_id=report_log.id,
                     original_filename=file_storage.filename,
                     stored_filepath=os.path.join(temp_dir, saved_fname),
-                    file_size_bytes=current_file_size
+                    file_size_bytes=current_file_size,
                 )
 
         if not processed_file_data and not uploaded_filenames_for_display:
             flash("No files were suitable for processing.", "warning")
             await db_service.update_report_status(
-                report_log.id, 
-                ReportStatus.ERROR, 
-                error_message="No files were suitable for processing after filtering."
+                report_log.id,
+                ReportStatus.ERROR,
+                error_message="No files were suitable for processing after filtering.",
             )
             return url_for("index"), None
 
@@ -125,9 +132,11 @@ async def handle_file_upload(files: List[FileStorage], upload_base_dir: str) -> 
                 ReportStatus.ERROR,
                 error_message=report_content,
                 llm_raw_response=report_content,
-                generation_time_seconds=generation_time
+                generation_time_seconds=generation_time,
             )
-            return None, render_template("index.html", filenames=uploaded_filenames_for_display)
+            return None, render_template(
+                "index.html", filenames=uploaded_filenames_for_display
+            )
 
         await db_service.update_report_status(
             report_log.id,
@@ -135,7 +144,7 @@ async def handle_file_upload(files: List[FileStorage], upload_base_dir: str) -> 
             llm_raw_response=report_content,
             final_report_text=report_content,
             generation_time_seconds=generation_time,
-            api_cost_usd=0.03
+            api_cost_usd=0.03,
         )
 
         session["report_log_id"] = report_log.id
@@ -150,6 +159,8 @@ async def handle_file_upload(files: List[FileStorage], upload_base_dir: str) -> 
     except Exception as e:
         logger.error(f"Unexpected error in upload_files: {e}", exc_info=True)
         flash("An unexpected server error occurred.", "error")
-        if 'report_log' in locals():
-             await db_service.update_report_status(report_log.id, ReportStatus.ERROR, error_message=str(e))
+        if "report_log" in locals():
+            await db_service.update_report_status(
+                report_log.id, ReportStatus.ERROR, error_message=str(e)
+            )
         return url_for("index"), None

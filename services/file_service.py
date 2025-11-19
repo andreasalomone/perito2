@@ -11,11 +11,13 @@ from core.config import settings
 
 logger = logging.getLogger(__name__)
 
+
 def allowed_file(filename: str) -> bool:
     return (
         "." in filename
         and filename.rsplit(".", 1)[1].lower() in settings.ALLOWED_EXTENSIONS
     )
+
 
 def validate_file_list(files: List[FileStorage]) -> Optional[Tuple[str, str]]:
     """Validates the list of files to be uploaded."""
@@ -23,6 +25,7 @@ def validate_file_list(files: List[FileStorage]) -> Optional[Tuple[str, str]]:
         logger.info("No files selected for uploading.")
         return "No files selected for uploading.", "warning"
     return None
+
 
 def _add_text_data_to_processed_list(
     processed_file_data_list: List[Dict[str, Any]],
@@ -64,6 +67,7 @@ def _add_text_data_to_processed_list(
     )
     current_total_length += len(text_content)
     return processed_file_data_list, current_total_length, flash_message
+
 
 async def process_single_file_storage(
     file_storage: FileStorage, temp_dir: str, current_total_extracted_text_length: int
