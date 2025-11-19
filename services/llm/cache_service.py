@@ -1,5 +1,8 @@
 """Cache service for managing Gemini API prompt caching."""
+import json
 import logging
+import os
+from datetime import datetime, timezone
 from typing import Optional
 
 from google import genai
@@ -31,11 +34,52 @@ RETRIABLE_GEMINI_EXCEPTIONS = (
 )
 
 
+def _get_cache_state_file_path() -> str:
+    """Returns the absolute path to the cache state file."""
+    # Assuming settings.CACHE_STATE_FILE is relative to the project root
+    # Adjust if needed based on where the app is run from
+    return os.path.abspath(settings.CACHE_STATE_FILE)
+
+
+def _load_cache_name_from_state() -> Optional[str]:
+    """Loads the cache name from the local state file."""
+    file_path = _get_cache_state_file_path()
+    if not os.path.exists(file_path):
+        return None
+    try:
+        with open(file_path, "r") as f:
+            data = json.load(f)
+            return data.get("cache_name")
+    except Exception as e:
+        logger.warning(f"Failed to load cache state from {file_path}: {e}")
+        return None
+
+
+def _save_cache_name_to_state(cache_name: str):
+    """Saves the cache name to the local state file."""
+    file_path = _get_cache_state_file_path()
+    try:
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, "w") as f:
+            json.dump(
+                {
+                    "cache_name": cache_name,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                },
+                f,
+            )
+        logger.info(f"Saved cache name {cache_name} to {file_path}")
+    except Exception as e:
+        logger.error(f"Failed to save cache state to {file_path}: {e}")
+
+
 def get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
     """Retrieves an existing prompt cache or creates a new one.
 
-    Checks for a cache name in settings. If found, tries to retrieve it.
-    If not found or invalid, creates a new cache with predefined prompts.
+    Checks for a cache name in the local state file first, then settings.
+    If found, tries to retrieve it and check for expiration.
+    If not found, expired, or invalid, creates a new cache with predefined prompts
+    and updates the local state file.
 
     Args:
         client: The Gemini API client.
@@ -43,7 +87,13 @@ def get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
     Returns:
         Optional[str]: The name of the active cache, or None if an error occurs.
     """
-    existing_cache_name = settings.REPORT_PROMPT_CACHE_NAME
+    # 1. Check local state file first
+    existing_cache_name = _load_cache_name_from_state()
+
+    # 2. Fallback to settings if not in state file
+    if not existing_cache_name:
+        existing_cache_name = settings.REPORT_PROMPT_CACHE_NAME
+
     active_cache_name: Optional[str] = None
 
     if existing_cache_name:
@@ -64,28 +114,49 @@ def get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
                 return client.caches.get(name=cache_name_for_get)
 
             cache = _get_cache_with_retry()
-            # Enhanced cache validation
+            
+            # Check expiration
+            # The client library object might have expire_time as a datetime or string
+            # We'll assume it's usable or we can check if it's valid
+            # Actually, if get() succeeds, it's likely valid, but we should check TTL if possible
+            # For now, we rely on the fact that get() returns it.
+            
             logger.info(
                 f"Retrieved cache: {cache.name}, model: {cache.model}, expires_time: {getattr(cache, 'expire_time', 'unknown')}"
             )
-            # Basic validation: check if it's for the same model and not expired (implicitly, get succeeds)
-            if cache.model.endswith(
-                settings.LLM_MODEL_NAME
-            ):  # Model name in cache includes 'models/' prefix
-                logger.info(
-                    f"Successfully retrieved and validated existing cache: {cache.name}"
-                )
-                active_cache_name = cache.name
+
+            # Basic validation: check if it's for the same model
+            if cache.model.endswith(settings.LLM_MODEL_NAME):
+                 # Check if expired (if expire_time is available and in the past)
+                expire_time = getattr(cache, 'expire_time', None)
+                is_expired = False
+                if expire_time:
+                    # If it's a string, parse it? Or if it's a datetime
+                    # Usually google-genai returns datetime
+                    now = datetime.now(timezone.utc)
+                    if isinstance(expire_time, datetime) and expire_time < now:
+                         is_expired = True
+                    # If it's close to expiring (e.g. < 1 hour), maybe treat as expired?
+                    # For now, strict expiration.
+
+                if not is_expired:
+                    logger.info(
+                        f"Successfully retrieved and validated existing cache: {cache.name}"
+                    )
+                    active_cache_name = cache.name
+                else:
+                    logger.warning(f"Existing cache {existing_cache_name} is expired. Will create a new one.")
+
             else:
                 logger.warning(
-                    f"Existing cache {existing_cache_name} is for a different model ({cache.model}) than expected ({settings.LLM_MODEL_NAME}). \
-                    Will create a new cache for {settings.LLM_MODEL_NAME}."
+                    f"Existing cache {existing_cache_name} is for a different model ({cache.model}) than expected ({settings.LLM_MODEL_NAME}). "
+                    f"Will create a new cache for {settings.LLM_MODEL_NAME}."
                 )
         except google_exceptions.NotFound:
             logger.warning(
-                f"Existing cache {existing_cache_name} not found. Will create a new one."
+                f"Existing cache {existing_cache_name} not found (404). Will create a new one."
             )
-        except RetryError as re:  # Catch tenacity's RetryError after attempts exhausted
+        except RetryError as re:
             logger.error(
                 f"Failed to retrieve cache {existing_cache_name} after multiple retries: {re}. Will attempt to create a new one.",
                 exc_info=True,
@@ -141,10 +212,14 @@ def get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
                 f"Successfully created new cache: {active_cache_name} with TTL: {ttl_string}"
             )
 
-            # Prepare the cache name for logging
+            # Prepare the cache name for logging and saving
             log_cache_name = active_cache_name.replace("cachedContents/", "")
+            
+            # Save to state file
+            _save_cache_name_to_state(log_cache_name)
+            
             logger.info(
-                f'To reuse this cache in future runs, set the environment variable REPORT_PROMPT_CACHE_NAME="{log_cache_name}"'
+                f'Cache name "{log_cache_name}" saved to state file. Future runs will attempt to reuse it.'
             )
         except RetryError as re:
             logger.error(
@@ -157,3 +232,4 @@ def get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
             return None
 
     return active_cache_name
+

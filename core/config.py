@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     )
     CACHE_TTL_DAYS: int = 2  # Time-to-live for the prompt cache in days
     CACHE_DISPLAY_NAME: str = "ReportGenerationPromptsV2"  # Display name for new caches
+    CACHE_STATE_FILE: str = "instance/cache_state.json"  # File to store dynamic cache state
 
     LLM_API_RETRY_ATTEMPTS: int = 3  # Number of retry attempts for the LLM API call
     LLM_API_RETRY_WAIT_SECONDS: int = 2  # Time to wait between retry attempts
