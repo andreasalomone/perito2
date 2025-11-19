@@ -131,3 +131,12 @@ async def generate_report_from_content(
                     cleanup_error,
                     exc_info=True,
                 )
+
+
+def generate_report_from_content_sync(
+    processed_files: List[Dict[str, Any]], additional_text: str = ""
+) -> str:
+    """Synchronous wrapper for generate_report_from_content."""
+    return asyncio.run(
+        generate_report_from_content(processed_files, additional_text)
+    )

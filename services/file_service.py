@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import os
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -69,7 +68,7 @@ def _add_text_data_to_processed_list(
     return processed_file_data_list, current_total_length, flash_message
 
 
-async def process_single_file_storage(
+def process_single_file_storage(
     file_storage: FileStorage, temp_dir: str, current_total_extracted_text_length: int
 ) -> Tuple[List[Dict[str, Any]], int, List[Tuple[str, str]], Optional[str]]:
     """Processes a single FileStorage object, returning processed data, new text length, flash messages, and filename."""
@@ -129,14 +128,12 @@ async def process_single_file_storage(
     filepath = os.path.join(temp_dir, filename)
 
     try:
-        await asyncio.to_thread(file_storage.save, filepath)
+        file_storage.save(filepath)
         logger.info(f"Saved uploaded file to temporary path: {filepath}")
         successfully_saved_filename = filename  # Mark as saved for display list
 
         processed_info: Union[Dict[str, Any], List[Dict[str, Any]]] = (
-            await asyncio.to_thread(
-                document_processor.process_uploaded_file, filepath, temp_dir
-            )
+            document_processor.process_uploaded_file(filepath, temp_dir)
         )
 
         parts_to_process: List[Dict[str, Any]] = []

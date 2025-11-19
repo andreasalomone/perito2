@@ -28,7 +28,7 @@ from core.prompt_config import (
 # The module and function to test
 # Assuming llm_handler is at the root of the project or correctly in PYTHONPATH
 # If llm_handler.py is in the project root, this should work after sys.path adjustment
-from llm_handler import _get_or_create_prompt_cache  # Target function
+from services.llm.cache_service import get_or_create_prompt_cache  # Target function
 
 
 class TestGetOrCreatePromptCache(unittest.TestCase):
@@ -75,7 +75,7 @@ class TestGetOrCreatePromptCache(unittest.TestCase):
         expected_ttl_seconds = settings.CACHE_TTL_DAYS * 24 * 60 * 60
         expected_ttl_string = f"{expected_ttl_seconds}s"
 
-        result_cache_name = _get_or_create_prompt_cache(mock_client_instance)
+        result_cache_name = get_or_create_prompt_cache(mock_client_instance)
 
         self.assertEqual(result_cache_name, "cachedContents/newlyCreatedCache123")
         mock_client_instance.caches.create.assert_called_once()
@@ -107,7 +107,7 @@ class TestGetOrCreatePromptCache(unittest.TestCase):
             google_exceptions.InternalServerError("Creation failed via API")
         )
 
-        result_cache_name = _get_or_create_prompt_cache(mock_client_instance)
+        result_cache_name = get_or_create_prompt_cache(mock_client_instance)
 
         self.assertIsNone(result_cache_name)
         mock_client_instance.caches.create.assert_called_once()
@@ -128,7 +128,7 @@ class TestGetOrCreatePromptCache(unittest.TestCase):
         )
         mock_client_instance.caches.get.return_value = mock_cache_get_result
 
-        result_cache_name = _get_or_create_prompt_cache(mock_client_instance)
+        result_cache_name = get_or_create_prompt_cache(mock_client_instance)
 
         self.assertEqual(result_cache_name, existing_cache_id)
         mock_client_instance.caches.get.assert_called_once_with(name=existing_cache_id)
@@ -149,7 +149,7 @@ class TestGetOrCreatePromptCache(unittest.TestCase):
         mock_cache_create_result.model = f"models/{settings.LLM_MODEL_NAME}"
         mock_client_instance.caches.create.return_value = mock_cache_create_result
 
-        result_cache_name = _get_or_create_prompt_cache(mock_client_instance)
+        result_cache_name = get_or_create_prompt_cache(mock_client_instance)
 
         self.assertEqual(result_cache_name, "cachedContents/newlyCreatedAfterNotFound")
         mock_client_instance.caches.get.assert_called_once_with(
@@ -175,7 +175,7 @@ class TestGetOrCreatePromptCache(unittest.TestCase):
         mock_cache_create_result.model = f"models/{settings.LLM_MODEL_NAME}"
         mock_client_instance.caches.create.return_value = mock_cache_create_result
 
-        result_cache_name = _get_or_create_prompt_cache(mock_client_instance)
+        result_cache_name = get_or_create_prompt_cache(mock_client_instance)
 
         self.assertEqual(
             result_cache_name, "cachedContents/newlyCreatedAfterModelMismatch"
@@ -202,7 +202,7 @@ class TestGetOrCreatePromptCache(unittest.TestCase):
         mock_cache_create_result.model = f"models/{settings.LLM_MODEL_NAME}"
         mock_client_instance.caches.create.return_value = mock_cache_create_result
 
-        result_cache_name = _get_or_create_prompt_cache(mock_client_instance)
+        result_cache_name = get_or_create_prompt_cache(mock_client_instance)
 
         self.assertEqual(
             result_cache_name, "cachedContents/newlyCreatedAfterGenericError"
@@ -229,7 +229,7 @@ class TestGetOrCreatePromptCache(unittest.TestCase):
         )
         mock_client_instance.caches.create.return_value = mock_cache_create_result
 
-        _get_or_create_prompt_cache(mock_client_instance)
+        get_or_create_prompt_cache(mock_client_instance)
 
         mock_client_instance.caches.create.assert_called_once()
         call_args = mock_client_instance.caches.create.call_args
@@ -251,7 +251,7 @@ class TestGetOrCreatePromptCache(unittest.TestCase):
         mock_cache_create_result.model = f"models/{expected_model_id_for_creation}"
         mock_client_instance.caches.create.return_value = mock_cache_create_result
 
-        _get_or_create_prompt_cache(mock_client_instance)
+        get_or_create_prompt_cache(mock_client_instance)
 
         mock_client_instance.caches.create.assert_called_once()
         call_args = mock_client_instance.caches.create.call_args

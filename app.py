@@ -1,4 +1,3 @@
-import asyncio
 import io
 import logging
 import os
@@ -100,7 +99,7 @@ app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {"/metrics": make_wsgi_app()})
 
 @app.route("/", methods=["GET"])
 @auth.login_required
-async def index() -> str:
+def index() -> str:
     """Renders the index page."""
     return render_template("index.html")
 
@@ -108,13 +107,13 @@ async def index() -> str:
 @app.route("/upload", methods=["POST"])
 @limiter.limit("10 per minute;20 per hour")
 @auth.login_required
-async def upload_files() -> Union[str, FlaskResponse]:
+def upload_files() -> Union[str, FlaskResponse]:
     """
     Handles file uploads and report generation.
     Delegates logic to report_service.
     """
     files = request.files.getlist("files")
-    redirect_url, rendered_template = await report_service.handle_file_upload(
+    redirect_url, rendered_template = report_service.handle_file_upload(
         files, app.root_path
     )
 
@@ -129,9 +128,9 @@ async def upload_files() -> Union[str, FlaskResponse]:
 
 @app.route("/report/<int:report_id>", methods=["GET"])
 @auth.login_required
-async def show_report(report_id: int) -> Union[str, FlaskResponse]:
+def show_report(report_id: int) -> Union[str, FlaskResponse]:
     """Displays a previously generated report."""
-    report_log = await db_service.get_report_log(report_id)
+    report_log = db_service.get_report_log(report_id)
     if not report_log or not report_log.final_report_text:
         flash("Report not found.", "error")
         return redirect(url_for("index"))
@@ -147,7 +146,7 @@ async def show_report(report_id: int) -> Union[str, FlaskResponse]:
 @app.route("/download_report", methods=["POST"])
 @limiter.limit("30 per minute")
 @auth.login_required
-async def download_report() -> Union[FlaskResponse, Tuple[str, int]]:
+def download_report() -> Union[FlaskResponse, Tuple[str, int]]:
     current_app.logger.info(
         f"Attempting to download report. Session active: {bool(session)}"
     )
@@ -167,7 +166,7 @@ async def download_report() -> Union[FlaskResponse, Tuple[str, int]]:
             return redirect(url_for("index"))
 
         # Fetch the report from the database using db_service
-        report_log = await db_service.get_report_log(report_log_id)
+        report_log = db_service.get_report_log(report_log_id)
 
         if not report_log:
             current_app.logger.error(
@@ -196,9 +195,9 @@ async def download_report() -> Union[FlaskResponse, Tuple[str, int]]:
 
         current_app.logger.info(f"Generating DOCX for ReportLog ID {report_log_id}")
 
-        # Run CPU-bound docx generation in a thread
-        file_stream: io.BytesIO = await asyncio.to_thread(
-            docx_generator.create_styled_docx, report_content_from_db
+        # Run CPU-bound docx generation directly (WSGI workers handle concurrency)
+        file_stream: io.BytesIO = docx_generator.create_styled_docx(
+            report_content_from_db
         )
 
         clean_company_name = "".join(

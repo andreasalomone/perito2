@@ -168,6 +168,5 @@ pytest.ini
 
 # Additions based on user request to ensure comprehensive .gitignore
 
-/tests
 .flake8
 pyproject.toml

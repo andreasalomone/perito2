@@ -15,7 +15,7 @@ from services import db_service, file_service
 logger = logging.getLogger(__name__)
 
 
-async def handle_file_upload(
+def handle_file_upload(
     files: List[FileStorage], upload_base_dir: str
 ) -> Tuple[Optional[str], Optional[str]]:
     """
@@ -25,12 +25,12 @@ async def handle_file_upload(
     If rendered_template is set, the caller should return it.
     """
     # Step 1: Create a new ReportLog entry
-    report_log = await db_service.create_initial_report_log()
+    report_log = db_service.create_initial_report_log()
 
     validation_error = file_service.validate_file_list(files)
     if validation_error:
         flash(validation_error[0], validation_error[1])
-        await db_service.update_report_status(
+        db_service.update_report_status(
             report_log.id, ReportStatus.ERROR, error_message=validation_error[0]
         )
         return None, None  # Caller should handle redirect to request.url or index
@@ -53,7 +53,7 @@ async def handle_file_upload(
             error_msg = f"Total upload size exceeds the limit of {settings.MAX_TOTAL_UPLOAD_SIZE_MB} MB."
             logger.warning(f"{error_msg} ({total_upload_size} bytes)")
             flash(error_msg, "error")
-            await db_service.update_report_status(
+            db_service.update_report_status(
                 report_log.id, ReportStatus.ERROR, error_message=error_msg
             )
             return None, None
@@ -79,7 +79,7 @@ async def handle_file_upload(
                     f"File {file_storage.filename} exceeds the size limit of {settings.MAX_FILE_SIZE_MB} MB and was skipped.",
                     "warning",
                 )
-                await db_service.create_document_log(
+                db_service.create_document_log(
                     report_id=report_log.id,
                     original_filename=file_storage.filename,
                     stored_filepath="SKIPPED_DUE_TO_SIZE",
@@ -88,7 +88,7 @@ async def handle_file_upload(
                 continue
 
             entries, text_added, f_messages, saved_fname = (
-                await file_service.process_single_file_storage(
+                file_service.process_single_file_storage(
                     file_storage, temp_dir, current_total_extracted_text_length
                 )
             )
@@ -99,16 +99,23 @@ async def handle_file_upload(
 
             if saved_fname:
                 uploaded_filenames_for_display.append(saved_fname)
-                await db_service.create_document_log(
+                db_service.create_document_log(
                     report_id=report_log.id,
                     original_filename=file_storage.filename,
                     stored_filepath=os.path.join(temp_dir, saved_fname),
                     file_size_bytes=current_file_size,
                 )
 
-        if not processed_file_data and not uploaded_filenames_for_display:
+        # Filter out error and unsupported entries from processed_file_data before LLM
+        valid_processed_data = [
+            entry
+            for entry in processed_file_data
+            if entry.get("type") not in ["error", "unsupported"]
+        ]
+
+        if not valid_processed_data and not uploaded_filenames_for_display:
             flash("No files were suitable for processing.", "warning")
-            await db_service.update_report_status(
+            db_service.update_report_status(
                 report_log.id,
                 ReportStatus.ERROR,
                 error_message="No files were suitable for processing after filtering.",
@@ -117,8 +124,8 @@ async def handle_file_upload(
 
         # Call LLM
         start_time = datetime.utcnow()
-        report_content: str = await llm_handler.generate_report_from_content(
-            processed_files=processed_file_data, additional_text=""
+        report_content: str = llm_handler.generate_report_from_content_sync(
+            processed_files=valid_processed_data, additional_text=""
         )
         end_time = datetime.utcnow()
 
@@ -127,7 +134,7 @@ async def handle_file_upload(
         if not report_content or report_content.strip().startswith("ERROR:"):
             logger.error(f"LLM Error: {report_content}")
             flash(f"Could not generate report: {report_content}", "error")
-            await db_service.update_report_status(
+            db_service.update_report_status(
                 report_log.id,
                 ReportStatus.ERROR,
                 error_message=report_content,
@@ -138,7 +145,7 @@ async def handle_file_upload(
                 "index.html", filenames=uploaded_filenames_for_display
             )
 
-        await db_service.update_report_status(
+        db_service.update_report_status(
             report_log.id,
             ReportStatus.SUCCESS,
             llm_raw_response=report_content,
@@ -160,7 +167,7 @@ async def handle_file_upload(
         logger.error(f"Unexpected error in upload_files: {e}", exc_info=True)
         flash("An unexpected server error occurred.", "error")
         if "report_log" in locals():
-            await db_service.update_report_status(
+            db_service.update_report_status(
                 report_log.id, ReportStatus.ERROR, error_message=str(e)
             )
         return url_for("index"), None

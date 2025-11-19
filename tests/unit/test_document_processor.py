@@ -41,7 +41,7 @@ class TestFileTypeDetection:
             }
 
             # Act
-            result = process_uploaded_file(pdf_path)
+            result = process_uploaded_file(pdf_path, upload_folder="/tmp")
 
             # Assert
             mock_pdf_processor.assert_called_once_with(pdf_path)
@@ -67,7 +67,7 @@ class TestFileTypeDetection:
                 }
 
                 # Act
-                result = process_uploaded_file(image_path)
+                result = process_uploaded_file(image_path, upload_folder="/tmp")
 
                 # Assert
                 mock_image_processor.assert_called_once_with(image_path)
@@ -87,7 +87,7 @@ class TestFileTypeDetection:
             }
 
             # Act
-            result = process_uploaded_file(docx_path)
+            result = process_uploaded_file(docx_path, upload_folder="/tmp")
 
             # Assert
             mock_docx_processor.assert_called_once_with(docx_path)
@@ -107,7 +107,7 @@ class TestFileTypeDetection:
             }
 
             # Act
-            result = process_uploaded_file(xlsx_path)
+            result = process_uploaded_file(xlsx_path, upload_folder="/tmp")
 
             # Assert
             mock_xlsx_processor.assert_called_once_with(xlsx_path)
@@ -127,7 +127,7 @@ class TestFileTypeDetection:
             }
 
             # Act
-            result = process_uploaded_file(txt_path)
+            result = process_uploaded_file(txt_path, upload_folder="/tmp")
 
             # Assert
             mock_txt_processor.assert_called_once_with(txt_path)
@@ -140,7 +140,7 @@ class TestFileTypeDetection:
         unsupported_path = "/tmp/test.exe"
 
         # Act
-        result = process_uploaded_file(unsupported_path)
+        result = process_uploaded_file(unsupported_path, upload_folder="/tmp")
 
         # Assert
         assert result["type"] == "unsupported"

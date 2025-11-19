@@ -12,7 +12,7 @@ import pytest
 from werkzeug.datastructures import FileStorage
 
 # Import the function under test
-from app import allowed_file
+from services.file_service import allowed_file
 from core.config import settings
 
 
