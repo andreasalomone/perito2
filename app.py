@@ -72,12 +72,20 @@ app.register_blueprint(admin_bp)
 logging_config.configure_logging(app)
 
 # Rate Limiting
+# Rate Limiting
 limiter = Limiter(
     get_remote_address,
     app=app,
-    default_limits=["200 per day", "50 per hour"],
-    storage_uri="memory://",
+    default_limits=["1000 per day", "200 per hour"],
+    storage_uri=settings.REDIS_URL or "memory://",
+    strategy="fixed-window",
 )
+
+# Exempt static files from rate limiting
+# Note: We need to do this after the app is created but before requests
+with app.app_context():
+    if "static" in app.view_functions:
+        limiter.exempt(app.view_functions["static"])
 
 
 # Prometheus Metrics
@@ -132,9 +140,8 @@ def show_report(report_id: str) -> Union[str, FlaskResponse]:
         return redirect(url_for("index"))
 
     return render_template(
-        "report.html",
-        report_content=report_log.final_report_text,
-        filenames=[],
+        "report_success.html",
+        report_id=report_id,
         generation_time=report_log.generation_time_seconds,
     )
 
@@ -155,34 +162,19 @@ def check_report_status(report_id: str) -> FlaskResponse:
     })
 
 
-@app.route("/download_report", methods=["POST"])
+@app.route("/download_report/<report_id>", methods=["POST"])
 @limiter.limit("30 per minute")
 @auth.login_required
-def download_report() -> Union[FlaskResponse, Tuple[str, int]]:
-    current_app.logger.info(
-        f"Attempting to download report. Session active: {bool(session)}"
-    )
+def download_report(report_id: str) -> Union[FlaskResponse, Tuple[str, int]]:
+    current_app.logger.info(f"Attempting to download report: {report_id}")
 
     try:
-        report_log_id = session.get("report_log_id")
-        current_app.logger.debug(
-            f"Retrieved report_log_id from session: {report_log_id}"
-        )
-
-        if not report_log_id:
-            current_app.logger.error("Report log ID is missing in session.")
-            flash(
-                "Your session has expired or the report ID was lost. Please generate the report again.",
-                "error",
-            )
-            return redirect(url_for("index"))
-
         # Fetch the report from the database using db_service
-        report_log = db_service.get_report_log(report_log_id)
+        report_log = db_service.get_report_log(report_id)
 
         if not report_log:
             current_app.logger.error(
-                f"ReportLog with ID {report_log_id} not found in the database."
+                f"ReportLog with ID {report_id} not found in the database."
             )
             flash(
                 "The requested report could not be found in the system. Please generate it again.",
@@ -197,7 +189,7 @@ def download_report() -> Union[FlaskResponse, Tuple[str, int]]:
 
         if not report_content_from_db:
             current_app.logger.error(
-                f"Report content for ReportLog ID {report_log_id} is empty."
+                f"Report content for ReportLog ID {report_id} is empty."
             )
             flash(
                 "The report content is empty and cannot be downloaded. Please try generating it again.",
@@ -205,13 +197,16 @@ def download_report() -> Union[FlaskResponse, Tuple[str, int]]:
             )
             return redirect(url_for("index"))
 
-        current_app.logger.info(f"Generating DOCX for ReportLog ID {report_log_id}")
+        current_app.logger.info(f"Generating DOCX for ReportLog ID {report_id}")
 
         # Run CPU-bound docx generation directly (WSGI workers handle concurrency)
         file_stream: io.BytesIO = docx_generator.create_styled_docx(
             report_content_from_db
         )
 
+        # Clean company name for filename (if available in session, else generic)
+        # Note: Session might not have the correct company name if multiple tabs are used,
+        # but filename is less critical than content.
         clean_company_name = "".join(
             c for c in session.get("company_name", "report") if c.isalnum() or c in " -"
         )

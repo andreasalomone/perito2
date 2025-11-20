@@ -1,421 +1,388 @@
-body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    margin: 0;
-    background-color: #1a1a1a; /* Dark background */
-    color: #e0e0e0; /* Light text color for contrast */
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 100vh;
-    padding: 20px;
+:root {
+    --primary-color: #007bff;
+    --primary-hover: #0056b3;
+    --background-color: #f8fafc;
+    --card-bg: #ffffff;
+    --text-color: #1e293b;
+    --text-muted: #64748b;
+    --border-color: #e2e8f0;
+    --success-color: #10b981;
+    --error-color: #ef4444;
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    --radius-md: 0.5rem;
+    --radius-lg: 0.75rem;
+}
+
+* {
     box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem;
 }
 
 .container {
-    background-color: #2c2c2c; /* Slightly lighter dark for container */
-    padding: 30px;
-    border-radius: 12px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
     width: 100%;
-    max-width: 650px;
-    border: 1px solid #444; /* Subtle border */
+    max-width: 800px;
+    margin: 0 auto;
 }
 
 h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-color);
+    margin-bottom: 2rem;
     text-align: center;
-    color: #ffffff; /* White for headings */
-    margin-bottom: 30px;
-    font-size: 2em;
 }
 
-form {
-    display: flex;
-    flex-direction: column;
-    gap: 20px; /* Spacing between form elements */
+h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
 }
 
-label {
-    margin-bottom: 0; /* Adjusted as gap is used in form */
-    font-weight: 500; /* Medium weight */
-    font-size: 0.95em;
-    color: #c7c7c7; /* Lighter grey for labels */
+/* Cards */
+.card {
+    background: var(--card-bg);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    padding: 2rem;
+    border: 1px solid var(--border-color);
 }
 
-input[type="file"] {
-    margin-bottom: 0; /* Adjusted */
-    padding: 12px 15px;
-    border: 1px solid #555; /* Darker border */
-    border-radius: 8px;
-    background-color: #3b3b3b; /* Dark input background */
-    color: #e0e0e0;
-    font-size: 1em;
-}
-
-input[type="file"]::file-selector-button {
-    background-color: #007bff;
-    color: white;
-    padding: 10px 15px;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    margin-right: 10px;
-    font-weight: 500;
-    transition: background-color 0.2s ease-in-out;
-}
-
-input[type="file"]::file-selector-button:hover {
-    background-color: #0056b3;
-}
-
-button[type="submit"] {
-    background-color: #007bff; /* Primary blue */
-    color: white;
-    padding: 12px 20px;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 1.1em;
-    font-weight: 500;
-    transition: background-color 0.2s ease-in-out;
-}
-
-button[type="submit"]:hover {
-    background-color: #0056b3; /* Darker blue on hover */
-}
-
-/* Flash message styling for dark mode */
+/* Flash Messages */
 .flash-messages {
     list-style: none;
+    margin-bottom: 1.5rem;
     padding: 0;
-    margin: 0 0 20px 0;
 }
 
 .flash-messages li {
-    padding: 12px 15px;
-    margin-bottom: 10px;
-    border-radius: 6px;
+    padding: 1rem;
+    border-radius: var(--radius-md);
+    margin-bottom: 0.5rem;
     font-weight: 500;
-    border: 1px solid transparent;
 }
 
-.flash-messages .error {
-    background-color: #5c2122; /* Dark red background */
-    color: #f8d7da; /* Light red text */
-    border-color: #8c2f30;
+.flash-messages li.success {
+    background-color: #d1fae5;
+    color: #065f46;
+    border: 1px solid #a7f3d0;
 }
 
-.flash-messages .warning {
-    background-color: #664d03; /* Dark yellow background */
-    color: #fff3cd; /* Light yellow text */
-    border-color: #997404;
+.flash-messages li.error {
+    background-color: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
 }
 
-.flash-messages .success {
-    background-color: #1f4a25; /* Dark green background */
-    color: #d4edda; /* Light green text */
-    border-color: #2a6734;
-}
-
-/* Styles for report.html */
-textarea#report_content {
-    width: 100%; /* Use 100% width for better responsiveness */
-    min-height: 450px;
-    padding: 15px;
-    border: 1px solid #555; /* Darker border */
-    border-radius: 8px;
-    background-color: #3b3b3b; /* Dark input background */
-    color: #e0e0e0; /* Light text */
-    font-family: "Menlo", "Consolas", "Monaco", monospace; /* Consistent monospaced font */
-    font-size: 0.95em;
-    line-height: 1.6;
-    white-space: pre-wrap;
-    box-sizing: border-box; /* Include padding and border in the element's total width and height */
-    margin-bottom: 20px; /* Add some space below the textarea */
-}
-
-.button-group {
-    display: flex; /* Use flexbox for better alignment */
-    justify-content: flex-end; /* Align buttons to the right */
-    gap: 15px; /* Space between buttons */
-    margin-top: 20px;
-}
-
-/* General button styling (can be extended if more button types are needed) */
-.button-group button,
-.button-group input[type="button"],
-.button-group input[type="submit"] /* If using input for buttons */
-{
-    padding: 10px 20px;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 1em;
-    font-weight: 500;
-    transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
-}
-
-/* Primary button style (e.g., Download) */
-.button-group button[type="submit"] {
-    background-color: #007bff;
-    color: white;
-}
-
-.button-group button[type="submit"]:hover {
-    background-color: #0056b3;
-}
-
-/* Secondary/Default button style (e.g., Back) */
-.button-group button[type="button"] {
-    background-color: #495057; /* Dark grey */
-    color: #f8f9fa; /* Light text */
-    border: 1px solid #6c757d; /* Subtle border */
-}
-
-.button-group button[type="button"]:hover {
-    background-color: #5a6268;
-    border-color: #788088;
-}
-
-/* --- New File Upload Styles (for index.html) --- */
+/* Upload Area */
 .file-upload-label {
     display: flex;
     flex-direction: column;
-    justify-content: center;
     align-items: center;
-    padding: 30px;
-    border: 2px dashed #555;
-    border-radius: 12px;
-    background-color: #3b3b3b;
-    color: #c7c7c7;
+    justify-content: center;
+    padding: 3rem 2rem;
+    border: 2px dashed var(--border-color);
+    border-radius: var(--radius-lg);
+    background-color: #f1f5f9;
     cursor: pointer;
-    text-align: center;
-    transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out;
+    transition: all 0.2s ease;
+    color: var(--text-muted);
+    gap: 1rem;
 }
 
+.file-upload-label:hover,
 .file-upload-label.drag-over {
-    background-color: #444;
-    border-color: #007bff;
+    border-color: var(--primary-color);
+    background-color: #eff6ff;
+    color: var(--primary-color);
 }
 
 .file-upload-label svg {
-    width: 40px;
-    height: 40px;
-    margin-bottom: 15px;
-    stroke: #888;
-    transition: stroke 0.2s ease-in-out;
+    width: 48px;
+    height: 48px;
+    stroke-width: 1.5;
 }
 
-.file-upload-label.drag-over svg {
-    stroke: #007bff;
-}
-
-.file-upload-label span {
-    font-weight: 500;
-    font-size: 1.1em;
-}
-
+/* File List */
 #file-list-container {
-    margin-top: 20px;
-    max-height: 250px;
-    overflow-y: auto;
-    background-color: #242424;
-    border: 1px solid #444;
-    border-radius: 8px;
-    padding: 15px;
-}
-
-#file-list-container:empty {
-    display: none;
-}
-
-.file-list-header {
-    font-size: 0.9em;
-    color: #a0a0a0;
-    margin: 0 0 10px 0;
-    padding-bottom: 10px;
-    border-bottom: 1px solid #444;
+    margin-top: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
 }
 
 .file-item {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding: 10px;
-    background-color: #3a3a3a;
-    border-radius: 6px;
-    margin-bottom: 8px;
-    font-size: 0.9em;
-    animation: fadeIn 0.3s ease-in-out;
-}
-
-.file-item:last-child {
-    margin-bottom: 0;
+    justify-content: space-between;
+    background: var(--card-bg);
+    padding: 1rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-sm);
 }
 
 .file-details {
     display: flex;
     align-items: center;
-    gap: 12px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    gap: 1rem;
 }
 
 .file-icon {
-    flex-shrink: 0;
+    font-size: 1.5rem;
 }
 
 .file-name {
-    text-overflow: ellipsis;
-    overflow: hidden;
-    white-space: nowrap;
-    color: #e0e0e0;
+    font-weight: 500;
+    color: var(--text-color);
 }
 
 .file-size {
-    color: #b0b0b0;
-    flex-shrink: 0;
+    color: var(--text-muted);
+    font-size: 0.875rem;
 }
 
 .remove-file-btn {
-    background: transparent;
+    background: none;
     border: none;
-    color: #ff5555;
+    color: var(--text-muted);
+    font-size: 1.5rem;
     cursor: pointer;
-    font-size: 1.4em;
+    padding: 0.25rem;
     line-height: 1;
-    padding: 0 5px;
-    transition: color 0.2s ease-in-out;
+    border-radius: 50%;
+    transition: color 0.2s;
 }
 
 .remove-file-btn:hover {
-    color: #ff0000;
+    color: var(--error-color);
+    background-color: #fee2e2;
 }
 
-/* --- End New File Upload Styles --- */
+/* Buttons */
+button[type="submit"],
+.btn-primary {
+    display: block;
+    width: 100%;
+    padding: 1rem;
+    margin-top: 2rem;
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: var(--radius-md);
+    font-size: 1.125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
 
-/* --- New ShadCN/UI Inspired Loader (for index.html) --- */
+button[type="submit"]:hover,
+.btn-primary:hover {
+    background-color: var(--primary-hover);
+}
+
+button[type="submit"]:disabled {
+    background-color: #94a3b8;
+    cursor: not-allowed;
+}
+
+/* Stepper / Loader */
 .loader-overlay {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 0, 0, 0.7);
-    display: none; /* Hidden by default, shown by JS */
+    background: rgba(255, 255, 255, 0.95);
+    display: flex;
     justify-content: center;
     align-items: center;
     z-index: 1000;
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
     opacity: 0;
-    transition: opacity 0.3s ease-in-out;
+    visibility: hidden;
+    transition: opacity 0.3s;
 }
 
 .loader-overlay.visible {
-    display: flex;
     opacity: 1;
+    visibility: visible;
 }
 
 .loader-content {
-    background-color: #2c2c2c;
-    padding: 40px;
-    border-radius: 12px;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
     width: 100%;
-    max-width: 550px;
-    border: 1px solid #444;
+    max-width: 500px;
+    padding: 2rem;
     text-align: center;
-    transform: scale(0.95);
-    transition: transform 0.3s ease-in-out;
 }
 
-.loader-overlay.visible .loader-content {
-    transform: scale(1);
-}
-
-.loader-content .spinner {
-    border: 5px solid #444;
-    border-top: 5px solid #007bff;
-    border-radius: 50%;
-    width: 50px;
-    height: 50px;
-    animation: spin 1.5s linear infinite;
-    margin: 0 auto 25px auto;
-}
-
-.loader-content h2 {
-    color: #ffffff;
-    margin-bottom: 10px;
-    font-size: 1.5em;
-}
-
-.loader-content p {
-    color: #c7c7c7;
-    margin-bottom: 25px;
-    font-size: 1em;
-}
-
-.loader-content .timer {
-    font-size: 0.9em;
-    color: #a0a0a0;
-    margin-bottom: 20px;
-}
-
-.loader-content .logs {
-    background-color: #1a1a1a;
-    border: 1px solid #444;
-    border-radius: 8px;
-    height: 150px;
-    overflow-y: auto;
+.stepper {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    margin-top: 2rem;
     text-align: left;
-    padding: 15px;
 }
 
-.loader-content .logs ul {
-    list-style: none;
-    padding: 0;
-    margin: 0;
+.step {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    color: var(--text-muted);
+    opacity: 0.5;
+    transition: all 0.3s;
 }
 
-.loader-content .logs li {
-    font-family: "Menlo", "Consolas", "Monaco", monospace;
-    font-size: 0.85em;
-    color: #b0b0b0;
-    padding: 4px 0;
-    border-bottom: 1px solid #333;
-    opacity: 0;
-    animation: fadeIn 0.5s forwards;
+.step.active {
+    opacity: 1;
+    color: var(--text-color);
+    font-weight: 600;
 }
 
-.loader-content .logs li:last-child {
-    border-bottom: none;
+.step.completed {
+    opacity: 1;
+    color: var(--success-color);
 }
 
-/* --- Banner for report.html --- */
-.time-saved-banner {
-    background-color: #1f4a25;
-    color: #d4edda;
-    padding: 15px 20px;
-    border-radius: 8px;
-    margin-bottom: 25px;
-    text-align: center;
-    border: 1px solid #2a6734;
-    font-size: 1.1em;
+.step-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid currentColor;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    flex-shrink: 0;
 }
 
-.time-saved-banner strong {
-    color: #ffffff;
+.step.completed .step-icon {
+    background-color: var(--success-color);
+    border-color: var(--success-color);
+    color: white;
 }
 
-/* --- Keyframes --- */
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+.step.completed .step-icon::after {
+    content: "✓";
 }
 
-@keyframes fadeIn {
-    to {
+.step.active .step-icon {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    position: relative;
+}
+
+.step.active .step-icon::after {
+    content: "";
+    width: 10px;
+    height: 10px;
+    background-color: var(--primary-color);
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(0.8);
+        opacity: 0.8;
+    }
+
+    50% {
+        transform: scale(1.2);
         opacity: 1;
     }
+
+    100% {
+        transform: scale(0.8);
+        opacity: 0.8;
+    }
+}
+
+/* Success Page */
+.success-container {
+    text-align: center;
+    max-width: 600px;
+    margin: 3rem auto;
+}
+
+.success-icon {
+    font-size: 4rem;
+    margin-bottom: 1.5rem;
+    animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes popIn {
+    0% {
+        transform: scale(0);
+        opacity: 0;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.file-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    margin: 2rem 0;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    box-shadow: var(--shadow-sm);
+    transition: transform 0.2s;
+}
+
+.file-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.btn-download {
+    width: 100%;
+    padding: 1rem;
+    font-size: 1.2rem;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: background-color 0.2s;
+}
+
+.btn-download:hover {
+    background-color: var(--primary-hover);
+}
+
+.link-secondary {
+    display: inline-block;
+    margin-top: 1.5rem;
+    color: var(--text-muted);
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.2s;
+}
+
+.link-secondary:hover {
+    color: var(--primary-color);
 }

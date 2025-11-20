@@ -1,41 +1,28 @@
-<!DOCTYPE html>
-<html lang="en">
+{% extends "base_layout.html" %}
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Genera una Perizia</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
+{% block content %}
+<div class="container">
+    <h1>AI Insurance Report Generator</h1>
 
-<body>
-    <div id="loader-overlay" class="loader-overlay">
-        <div class="loader-content">
-            <div class="spinner"></div>
-            <h2>Stiamo generando la tua perizia...</h2>
-            <p>Questa operazione potrebbe richiedere qualche minuto.</p>
-            <div class="timer">Tempo trascorso: <span id="timer-seconds">0</span>s</div>
-            <div class="logs">
-                <ul id="log-list">
-                    <!-- Log messages will be injected here by JS -->
-                </ul>
-            </div>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <ul class="flash-messages">
+        {% for category, message in messages %}
+        <li class="{{ category }}">{{ message }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+    {% endwith %}
+
+    <!-- Error Container (Hidden initially) -->
+    <div id="error-container" style="display: none; margin-bottom: 1.5rem;">
+        <div class="flash-messages">
+            <li class="error" id="error-message-text"></li>
         </div>
     </div>
 
-    <div class="container">
-        <h1>AI Insurance Report Generator</h1>
-
-        {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-        <ul class="flash-messages">
-            {% for category, message in messages %}
-            <li class="{{ category }}">{{ message }}</li>
-            {% endfor %}
-        </ul>
-        {% endif %}
-        {% endwith %}
-
+    <!-- Upload Section -->
+    <div id="upload-section">
         <form id="uploadForm" action="{{ url_for('upload_files') }}" method="post" enctype="multipart/form-data">
             <label for="fileInput" class="file-upload-label">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
@@ -46,6 +33,7 @@
                     <path d="m16 16-4-4-4 4"></path>
                 </svg>
                 <span>Clicca per selezionare i files o trascinali qui</span>
+                <span style="font-size: 0.875rem; color: #94a3b8;">PDF, Immagini (JPG, PNG), Excel</span>
             </label>
             <input type="file" name="files" id="fileInput" multiple hidden>
 
@@ -53,204 +41,288 @@
                 <!-- Selected files will be listed here by JS -->
             </div>
 
-            <button type="submit">Genera Perizia</button>
+            <button type="submit" id="generateBtn" disabled>Genera Perizia</button>
         </form>
     </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            const form = document.getElementById('uploadForm');
-            const fileInput = document.getElementById('fileInput');
-            const fileListContainer = document.getElementById('file-list-container');
-            const uploadLabel = document.querySelector('.file-upload-label');
-            const loaderOverlay = document.getElementById('loader-overlay');
-            const timerSpan = document.getElementById('timer-seconds');
-            const logList = document.getElementById('log-list');
+    <!-- Stepper Section (Hidden initially) -->
+    <div id="stepper-section" style="display: none;">
+        <div class="card">
+            <h2>Generazione in corso...</h2>
+            <p style="color: var(--text-muted);">L'intelligenza artificiale sta analizzando i tuoi documenti.</p>
 
-            let dataTransfer = new DataTransfer();
-            let timerInterval;
-            let seconds = 0;
+            <div class="stepper">
+                <div class="step" id="step-1">
+                    <div class="step-icon">1</div>
+                    <div class="step-content">
+                        <div class="step-title">Caricamento & OCR</div>
+                        <div class="step-desc" style="font-size: 0.875rem;">Estrazione testo dai documenti</div>
+                    </div>
+                </div>
+                <div class="step" id="step-2">
+                    <div class="step-icon">2</div>
+                    <div class="step-content">
+                        <div class="step-title">Analisi Strutturale</div>
+                        <div class="step-desc" style="font-size: 0.875rem;">Identificazione dati chiave</div>
+                    </div>
+                </div>
+                <div class="step" id="step-3">
+                    <div class="step-icon">3</div>
+                    <div class="step-content">
+                        <div class="step-title">Stesura Report</div>
+                        <div class="step-desc" style="font-size: 0.875rem;">Generazione contenuti con AI</div>
+                    </div>
+                </div>
+                <div class="step" id="step-4">
+                    <div class="step-icon">4</div>
+                    <div class="step-content">
+                        <div class="step-title">Finalizzazione</div>
+                        <div class="step-desc" style="font-size: 0.875rem;">Formattazione documento Word</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
 
-            const logMessages = [
-                { time: 1, message: "Avvio del processo di generazione..." },
-                { time: 3, message: "Caricamento dei documenti in corso..." },
-                { time: 8, message: "Estrazione del testo dai documenti (OCR in corso)..." },
-                { time: 15, message: "Analisi del contenuto e preparazione per l'invio all'AI..." },
-                { time: 25, message: "L'intelligenza artificiale sta generando il report (questa è la fase più lunga)..." },
-                { time: 50, message: "Quasi finito, finalizzazione del documento..." }
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const form = document.getElementById('uploadForm');
+        const fileInput = document.getElementById('fileInput');
+        const fileListContainer = document.getElementById('file-list-container');
+        const uploadLabel = document.querySelector('.file-upload-label');
+        const generateBtn = document.getElementById('generateBtn');
+        const uploadSection = document.getElementById('upload-section');
+        const stepperSection = document.getElementById('stepper-section');
+        const errorContainer = document.getElementById('error-container');
+        const errorMessageText = document.getElementById('error-message-text');
+
+        let dataTransfer = new DataTransfer();
+
+        // --- File Handling ---
+
+        function getFileIcon(filename) {
+            const ext = filename.split('.').pop().toLowerCase();
+            if (['jpg', 'jpeg', 'png', 'gif'].includes(ext)) return '🖼️';
+            if (['pdf'].includes(ext)) return '📕';
+            if (['xls', 'xlsx', 'csv'].includes(ext)) return '📊';
+            return '📄';
+        }
+
+        function renderFileList() {
+            fileListContainer.innerHTML = '';
+
+            if (dataTransfer.files.length > 0) {
+                generateBtn.disabled = false;
+                generateBtn.textContent = `Genera Perizia (${dataTransfer.files.length} files)`;
+            } else {
+                generateBtn.disabled = true;
+                generateBtn.textContent = 'Genera Perizia';
+            }
+
+            Array.from(dataTransfer.files).forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+
+                const fileDetails = document.createElement('div');
+                fileDetails.className = 'file-details';
+
+                const icon = document.createElement('span');
+                icon.className = 'file-icon';
+                icon.textContent = getFileIcon(file.name);
+
+                const infoDiv = document.createElement('div');
+
+                const fileName = document.createElement('div');
+                fileName.className = 'file-name';
+                fileName.textContent = file.name;
+
+                const fileSize = document.createElement('div');
+                fileSize.className = 'file-size';
+                const sizeKB = file.size / 1024;
+                fileSize.textContent = sizeKB > 1024 ? `(${(sizeKB / 1024).toFixed(2)} MB)` : `(${sizeKB.toFixed(1)} KB)`;
+
+                infoDiv.appendChild(fileName);
+                infoDiv.appendChild(fileSize);
+
+                fileDetails.appendChild(icon);
+                fileDetails.appendChild(infoDiv);
+
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'remove-file-btn';
+                removeBtn.textContent = '×';
+                removeBtn.type = 'button';
+                removeBtn.title = 'Rimuovi file';
+
+                removeBtn.addEventListener('click', () => {
+                    const newFiles = new DataTransfer();
+                    Array.from(dataTransfer.files)
+                        .filter((_, i) => i !== index)
+                        .forEach(f => newFiles.items.add(f));
+
+                    dataTransfer = newFiles;
+                    renderFileList();
+                });
+
+                fileItem.appendChild(fileDetails);
+                fileItem.appendChild(removeBtn);
+                fileListContainer.appendChild(fileItem);
+            });
+        }
+
+        function handleFiles(files) {
+            for (const file of files) {
+                const isDuplicate = Array.from(dataTransfer.files).some(
+                    f => f.name === file.name && f.size === file.size
+                );
+                if (!isDuplicate) {
+                    dataTransfer.items.add(file);
+                }
+            }
+            renderFileList();
+        }
+
+        fileInput.addEventListener('change', () => {
+            handleFiles(fileInput.files);
+            fileInput.value = '';
+        });
+
+        uploadLabel.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadLabel.classList.add('drag-over');
+        });
+
+        uploadLabel.addEventListener('dragleave', () => {
+            uploadLabel.classList.remove('drag-over');
+        });
+
+        uploadLabel.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadLabel.classList.remove('drag-over');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        // --- Stepper Logic ---
+
+        function updateStepper(seconds) {
+            const steps = [
+                { id: 'step-1', start: 0, end: 15 },
+                { id: 'step-2', start: 15, end: 25 },
+                { id: 'step-3', start: 25, end: 50 },
+                { id: 'step-4', start: 50, end: 999 }
             ];
 
-            function startLoader() {
-                loaderOverlay.classList.add('visible');
-                seconds = 0;
-                timerSpan.textContent = seconds;
-                timerInterval = setInterval(() => {
-                    seconds++;
-                    timerSpan.textContent = seconds;
-                }, 1000);
+            steps.forEach(step => {
+                const el = document.getElementById(step.id);
+                if (seconds >= step.end) {
+                    el.classList.remove('active');
+                    el.classList.add('completed');
+                } else if (seconds >= step.start) {
+                    el.classList.add('active');
+                    el.classList.remove('completed');
+                } else {
+                    el.classList.remove('active', 'completed');
+                }
+            });
+        }
 
-                logList.innerHTML = '';
-                logMessages.forEach(log => {
-                    setTimeout(() => {
-                        const li = document.createElement('li');
-                        li.textContent = `[+${seconds}s] ${log.message}`;
-                        logList.appendChild(li);
-                        logList.scrollTop = logList.scrollHeight;
-                    }, log.time * 1000);
-                });
+        function showError(message) {
+            errorMessageText.textContent = message;
+            errorContainer.style.display = 'block';
+            // Scroll to error
+            errorContainer.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function hideError() {
+            errorContainer.style.display = 'none';
+        }
+
+        // --- Form Submission ---
+
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            hideError();
+
+            if (dataTransfer.files.length === 0) {
+                showError('Per favore, seleziona almeno un file.');
+                return;
             }
 
-            function renderFileList() {
-                fileListContainer.innerHTML = '';
-                if (dataTransfer.files.length > 0) {
-                    const header = document.createElement('p');
-                    header.className = 'file-list-header';
-                    header.textContent = `Files selezionati: ${dataTransfer.files.length}`;
-                    fileListContainer.appendChild(header);
-                }
+            // Switch UI
+            uploadSection.style.display = 'none';
+            stepperSection.style.display = 'block';
 
-                Array.from(dataTransfer.files).forEach((file, index) => {
-                    const fileItem = document.createElement('div');
-                    fileItem.className = 'file-item';
+            let seconds = 0;
+            updateStepper(seconds);
+            const timerInterval = setInterval(() => {
+                seconds++;
+                updateStepper(seconds);
+            }, 1000);
 
-                    const fileDetails = document.createElement('div');
-                    fileDetails.className = 'file-details';
-
-                    const icon = document.createElement('span');
-                    icon.className = 'file-icon';
-                    icon.textContent = '📄';
-
-                    const fileName = document.createElement('span');
-                    fileName.className = 'file-name';
-                    fileName.textContent = file.name;
-
-                    const fileSize = document.createElement('span');
-                    fileSize.className = 'file-size';
-                    const sizeKB = file.size / 1024;
-                    fileSize.textContent = sizeKB > 1024 ? `(${(sizeKB / 1024).toFixed(2)} MB)` : `(${sizeKB.toFixed(1)} KB)`;
-
-                    fileDetails.appendChild(icon);
-                    fileDetails.appendChild(fileName);
-                    fileDetails.appendChild(fileSize);
-
-                    const removeBtn = document.createElement('button');
-                    removeBtn.className = 'remove-file-btn';
-                    removeBtn.textContent = '×';
-                    removeBtn.type = 'button';
-                    removeBtn.title = 'Rimuovi file';
-
-                    removeBtn.addEventListener('click', () => {
-                        const newFiles = new DataTransfer();
-                        Array.from(dataTransfer.files)
-                            .filter((_, i) => i !== index)
-                            .forEach(f => newFiles.items.add(f));
-
-                        dataTransfer = newFiles;
-                        renderFileList();
-                    });
-
-                    fileItem.appendChild(fileDetails);
-                    fileItem.appendChild(removeBtn);
-                    fileListContainer.appendChild(fileItem);
-                });
+            const formData = new FormData();
+            for (const file of dataTransfer.files) {
+                formData.append('files', file);
             }
 
-            function handleFiles(files) {
-                for (const file of files) {
-                    const isDuplicate = Array.from(dataTransfer.files).some(
-                        f => f.name === file.name && f.size === file.size
-                    );
-                    if (!isDuplicate) {
-                        dataTransfer.items.add(file);
-                    }
-                }
-                renderFileList();
-            }
-
-            fileInput.addEventListener('change', () => {
-                handleFiles(fileInput.files);
-                fileInput.value = ''; // Reset to allow re-selecting the same file
-            });
-
-            uploadLabel.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                uploadLabel.classList.add('drag-over');
-            });
-
-            uploadLabel.addEventListener('dragleave', () => {
-                uploadLabel.classList.remove('drag-over');
-            });
-
-            uploadLabel.addEventListener('drop', (e) => {
-                e.preventDefault();
-                uploadLabel.classList.remove('drag-over');
-                handleFiles(e.dataTransfer.files);
-            });
-
-            form.addEventListener('submit', function (e) {
-                e.preventDefault(); // Prevent default form submission
-
-                if (dataTransfer.files.length === 0) {
-                    alert('Per favore, seleziona almeno un file prima di generare la perizia.');
-                    return;
-                }
-
-                startLoader();
-
-                const formData = new FormData();
-                for (const file of dataTransfer.files) {
-                    formData.append('files', file);
-                }
-
-                fetch(form.action, {
-                    method: 'POST',
-                    body: formData,
+            fetch(form.action, {
+                method: 'POST',
+                body: formData,
+            })
+                .then(response => {
+                    if (response.ok) return response.json();
+                    return response.json().then(err => { throw new Error(err.error || 'Server error'); });
                 })
-                    .then(response => {
-                        if (response.ok) {
-                            return response.json();
-                        } else {
-                            return response.json().then(err => { throw new Error(err.error || 'Server error'); });
-                        }
-                    })
-                    .then(data => {
-                        if (data.report_id) {
-                            pollStatus(data.report_id);
-                        } else {
-                            throw new Error('No report ID returned');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error during form submission:', error);
-                        loaderOverlay.classList.remove('visible');
-                        clearInterval(timerInterval);
-                        alert('Si è verificato un errore: ' + error.message);
-                    });
-            });
+                .then(data => {
+                    if (data.report_id) {
+                        pollStatus(data.report_id, timerInterval);
+                    } else {
+                        throw new Error('No report ID returned');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    clearInterval(timerInterval);
 
-            function pollStatus(reportId) {
-                const pollInterval = setInterval(() => {
-                    fetch(`/report/status/${reportId}`)
-                        .then(res => res.json())
-                        .then(statusData => {
-                            if (statusData.status === 'success') {
-                                clearInterval(pollInterval);
-                                window.location.href = `/report/${reportId}`;
-                            } else if (statusData.status === 'error') {
-                                clearInterval(pollInterval);
-                                loaderOverlay.classList.remove('visible');
-                                clearInterval(timerInterval);
-                                alert('Errore durante la generazione: ' + (statusData.error || 'Errore sconosciuto'));
-                            }
-                            // If processing, continue polling
-                        })
-                        .catch(err => {
-                            console.error('Polling error:', err);
-                        });
-                }, 2000);
-            }
+                    // Reset UI
+                    uploadSection.style.display = 'block';
+                    stepperSection.style.display = 'none';
+
+                    showError('Errore: ' + error.message);
+                });
         });
-    </script>
-</body>
 
-</html>
+        function pollStatus(reportId, timerInterval) {
+            const pollInterval = setInterval(() => {
+                fetch(`/report/status/${reportId}`)
+                    .then(res => res.json())
+                    .then(statusData => {
+                        if (statusData.status === 'success') {
+                            clearInterval(pollInterval);
+                            clearInterval(timerInterval);
+                            // Force step 4 completion visual
+                            updateStepper(100);
+                            setTimeout(() => {
+                                window.location.href = `/report/${reportId}`;
+                            }, 500);
+                        } else if (statusData.status === 'error') {
+                            clearInterval(pollInterval);
+                            clearInterval(timerInterval);
+
+                            uploadSection.style.display = 'block';
+                            stepperSection.style.display = 'none';
+
+                            showError('Errore durante la generazione: ' + (statusData.error || 'Errore sconosciuto'));
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Polling error:', err);
+                        // Don't stop polling immediately on network error, but maybe count errors?
+                        // For now, just log it.
+                    });
+            }, 2000);
+        }
+    });
+</script>
+{% endblock %}
