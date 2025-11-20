@@ -51,25 +51,31 @@ def generate_report_task(self, report_id: int, file_paths: List[str], original_f
 
             if not all_extracted_text.strip():
                 logger.warning(f"No text extracted for report {report_id}")
-                db_service.update_report_status(report_id, ReportStatus.FAILED, error_message="No text could be extracted from the uploaded files.")
+                db_service.update_report_status(report_id, ReportStatus.ERROR, error_message="No text could be extracted from the uploaded files.")
                 return
 
-            # Generate Report via LLM
+            # Generate Report via LLM (use sync wrapper)
             logger.info(f"Generating report for report {report_id} with {len(all_extracted_text)} chars")
-            report_content = llm_handler.generate_report_from_content(all_extracted_text)
+            report_content = llm_handler.generate_report_from_content_sync(
+                processed_files=[{"type": "text", "content": all_extracted_text}]
+            )
             
             if report_content:
                 # Update status to COMPLETED and save content
-                db_service.update_report_content(report_id, report_content)
-                db_service.update_report_status(report_id, ReportStatus.COMPLETED)
+                db_service.update_report_status(
+                    report_id,
+                    ReportStatus.SUCCESS,
+                    llm_raw_response=report_content,
+                    final_report_text=report_content
+                )
                 logger.info(f"Report {report_id} generated successfully.")
             else:
-                db_service.update_report_status(report_id, ReportStatus.FAILED, error_message="LLM failed to generate report.")
+                db_service.update_report_status(report_id, ReportStatus.ERROR, error_message="LLM failed to generate report.")
                 logger.error(f"LLM returned empty content for report {report_id}")
 
         except Exception as e:
             logger.error(f"Error in generate_report_task for report {report_id}: {e}", exc_info=True)
-            db_service.update_report_status(report_id, ReportStatus.FAILED, error_message=str(e))
+            db_service.update_report_status(report_id, ReportStatus.ERROR, error_message=str(e))
         
         finally:
             # Cleanup temporary files

@@ -17,6 +17,11 @@ def make_celery(app_name=__name__):
         timezone="UTC",
         enable_utc=True,
     )
+    # Auto-discover tasks from the services module
+    celery.autodiscover_tasks(['services'])
     return celery
 
 celery_app = make_celery()
+
+# Import tasks to ensure they're registered
+from services import tasks  # noqa: E402, F401

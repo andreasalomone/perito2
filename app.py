@@ -106,6 +106,10 @@ def upload_files() -> Union[str, FlaskResponse, Tuple[dict, int]]:
     result = report_service.handle_file_upload_async(files, app.root_path)
 
     if result.success:
+        # Store report_log_id in session for download functionality
+        if result.data and "report_id" in result.data:
+            session["report_log_id"] = result.data["report_id"]
+        
         # Return JSON response with task_id for polling
         return jsonify(result.data), 202
     else:
@@ -118,9 +122,9 @@ def upload_files() -> Union[str, FlaskResponse, Tuple[dict, int]]:
         return jsonify({"error": "Upload failed", "messages": [msg.message for msg in result.messages]}), 400
 
 
-@app.route("/report/<int:report_id>", methods=["GET"])
+@app.route("/report/<report_id>", methods=["GET"])
 @auth.login_required
-def show_report(report_id: int) -> Union[str, FlaskResponse]:
+def show_report(report_id: str) -> Union[str, FlaskResponse]:
     """Displays a previously generated report."""
     report_log = db_service.get_report_log(report_id)
     if not report_log or not report_log.final_report_text:
@@ -135,9 +139,9 @@ def show_report(report_id: int) -> Union[str, FlaskResponse]:
     )
 
 
-@app.route("/report/status/<int:report_id>", methods=["GET"])
+@app.route("/report/status/<report_id>", methods=["GET"])
 @auth.login_required
-def check_report_status(report_id: int) -> FlaskResponse:
+def check_report_status(report_id: str) -> FlaskResponse:
     """Checks the status of a report generation."""
     report_log = db_service.get_report_log(report_id)
     if not report_log:

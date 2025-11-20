@@ -61,6 +61,8 @@ fi
 
 # Start Celery worker
 echo -e "\n${GREEN}Starting Celery worker...${NC}"
+# Set PYTHONPATH to allow Celery worker to import app module
+export PYTHONPATH="${PYTHONPATH}:$(pwd)"
 .venv/bin/celery -A core.celery_app.celery_app worker --loglevel=info &
 CELERY_PID=$!
 

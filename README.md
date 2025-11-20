@@ -67,7 +67,7 @@ Configuration is managed through environment variables and the `core/config.py` 
   - Max total upload size: 100 MB (configurable via `MAX_TOTAL_UPLOAD_SIZE_MB`)
 
 - **LLM Settings**:
-  - Model: `gemini-2.5-flash-preview-05-20`
+  - Model: `gemini-2.5-pro`
   - Temperature: 0.5
   - Max tokens: 64000
   - Retry attempts: 3

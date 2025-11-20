@@ -38,7 +38,7 @@ class Settings(BaseSettings):
         1000000  # Maximum characters for combined extracted text sent to LLM
     )
 
-    LLM_MODEL_NAME: str = "gemini-2.5-flash-preview-05-20"
+    LLM_MODEL_NAME: str = "gemini-2.5-pro"
     LLM_TEMPERATURE: float = 0.5
     LLM_MAX_TOKENS: int = 64000  # Max tokens for the LLM response
 

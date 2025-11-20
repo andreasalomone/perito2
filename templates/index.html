@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Genera una Perizia</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
+
 <body>
     <div id="loader-overlay" class="loader-overlay">
         <div class="loader-content">
@@ -25,22 +27,28 @@
         <h1>AI Insurance Report Generator</h1>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
-            <ul class="flash-messages">
+        {% if messages %}
+        <ul class="flash-messages">
             {% for category, message in messages %}
-              <li class="{{ category }}">{{ message }}</li>
+            <li class="{{ category }}">{{ message }}</li>
             {% endfor %}
-            </ul>
-          {% endif %}
+        </ul>
+        {% endif %}
         {% endwith %}
 
         <form id="uploadForm" action="{{ url_for('upload_files') }}" method="post" enctype="multipart/form-data">
             <label for="fileInput" class="file-upload-label">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-upload-cloud"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path><path d="M12 12v9"></path><path d="m16 16-4-4-4 4"></path></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    class="feather feather-upload-cloud">
+                    <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path>
+                    <path d="M12 12v9"></path>
+                    <path d="m16 16-4-4-4 4"></path>
+                </svg>
                 <span>Clicca per selezionare i files o trascinali qui</span>
             </label>
-            <input type="file" name="files[]" id="fileInput" multiple hidden>
-            
+            <input type="file" name="files" id="fileInput" multiple hidden>
+
             <div id="file-list-container">
                 <!-- Selected files will be listed here by JS -->
             </div>
@@ -50,7 +58,7 @@
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             const form = document.getElementById('uploadForm');
             const fileInput = document.getElementById('fileInput');
             const fileListContainer = document.getElementById('file-list-container');
@@ -120,7 +128,7 @@
                     fileSize.className = 'file-size';
                     const sizeKB = file.size / 1024;
                     fileSize.textContent = sizeKB > 1024 ? `(${(sizeKB / 1024).toFixed(2)} MB)` : `(${sizeKB.toFixed(1)} KB)`;
-                    
+
                     fileDetails.appendChild(icon);
                     fileDetails.appendChild(fileName);
                     fileDetails.appendChild(fileSize);
@@ -130,13 +138,13 @@
                     removeBtn.textContent = '×';
                     removeBtn.type = 'button';
                     removeBtn.title = 'Rimuovi file';
-                    
+
                     removeBtn.addEventListener('click', () => {
                         const newFiles = new DataTransfer();
                         Array.from(dataTransfer.files)
                             .filter((_, i) => i !== index)
                             .forEach(f => newFiles.items.add(f));
-                        
+
                         dataTransfer = newFiles;
                         renderFileList();
                     });
@@ -179,7 +187,7 @@
                 handleFiles(e.dataTransfer.files);
             });
 
-            form.addEventListener('submit', function(e) {
+            form.addEventListener('submit', function (e) {
                 e.preventDefault(); // Prevent default form submission
 
                 if (dataTransfer.files.length === 0) {
@@ -191,33 +199,33 @@
 
                 const formData = new FormData();
                 for (const file of dataTransfer.files) {
-                    formData.append('files[]', file);
+                    formData.append('files', file);
                 }
 
                 fetch(form.action, {
                     method: 'POST',
                     body: formData,
                 })
-                .then(response => {
-                    if (response.ok) {
-                        return response.json();
-                    } else {
-                        return response.json().then(err => { throw new Error(err.error || 'Server error'); });
-                    }
-                })
-                .then(data => {
-                    if (data.report_id) {
-                        pollStatus(data.report_id);
-                    } else {
-                         throw new Error('No report ID returned');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error during form submission:', error);
-                    loaderOverlay.classList.remove('visible');
-                    clearInterval(timerInterval);
-                    alert('Si è verificato un errore: ' + error.message);
-                });
+                    .then(response => {
+                        if (response.ok) {
+                            return response.json();
+                        } else {
+                            return response.json().then(err => { throw new Error(err.error || 'Server error'); });
+                        }
+                    })
+                    .then(data => {
+                        if (data.report_id) {
+                            pollStatus(data.report_id);
+                        } else {
+                            throw new Error('No report ID returned');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error during form submission:', error);
+                        loaderOverlay.classList.remove('visible');
+                        clearInterval(timerInterval);
+                        alert('Si è verificato un errore: ' + error.message);
+                    });
             });
 
             function pollStatus(reportId) {
@@ -241,8 +249,8 @@
                         });
                 }, 2000);
             }
-            });
         });
     </script>
 </body>
-</html> 
+
+</html>
