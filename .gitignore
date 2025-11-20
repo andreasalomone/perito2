@@ -131,6 +131,8 @@ Desktop.ini
 
 # Local uploads/data that shouldn't be versioned
 uploads/
+2025/
+MagicMock/
 
 # PyCharm
 .idea/
@@ -164,9 +166,8 @@ cov_html/
 #Legacy Files
 legacy/
 
-pytest.ini
+# Redis database dumps
+dump.rdb
 
-# Additions based on user request to ensure comprehensive .gitignore
-
-.flake8
-pyproject.toml
+# Test files
+test.txt

@@ -29,6 +29,8 @@ env/
 .coverage
 htmlcov/
 .tox/
+tests/
+test.txt
 
 # Environment and secrets
 .env
@@ -63,3 +65,10 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Development dependencies and config
+requirements-dev.txt
+.flake8
+pytest.ini
+flow.md
+prd.md
