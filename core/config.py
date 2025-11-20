@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     AUTH_PASSWORD: str = Field(
         default="defaultpassword", validation_alias="BASIC_AUTH_PASSWORD"
     )
+    
+    # Multi-user authentication (JSON format: {"user1": "pass1", "user2": "pass2"})
+    # If set, overrides AUTH_USERNAME/AUTH_PASSWORD for multiple user support
+    ALLOWED_USERS_JSON: Optional[str] = None
 
     ALLOWED_EXTENSIONS: Set[str] = {
         "png",
@@ -39,6 +43,7 @@ class Settings(BaseSettings):
     )
 
     LLM_MODEL_NAME: str = "gemini-2.5-pro"
+    LLM_FALLBACK_MODEL_NAME: str = "gemini-2.5-flash"  # Fallback model when primary is overloaded
     LLM_TEMPERATURE: float = 0.5
     LLM_MAX_TOKENS: int = 64000  # Max tokens for the LLM response
 

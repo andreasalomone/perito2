@@ -135,7 +135,12 @@ async def generate_with_fallback(
     contents: List[Union[str, types.Part, types.File]],
     config: types.GenerateContentConfig,
 ) -> Any:
-    """Generates content with cache, falling back to non-cached on cache errors.
+    """Generates content with cache and model fallback.
+
+    Falls back in this order:
+    1. Try with primary model + cache (if configured)
+    2. If cache error: try primary model without cache
+    3. If model overloaded (503): try fallback model
 
     Args:
         client: The Gemini API client.
@@ -147,7 +152,7 @@ async def generate_with_fallback(
         The LLM response object.
 
     Raises:
-        Exception: If both attempts fail.
+        Exception: If all attempts fail.
     """
     try:
         # ATTEMPT 1: With cache (if available)
@@ -156,6 +161,41 @@ async def generate_with_fallback(
         )
         response = await generate_with_retry(client, model, contents, config)
         return response
+
+    except genai_errors.ServerError as e:
+        # Handle 503 UNAVAILABLE - model overloaded
+        is_overloaded = (
+            "503" in str(e)
+            or (hasattr(e, "status_code") and e.status_code == 503)
+            or "UNAVAILABLE" in str(e)
+            or "overloaded" in str(e).lower()
+        )
+
+        if is_overloaded and settings.LLM_FALLBACK_MODEL_NAME:
+            fallback_model = settings.LLM_FALLBACK_MODEL_NAME
+            logger.warning(
+                f"Model {model} is overloaded (503 UNAVAILABLE). "
+                f"Attempting fallback to {fallback_model}..."
+            )
+
+            try:
+                # ATTEMPT 2: Fallback to different model
+                response = await generate_with_retry(client, fallback_model, contents, config)
+                logger.info(f"✓ Successfully generated report using fallback model: {fallback_model}")
+                return response
+            except Exception as fallback_error:
+                logger.error(
+                    f"Fallback model {fallback_model} also failed: {fallback_error}",
+                    exc_info=True,
+                )
+                raise Exception(
+                    f"Both {model} (overloaded) and fallback {fallback_model} failed. "
+                    f"Fallback error: {fallback_error}"
+                )
+        else:
+            # ServerError but not overloaded, or no fallback model configured
+            logger.error(f"ServerError occurred: {e}")
+            raise e
 
     except genai_errors.ClientError as e:
         # This block catches non-retriable client errors from the first attempt.
@@ -194,7 +234,7 @@ async def generate_with_fallback(
             fallback_config = types.GenerateContentConfig(**fallback_config_args)
 
             try:
-                # ATTEMPT 2: Fallback without cache
+                # ATTEMPT 3: Fallback without cache
                 logger.info(
                     "Calling Gemini generate_content for the second time (fallback without cache)."
                 )
@@ -203,6 +243,35 @@ async def generate_with_fallback(
                 )
                 logger.info("Fallback generation without cache succeeded.")
                 return response
+            except genai_errors.ServerError as server_err:
+                # If cache fallback also gets 503, try fallback model
+                is_overloaded = (
+                    "503" in str(server_err)
+                    or (hasattr(server_err, "status_code") and server_err.status_code == 503)
+                    or "UNAVAILABLE" in str(server_err)
+                    or "overloaded" in str(server_err).lower()
+                )
+
+                if is_overloaded and settings.LLM_FALLBACK_MODEL_NAME:
+                    fallback_model = settings.LLM_FALLBACK_MODEL_NAME
+                    logger.warning(
+                        f"Model {model} still overloaded after cache fallback. "
+                        f"Trying {fallback_model}..."
+                    )
+                    try:
+                        response = await generate_with_retry(
+                            client, fallback_model, final_prompt_parts_fallback, fallback_config
+                        )
+                        logger.info(f"✓ Fallback model {fallback_model} succeeded!")
+                        return response
+                    except Exception as final_error:
+                        logger.error(f"All fallback attempts failed: {final_error}", exc_info=True)
+                        raise Exception(
+                            f"Cache fallback failed, and model {fallback_model} also failed: {final_error}"
+                        )
+                else:
+                    raise server_err
+
             except Exception as fallback_error:
                 logger.error(
                     f"The fallback generation attempt also failed: {fallback_error}",
@@ -226,3 +295,4 @@ async def generate_with_fallback(
         raise Exception(
             f"Error: The LLM API call failed after {settings.LLM_API_RETRY_ATTEMPTS} retries or timed out."
         )
+

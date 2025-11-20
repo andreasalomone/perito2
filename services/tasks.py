@@ -15,6 +15,7 @@ def generate_report_task(self, report_id: int, file_paths: List[str], original_f
     Celery task to process files and generate a report asynchronously.
     """
     # Import app here to avoid circular imports
+    # (app.py imports report_service, which imports this task)
     from app import app
 
     with app.app_context():

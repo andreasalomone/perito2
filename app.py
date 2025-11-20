@@ -140,6 +140,7 @@ def show_report(report_id: str) -> Union[str, FlaskResponse]:
 
 
 @app.route("/report/status/<report_id>", methods=["GET"])
+@limiter.limit("200 per hour")  # Higher limit for polling endpoint
 @auth.login_required
 def check_report_status(report_id: str) -> FlaskResponse:
     """Checks the status of a report generation."""
