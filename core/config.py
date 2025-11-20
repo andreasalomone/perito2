@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: Optional[str] = None
     FLASK_SECRET_KEY: str
     DATABASE_URL: Optional[str] = None
+    REDIS_URL: str = "redis://localhost:6379/0"
 
     AUTH_USERNAME: str = Field(default="admin", validation_alias="BASIC_AUTH_USERNAME")
     AUTH_PASSWORD: str = Field(

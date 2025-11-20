@@ -1,8 +1,7 @@
 from flask import flash, redirect, render_template, request, session, url_for
-from flask_httpauth import HTTPBasicAuth
 
+from core.security import auth
 from . import admin_bp
-from .models import users
 from .services import (
     get_all_prompts,
     get_dashboard_stats,
@@ -10,17 +9,6 @@ from .services import (
     get_report_by_id,
     update_prompt_content,
 )
-
-auth = HTTPBasicAuth()
-
-
-@auth.verify_password
-def verify_password(username, password):
-    """Verify password for basic auth."""
-    user = users.get(username)
-    if user and user.check_password(password):
-        session["user"] = username
-        return username
 
 
 @admin_bp.route("/admin")

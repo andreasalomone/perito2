@@ -200,22 +200,47 @@
                 })
                 .then(response => {
                     if (response.ok) {
-                        return response.text();
+                        return response.json();
                     } else {
-                        throw new Error('Server responded with an error.');
+                        return response.json().then(err => { throw new Error(err.error || 'Server error'); });
                     }
                 })
-                .then(html => {
-                    document.open();
-                    document.write(html);
-                    document.close();
+                .then(data => {
+                    if (data.report_id) {
+                        pollStatus(data.report_id);
+                    } else {
+                         throw new Error('No report ID returned');
+                    }
                 })
                 .catch(error => {
                     console.error('Error during form submission:', error);
                     loaderOverlay.classList.remove('visible');
                     clearInterval(timerInterval);
-                    alert('Si è verificato un errore durante la generazione del report. Controlla la console per i dettagli e riprova.');
+                    alert('Si è verificato un errore: ' + error.message);
                 });
+            });
+
+            function pollStatus(reportId) {
+                const pollInterval = setInterval(() => {
+                    fetch(`/report/status/${reportId}`)
+                        .then(res => res.json())
+                        .then(statusData => {
+                            if (statusData.status === 'success') {
+                                clearInterval(pollInterval);
+                                window.location.href = `/report/${reportId}`;
+                            } else if (statusData.status === 'error') {
+                                clearInterval(pollInterval);
+                                loaderOverlay.classList.remove('visible');
+                                clearInterval(timerInterval);
+                                alert('Errore durante la generazione: ' + (statusData.error || 'Errore sconosciuto'));
+                            }
+                            // If processing, continue polling
+                        })
+                        .catch(err => {
+                            console.error('Polling error:', err);
+                        });
+                }, 2000);
+            }
             });
         });
     </script>

@@ -13,7 +13,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt
 
 # Import the function under test
-from docx_generator import create_styled_docx
+from services.docx_generator import create_styled_docx
 
 
 class TestDocxGeneration:

@@ -12,7 +12,7 @@ import pytest
 from PIL import Image
 
 # Import the functions under test
-import document_processor
+from services import document_processor
 from document_processor import (
     extract_text_from_docx,
     extract_text_from_txt,

@@ -4,36 +4,47 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import flash, render_template, session, url_for
+from flask import render_template, session, url_for
 from werkzeug.datastructures import FileStorage
+from werkzeug.utils import secure_filename
+
+from core.service_result import ServiceResult
 
 import llm_handler
 from core.config import settings
 from core.models import ReportStatus
-from services import db_service, file_service
+from services import db_service, docx_generator, file_service
+# Import tasks lazily to avoid circular imports if necessary, or use string reference if possible
+# But here we need to call .delay(), so we need the task object.
+# To avoid circular import (app -> report_service -> tasks -> app), we rely on tasks importing app inside the function.
+from services.tasks import generate_report_task
 
 logger = logging.getLogger(__name__)
 
 
 def handle_file_upload(
     files: List[FileStorage], upload_base_dir: str
-) -> Tuple[Optional[str], Optional[str]]:
+) -> ServiceResult:
     """
     Orchestrates the file upload and report generation process.
-    Returns a tuple (redirect_url, rendered_template).
-    If redirect_url is set, the caller should redirect.
-    If rendered_template is set, the caller should return it.
+    Returns a ServiceResult.
     """
+    result = ServiceResult(success=True)
     # Step 1: Create a new ReportLog entry
     report_log = db_service.create_initial_report_log()
 
-    validation_error = file_service.validate_file_list(files)
-    if validation_error:
-        flash(validation_error[0], validation_error[1])
+    validation_result = file_service.validate_file_list(files)
+    if not validation_result.success:
+        for msg in validation_result.messages:
+            result.add_message(msg.message, msg.category)
+        
+        # Assuming the first message is the main error for DB logging
+        error_msg = validation_result.messages[0].message if validation_result.messages else "Validation failed"
         db_service.update_report_status(
-            report_log.id, ReportStatus.ERROR, error_message=validation_error[0]
+            report_log.id, ReportStatus.ERROR, error_message=error_msg
         )
-        return None, None  # Caller should handle redirect to request.url or index
+        result.success = False
+        return result
 
     processed_file_data: List[Dict[str, Any]] = []
     uploaded_filenames_for_display: List[str] = []
@@ -52,11 +63,12 @@ def handle_file_upload(
         if total_upload_size > settings.MAX_TOTAL_UPLOAD_SIZE_BYTES:
             error_msg = f"Total upload size exceeds the limit of {settings.MAX_TOTAL_UPLOAD_SIZE_MB} MB."
             logger.warning(f"{error_msg} ({total_upload_size} bytes)")
-            flash(error_msg, "error")
+            result.add_message(error_msg, "error")
             db_service.update_report_status(
                 report_log.id, ReportStatus.ERROR, error_message=error_msg
             )
-            return None, None
+            result.success = False
+            return result
 
         # Create persistent directory
         today_str = datetime.now().strftime("%Y/%m/%d")
@@ -75,7 +87,7 @@ def handle_file_upload(
             file_storage.seek(start_pos)
 
             if current_file_size > settings.MAX_FILE_SIZE_BYTES:
-                flash(
+                result.add_message(
                     f"File {file_storage.filename} exceeds the size limit of {settings.MAX_FILE_SIZE_MB} MB and was skipped.",
                     "warning",
                 )
@@ -87,15 +99,19 @@ def handle_file_upload(
                 )
                 continue
 
-            entries, text_added, f_messages, saved_fname = (
-                file_service.process_single_file_storage(
-                    file_storage, temp_dir, current_total_extracted_text_length
-                )
+            file_result = file_service.process_single_file_storage(
+                file_storage, temp_dir, current_total_extracted_text_length
             )
+            
+            entries = file_result.data.get("processed_entries", [])
+            text_added = file_result.data.get("text_length_added", 0)
+            saved_fname = file_result.data.get("saved_filename")
+            
             processed_file_data.extend(entries)
             current_total_extracted_text_length += text_added
-            for fm in f_messages:
-                flash(fm[0], fm[1])
+            
+            for msg in file_result.messages:
+                result.add_message(msg.message, msg.category)
 
             if saved_fname:
                 uploaded_filenames_for_display.append(saved_fname)
@@ -114,13 +130,14 @@ def handle_file_upload(
         ]
 
         if not valid_processed_data and not uploaded_filenames_for_display:
-            flash("No files were suitable for processing.", "warning")
+            result.add_message("No files were suitable for processing.", "warning")
             db_service.update_report_status(
                 report_log.id,
                 ReportStatus.ERROR,
                 error_message="No files were suitable for processing after filtering.",
             )
-            return url_for("index"), None
+            result.success = False
+            return result
 
         # Call LLM
         start_time = datetime.utcnow()
@@ -133,7 +150,7 @@ def handle_file_upload(
 
         if not report_content or report_content.strip().startswith("ERROR:"):
             logger.error(f"LLM Error: {report_content}")
-            flash(f"Could not generate report: {report_content}", "error")
+            result.add_message(f"Could not generate report: {report_content}", "error")
             db_service.update_report_status(
                 report_log.id,
                 ReportStatus.ERROR,
@@ -141,9 +158,10 @@ def handle_file_upload(
                 llm_raw_response=report_content,
                 generation_time_seconds=generation_time,
             )
-            return None, render_template(
-                "index.html", filenames=uploaded_filenames_for_display
-            )
+            result.success = False
+            # Even on error, we might want to return filenames if we want to show them
+            result.data = {"filenames": uploaded_filenames_for_display}
+            return result
 
         db_service.update_report_status(
             report_log.id,
@@ -156,18 +174,116 @@ def handle_file_upload(
 
         session["report_log_id"] = report_log.id
 
-        return None, render_template(
-            "report.html",
-            report_content=report_content,
-            filenames=uploaded_filenames_for_display,
-            generation_time=generation_time,
-        )
+        result.data = {
+            "report_content": report_content,
+            "filenames": uploaded_filenames_for_display,
+            "generation_time": generation_time,
+        }
+        return result
 
     except Exception as e:
         logger.error(f"Unexpected error in upload_files: {e}", exc_info=True)
-        flash("An unexpected server error occurred.", "error")
+        result.add_message("An unexpected server error occurred.", "error")
         if "report_log" in locals():
             db_service.update_report_status(
                 report_log.id, ReportStatus.ERROR, error_message=str(e)
             )
-        return url_for("index"), None
+        result.success = False
+        return result
+
+
+def handle_file_upload_async(files: List[FileStorage], app_root_path: str) -> ServiceResult:
+    """
+    Handles file upload asynchronously.
+    Validates files, saves them, creates a report entry, and triggers a Celery task.
+    """
+    result = ServiceResult(success=True)
+    
+    # Validate files
+    validation_result = file_service.validate_file_list(files)
+    if not validation_result.success:
+        return validation_result
+
+    # Create initial ReportLog entry
+    try:
+        report_log = db_service.create_initial_report_log()
+    except Exception as e:
+        logger.error(f"Failed to create report log: {e}", exc_info=True)
+        result.success = False
+        result.add_message("Database error while initializing report.", "error")
+        return result
+
+    # Create a temporary directory for this report's files
+    # We use the report ID to ensure uniqueness and easier cleanup
+    temp_dir = os.path.join(settings.UPLOAD_FOLDER, str(report_log.id))
+    os.makedirs(temp_dir, exist_ok=True)
+
+    saved_file_paths = []
+    original_filenames = []
+
+    try:
+        # Validate extensions and sizes before saving
+        for file in files:
+            if not file or not file.filename:
+                continue
+            
+            # Check file extension
+            if not file_service.allowed_file(file.filename):
+                result.add_message(
+                    f"File type not allowed for {file.filename}. Skipping.",
+                    "warning"
+                )
+                continue
+            
+            # Check file size
+            file.seek(0, 2)  # Seek to end
+            file_size = file.tell()
+            file.seek(0)  # Reset to beginning
+            
+            if file_size > settings.MAX_FILE_SIZE_BYTES:
+                result.add_message(
+                    f"File {file.filename} exceeds size limit ({settings.MAX_FILE_SIZE_MB} MB). Skipping.",
+                    "warning"
+                )
+                continue
+            
+            filename = secure_filename(file.filename)
+            if not filename:
+                continue
+                
+            filepath = os.path.join(temp_dir, filename)
+            file.save(filepath)
+            saved_file_paths.append(filepath)
+            original_filenames.append(file.filename)
+            
+            # Log document in DB
+            db_service.create_document_log(
+                report_id=report_log.id,
+                original_filename=file.filename,
+                stored_filepath=filepath,
+                file_size_bytes=os.path.getsize(filepath)
+            )
+
+        if not saved_file_paths:
+            result.success = False
+            result.add_message("No valid files were saved.", "error")
+            db_service.update_report_status(report_log.id, ReportStatus.ERROR, error_message="No files saved.")
+            return result
+
+        # Trigger Celery task
+        task = generate_report_task.delay(report_log.id, saved_file_paths, original_filenames)
+        
+        result.data = {
+            "task_id": task.id,
+            "report_id": report_log.id,
+            "status": "processing"
+        }
+        result.add_message("Files uploaded successfully. Processing started.", "info")
+
+    except Exception as e:
+        logger.error(f"Error in handle_file_upload_async: {e}", exc_info=True)
+        result.success = False
+        result.add_message("An unexpected error occurred during upload.", "error")
+        db_service.update_report_status(report_log.id, ReportStatus.ERROR, error_message=str(e))
+
+    return result

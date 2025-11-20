@@ -8,6 +8,7 @@ import click
 from dotenv import load_dotenv
 from flask import (
     Flask,
+    jsonify,
 )
 from flask import Response as FlaskResponse
 from flask import (
@@ -20,18 +21,17 @@ from flask import (
     session,
     url_for,
 )
-from flask_httpauth import HTTPBasicAuth
+from werkzeug.middleware.dispatcher import DispatcherMiddleware
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from prometheus_client import make_wsgi_app
-from werkzeug.middleware.dispatcher import DispatcherMiddleware
-from werkzeug.security import check_password_hash, generate_password_hash
 
-import docx_generator
+from services import docx_generator
 from admin.routes import admin_bp
 from core import logging_config
 from core.config import settings
 from core.database import db
+from core.security import auth
 from services import db_service, report_service
 
 load_dotenv()
@@ -79,17 +79,6 @@ limiter = Limiter(
     storage_uri="memory://",
 )
 
-# Basic Auth
-auth = HTTPBasicAuth()
-users = {settings.AUTH_USERNAME: generate_password_hash(settings.AUTH_PASSWORD)}
-
-
-@auth.verify_password
-def verify_password(username, password):
-    if username in users and check_password_hash(users.get(username), password):
-        return username
-    return None
-
 
 # Prometheus Metrics
 app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {"/metrics": make_wsgi_app()})
@@ -107,23 +96,26 @@ def index() -> str:
 @app.route("/upload", methods=["POST"])
 @limiter.limit("10 per minute;20 per hour")
 @auth.login_required
-def upload_files() -> Union[str, FlaskResponse]:
+def upload_files() -> Union[str, FlaskResponse, Tuple[dict, int]]:
     """
     Handles file uploads and report generation.
     Delegates logic to report_service.
     """
     files = request.files.getlist("files")
-    redirect_url, rendered_template = report_service.handle_file_upload(
-        files, app.root_path
-    )
+    # Async upload handling
+    result = report_service.handle_file_upload_async(files, app.root_path)
 
-    if redirect_url:
-        return redirect(redirect_url)
-    if rendered_template:
-        return rendered_template
-
-    # Fallback (should not be reached if service handles all cases)
-    return redirect(url_for("index"))
+    if result.success:
+        # Return JSON response with task_id for polling
+        return jsonify(result.data), 202
+    else:
+        # Flash errors and return JSON error or render template (depending on how frontend handles it)
+        # For now, let's assume frontend will handle JSON error or we can keep flashing for non-async fallback?
+        # But the plan says "Update /upload to return JSON".
+        # Let's return JSON error.
+        for msg in result.messages:
+            flash(msg.message, msg.category)
+        return jsonify({"error": "Upload failed", "messages": [msg.message for msg in result.messages]}), 400
 
 
 @app.route("/report/<int:report_id>", methods=["GET"])
@@ -141,6 +133,21 @@ def show_report(report_id: int) -> Union[str, FlaskResponse]:
         filenames=[],
         generation_time=report_log.generation_time_seconds,
     )
+
+
+@app.route("/report/status/<int:report_id>", methods=["GET"])
+@auth.login_required
+def check_report_status(report_id: int) -> FlaskResponse:
+    """Checks the status of a report generation."""
+    report_log = db_service.get_report_log(report_id)
+    if not report_log:
+        return jsonify({"status": "error", "message": "Report not found"}), 404
+    
+    return jsonify({
+        "status": report_log.status.value,
+        "report_id": report_log.id,
+        "error": report_log.error_message
+    })
 
 
 @app.route("/download_report", methods=["POST"])

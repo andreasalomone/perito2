@@ -6,42 +6,19 @@ from sqlalchemy import func
 
 from core.database import db
 from core.models import ReportLog, ReportStatus
-
-# Define a dictionary to hold the paths to the prompt files.
-# This makes it easier to manage and extend.
-PROMPT_FILES: Dict[str, str] = {
-    "system_instruction": os.path.join(
-        os.path.dirname(__file__), "..", "core", "system_instruction.txt"
-    ),
-    "style_guide": os.path.join(
-        os.path.dirname(__file__), "..", "core", "style_guide.txt"
-    ),
-    "schema_report": os.path.join(
-        os.path.dirname(__file__), "..", "core", "schema_report.txt"
-    ),
-}
-
+from core.prompt_config import prompt_manager
 
 def get_prompt_content(prompt_name: str) -> Tuple[str, bool]:
     """
     Reads the content of a specific prompt file.
 
     Args:
-        prompt_name: The key of the prompt in the PROMPT_FILES dictionary.
+        prompt_name: The key of the prompt.
 
     Returns:
         A tuple containing the file content (str) and a boolean indicating success.
     """
-    file_path = PROMPT_FILES.get(prompt_name)
-    if not file_path or not os.path.exists(file_path):
-        return f"Error: Prompt file for '{prompt_name}' not found.", False
-
-    try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            return f.read(), True
-    except Exception as e:
-        print(f"Error reading prompt file '{prompt_name}': {e}")
-        return f"Error reading file: {e}", False
+    return prompt_manager.get_prompt_content(prompt_name)
 
 
 def update_prompt_content(prompt_name: str, content: str) -> Tuple[str, bool]:
@@ -49,25 +26,13 @@ def update_prompt_content(prompt_name: str, content: str) -> Tuple[str, bool]:
     Writes new content to a specific prompt file.
 
     Args:
-        prompt_name: The key of the prompt in the PROMPT_FILES dictionary.
+        prompt_name: The key of the prompt.
         content: The new content to write to the file.
 
     Returns:
         A tuple containing a status message and a boolean indicating success.
     """
-    file_path = PROMPT_FILES.get(prompt_name)
-    if not file_path:
-        return f"Error: Prompt file for '{prompt_name}' not configured.", False
-
-    try:
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(content)
-        # Capitalize and replace underscores for a user-friendly name in the message
-        friendly_name = prompt_name.replace("_", " ").capitalize()
-        return f"{friendly_name} prompt updated successfully.", True
-    except Exception as e:
-        print(f"Error writing to prompt file '{prompt_name}': {e}")
-        return f"Error writing to file: {e}", False
+    return prompt_manager.update_prompt_content(prompt_name, content)
 
 
 def get_all_prompts() -> Dict[str, str]:
@@ -78,11 +43,7 @@ def get_all_prompts() -> Dict[str, str]:
         A dictionary where keys are prompt names and values are their content.
         If a file cannot be read, the value will be an error message.
     """
-    all_prompts = {}
-    for name in PROMPT_FILES:
-        content, success = get_prompt_content(name)
-        all_prompts[name] = content
-    return all_prompts
+    return prompt_manager.get_all_prompts()
 
 
 # --- Report Inspector Services ---
