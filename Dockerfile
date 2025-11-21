@@ -21,7 +21,7 @@ RUN useradd -m -u 1000 appuser && \
 WORKDIR /app
 
 # Copy requirements files
-COPY requirements.txt requirements-dev.txt ./
+COPY requirements.txt ./
 
 # Install Python dependencies as root
 RUN pip install --upgrade pip && \
