@@ -1,4 +1,5 @@
 """Cache service for managing Gemini API prompt caching."""
+
 import json
 import logging
 import os
@@ -114,28 +115,28 @@ def get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
                 return client.caches.get(name=cache_name_for_get)
 
             cache = _get_cache_with_retry()
-            
+
             # Check expiration
             # The client library object might have expire_time as a datetime or string
             # We'll assume it's usable or we can check if it's valid
             # Actually, if get() succeeds, it's likely valid, but we should check TTL if possible
             # For now, we rely on the fact that get() returns it.
-            
+
             logger.info(
                 f"Retrieved cache: {cache.name}, model: {cache.model}, expires_time: {getattr(cache, 'expire_time', 'unknown')}"
             )
 
             # Basic validation: check if it's for the same model
             if cache.model.endswith(settings.LLM_MODEL_NAME):
-                 # Check if expired (if expire_time is available and in the past)
-                expire_time = getattr(cache, 'expire_time', None)
+                # Check if expired (if expire_time is available and in the past)
+                expire_time = getattr(cache, "expire_time", None)
                 is_expired = False
                 if expire_time:
                     # If it's a string, parse it? Or if it's a datetime
                     # Usually google-genai returns datetime
                     now = datetime.now(timezone.utc)
                     if isinstance(expire_time, datetime) and expire_time < now:
-                         is_expired = True
+                        is_expired = True
                     # If it's close to expiring (e.g. < 1 hour), maybe treat as expired?
                     # For now, strict expiration.
 
@@ -145,7 +146,9 @@ def get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
                     )
                     active_cache_name = cache.name
                 else:
-                    logger.warning(f"Existing cache {existing_cache_name} is expired. Will create a new one.")
+                    logger.warning(
+                        f"Existing cache {existing_cache_name} is expired. Will create a new one."
+                    )
 
             else:
                 logger.warning(
@@ -214,10 +217,10 @@ def get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
 
             # Prepare the cache name for logging and saving
             log_cache_name = active_cache_name.replace("cachedContents/", "")
-            
+
             # Save to state file
             _save_cache_name_to_state(log_cache_name)
-            
+
             logger.info(
                 f'Cache name "{log_cache_name}" saved to state file. Future runs will attempt to reuse it.'
             )
@@ -232,4 +235,3 @@ def get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
             return None
 
     return active_cache_name
-

@@ -51,7 +51,7 @@ if database_uri:
         database_uri = database_uri.replace("postgres://", "postgresql+psycopg://", 1)
     elif database_uri.startswith("postgresql://"):
         database_uri = database_uri.replace("postgresql://", "postgresql+psycopg://", 1)
-            
+
     # Add SSL mode if connecting to remote PostgreSQL and not already specified
     if "sslmode=" not in database_uri:
         separator = "&" if "?" in database_uri else "?"
@@ -117,7 +117,7 @@ def upload_files() -> Union[str, FlaskResponse, Tuple[dict, int]]:
         # Store report_log_id in session for download functionality
         if result.data and "report_id" in result.data:
             session["report_log_id"] = result.data["report_id"]
-        
+
         # Return JSON response with task_id for polling
         return jsonify(result.data), 202
     else:
@@ -127,7 +127,15 @@ def upload_files() -> Union[str, FlaskResponse, Tuple[dict, int]]:
         # Let's return JSON error.
         for msg in result.messages:
             flash(msg.message, msg.category)
-        return jsonify({"error": "Upload failed", "messages": [msg.message for msg in result.messages]}), 400
+        return (
+            jsonify(
+                {
+                    "error": "Upload failed",
+                    "messages": [msg.message for msg in result.messages],
+                }
+            ),
+            400,
+        )
 
 
 @app.route("/report/<report_id>", methods=["GET"])
@@ -143,6 +151,7 @@ def show_report(report_id: str) -> Union[str, FlaskResponse]:
         "report_success.html",
         report_id=report_id,
         generation_time=report_log.generation_time_seconds,
+        api_cost_usd=report_log.api_cost_usd,
     )
 
 
@@ -154,12 +163,14 @@ def check_report_status(report_id: str) -> FlaskResponse:
     report_log = db_service.get_report_log(report_id)
     if not report_log:
         return jsonify({"status": "error", "message": "Report not found"}), 404
-    
-    return jsonify({
-        "status": report_log.status.value,
-        "report_id": report_log.id,
-        "error": report_log.error_message
-    })
+
+    return jsonify(
+        {
+            "status": report_log.status.value,
+            "report_id": report_log.id,
+            "error": report_log.error_message,
+        }
+    )
 
 
 @app.route("/download_report/<report_id>", methods=["POST"])

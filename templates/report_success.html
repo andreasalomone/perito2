@@ -16,6 +16,13 @@
     </div>
     {% endif %}
 
+    {% if api_cost_usd is not none %}
+    <div class="cost-banner"
+        style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 2rem; margin-top: -1rem;">
+        Questa perizia è costata <strong>${{ "%.2f"|format(api_cost_usd) }} USD</strong>
+    </div>
+    {% endif %}
+
     <div class="file-card">
         <img src="{{ url_for('static', filename='icons/docx-icon.svg') }}" alt="DOCX"
             style="width: 48px; height: 48px;">

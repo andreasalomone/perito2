@@ -8,6 +8,7 @@ from core.database import db
 from core.models import ReportLog, ReportStatus
 from core.prompt_config import prompt_manager
 
+
 def get_prompt_content(prompt_name: str) -> Tuple[str, bool]:
     """
     Reads the content of a specific prompt file.

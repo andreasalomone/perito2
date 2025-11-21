@@ -1,16 +1,19 @@
 import os
 from typing import Dict, Tuple, Optional
 
+
 class PromptManager:
     """
     Manages reading and writing of prompt files.
     Acts as the single source of truth for prompt locations and content.
     """
-    
+
     def __init__(self):
         self._current_dir = os.path.dirname(__file__)
         self.PROMPT_FILES = {
-            "system_instruction": os.path.join(self._current_dir, "system_instruction.txt"),
+            "system_instruction": os.path.join(
+                self._current_dir, "system_instruction.txt"
+            ),
             "style_guide": os.path.join(self._current_dir, "style_guide.txt"),
             "schema_report": os.path.join(self._current_dir, "schema_report.txt"),
         }
@@ -27,9 +30,12 @@ class PromptManager:
         file_path = self.get_prompt_path(prompt_name)
         if not file_path:
             return f"Error: Prompt file for '{prompt_name}' not configured.", False
-        
+
         if not os.path.exists(file_path):
-            return f"Error: Prompt file for '{prompt_name}' not found at {file_path}.", False
+            return (
+                f"Error: Prompt file for '{prompt_name}' not found at {file_path}.",
+                False,
+            )
 
         try:
             with open(file_path, "r", encoding="utf-8") as f:
@@ -49,7 +55,7 @@ class PromptManager:
         try:
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(content)
-            
+
             friendly_name = prompt_name.replace("_", " ").capitalize()
             return f"{friendly_name} prompt updated successfully.", True
         except Exception as e:
@@ -66,8 +72,10 @@ class PromptManager:
             all_prompts[name] = content
         return all_prompts
 
+
 # Global instance
 prompt_manager = PromptManager()
+
 
 # Helper function for backward compatibility and module-level loading
 def _load_prompt_from_file(file_path: str) -> str:
@@ -78,13 +86,20 @@ def _load_prompt_from_file(file_path: str) -> str:
         print(f"Error loading prompt from {file_path}: {e}")
         return ""
 
+
 # Load the prompts from their files (Module-level constants for app usage)
 # These are loaded once at startup.
-# If dynamic updates are needed during runtime without restart, 
+# If dynamic updates are needed during runtime without restart,
 # the app should use prompt_manager.get_prompt_content() instead.
-SYSTEM_INSTRUCTION: str = _load_prompt_from_file(prompt_manager.get_prompt_path("system_instruction"))
-GUIDA_STILE_TERMINOLOGIA_ED_ESEMPI: str = _load_prompt_from_file(prompt_manager.get_prompt_path("style_guide"))
-SCHEMA_REPORT: str = _load_prompt_from_file(prompt_manager.get_prompt_path("schema_report"))
+SYSTEM_INSTRUCTION: str = _load_prompt_from_file(
+    prompt_manager.get_prompt_path("system_instruction")
+)
+GUIDA_STILE_TERMINOLOGIA_ED_ESEMPI: str = _load_prompt_from_file(
+    prompt_manager.get_prompt_path("style_guide")
+)
+SCHEMA_REPORT: str = _load_prompt_from_file(
+    prompt_manager.get_prompt_path("schema_report")
+)
 
 # Backwards-compatible aliases
 PREDEFINED_STYLE_REFERENCE_TEXT: str = GUIDA_STILE_TERMINOLOGIA_ED_ESEMPI

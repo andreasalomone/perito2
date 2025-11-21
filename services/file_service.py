@@ -82,7 +82,9 @@ def process_file_from_path(
 
     try:
         processed_info: Union[Dict[str, Any], List[Dict[str, Any]]] = (
-            document_processor.process_uploaded_file(filepath, os.path.dirname(filepath))
+            document_processor.process_uploaded_file(
+                filepath, os.path.dirname(filepath)
+            )
         )
 
         parts_to_process: List[Dict[str, Any]] = []
@@ -103,11 +105,7 @@ def process_file_from_path(
             if part_type in ["error", "unsupported"]:
                 processed_entries.append(part)
             elif part_type == "text" and part.get("content"):
-                source_desc = (
-                    f"from {original_filename}"
-                    if was_eml
-                    else "file content"
-                )
+                source_desc = f"from {original_filename}" if was_eml else "file content"
 
                 (
                     temp_processed_file_data_list_for_this_file,
@@ -215,7 +213,7 @@ def process_single_file_storage(
         process_result = process_file_from_path(
             filepath, original_filename_for_logging, current_total_extracted_text_length
         )
-        
+
         # Merge results
         result.messages.extend(process_result.messages)
         result.data = process_result.data

@@ -1,7 +1,8 @@
 """LLM handler for generating insurance reports using Google Gemini."""
+
 import asyncio
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from google import genai
 from google.api_core import exceptions as google_exceptions
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 async def generate_report_from_content(
     processed_files: List[Dict[str, Any]], additional_text: str = ""
-) -> str:
+) -> Tuple[str, float]:
     """Generate an insurance report using Google Gemini with multimodal content and context caching.
 
     Orchestrates the report generation by:
@@ -42,7 +43,7 @@ async def generate_report_from_content(
     """
     if not settings.GEMINI_API_KEY:
         logger.error("GEMINI_API_KEY not configured in settings.")
-        return "Error: LLM service is not configured (API key missing)."
+        return "Error: LLM service is not configured (API key missing).", 0.0
 
     client: genai.Client = genai.Client(api_key=settings.GEMINI_API_KEY)
     uploaded_file_names: List[str] = []
@@ -101,8 +102,21 @@ async def generate_report_from_content(
 
         # Step 6: Parse and validate response
         report_content = response_parser_service.parse_llm_response(response)
-        # This already returns either the report or an "Error: ..." string.
-        return report_content
+
+        # Calculate cost
+        usage_metadata = getattr(response, "usage_metadata", None)
+        api_cost_usd = generation_service.calculate_cost(usage_metadata)
+
+        # Return both content and cost (as a tuple or handle it in the caller)
+        # Since the signature returns str, we need to change it or handle it differently.
+        # However, the caller (report_service) expects a string.
+        # To avoid breaking changes, we can return a dict or tuple if we update the type hint,
+        # OR we can update the database here if we had the report_id.
+        # But we don't have report_id here.
+
+        # Better approach: Return a structured result or tuple.
+        # Let's change the return type to Tuple[str, float] and update the caller.
+        return report_content, api_cost_usd
 
     except asyncio.CancelledError:
         # Important for async correctness: don't swallow cancellations.
@@ -110,14 +124,14 @@ async def generate_report_from_content(
         raise
     except google_exceptions.GoogleAPIError as e:
         logger.error("Gemini API error during report generation: %s", e, exc_info=True)
-        return f"Error generating report due to an LLM API issue: {str(e)}"
+        return f"Error generating report due to an LLM API issue: {str(e)}", 0.0
     except Exception as e:  # noqa: BLE001 (we want a last-resort guardrail here)
         logger.error(
             "An unexpected error occurred with the Gemini service: %s",
             e,
             exc_info=True,
         )
-        return f"Error generating report due to an unexpected LLM issue: {str(e)}"
+        return f"Error generating report due to an unexpected LLM issue: {str(e)}", 0.0
     finally:
         # Step 7: Cleanup uploaded files (best-effort, don't override main errors)
         if uploaded_file_names:
@@ -137,6 +151,4 @@ def generate_report_from_content_sync(
     processed_files: List[Dict[str, Any]], additional_text: str = ""
 ) -> str:
     """Synchronous wrapper for generate_report_from_content."""
-    return asyncio.run(
-        generate_report_from_content(processed_files, additional_text)
-    )
+    return asyncio.run(generate_report_from_content(processed_files, additional_text))

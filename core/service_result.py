@@ -1,10 +1,12 @@
 from dataclasses import dataclass, field
 from typing import Any, List, Optional
 
+
 @dataclass
 class ServiceMessage:
     message: str
     category: str = "info"  # 'success', 'info', 'warning', 'error'
+
 
 @dataclass
 class ServiceResult:

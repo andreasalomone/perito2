@@ -1,4 +1,5 @@
 """Prompt builder service for assembling LLM prompts."""
+
 import logging
 from typing import Any, Dict, List, Union
 

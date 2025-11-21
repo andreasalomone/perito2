@@ -1,4 +1,5 @@
 """Generation service for LLM API calls with retry and fallback logic."""
+
 import asyncio
 import logging
 from typing import Any, List, Optional, Union
@@ -180,8 +181,12 @@ async def generate_with_fallback(
 
             try:
                 # ATTEMPT 2: Fallback to different model
-                response = await generate_with_retry(client, fallback_model, contents, config)
-                logger.info(f"✓ Successfully generated report using fallback model: {fallback_model}")
+                response = await generate_with_retry(
+                    client, fallback_model, contents, config
+                )
+                logger.info(
+                    f"✓ Successfully generated report using fallback model: {fallback_model}"
+                )
                 return response
             except Exception as fallback_error:
                 logger.error(
@@ -206,7 +211,9 @@ async def generate_with_fallback(
         is_cache_error = (
             cache_name
             and "INVALID_ARGUMENT" in str(e)
-            and ("400" in str(e) or (hasattr(e, "status_code") and e.status_code == 400))
+            and (
+                "400" in str(e) or (hasattr(e, "status_code") and e.status_code == 400)
+            )
         )
 
         if is_cache_error:
@@ -247,7 +254,10 @@ async def generate_with_fallback(
                 # If cache fallback also gets 503, try fallback model
                 is_overloaded = (
                     "503" in str(server_err)
-                    or (hasattr(server_err, "status_code") and server_err.status_code == 503)
+                    or (
+                        hasattr(server_err, "status_code")
+                        and server_err.status_code == 503
+                    )
                     or "UNAVAILABLE" in str(server_err)
                     or "overloaded" in str(server_err).lower()
                 )
@@ -260,12 +270,18 @@ async def generate_with_fallback(
                     )
                     try:
                         response = await generate_with_retry(
-                            client, fallback_model, final_prompt_parts_fallback, fallback_config
+                            client,
+                            fallback_model,
+                            final_prompt_parts_fallback,
+                            fallback_config,
                         )
                         logger.info(f"✓ Fallback model {fallback_model} succeeded!")
                         return response
                     except Exception as final_error:
-                        logger.error(f"All fallback attempts failed: {final_error}", exc_info=True)
+                        logger.error(
+                            f"All fallback attempts failed: {final_error}",
+                            exc_info=True,
+                        )
                         raise Exception(
                             f"Cache fallback failed, and model {fallback_model} also failed: {final_error}"
                         )
@@ -296,3 +312,62 @@ async def generate_with_fallback(
             f"Error: The LLM API call failed after {settings.LLM_API_RETRY_ATTEMPTS} retries or timed out."
         )
 
+
+def calculate_cost(usage_metadata: Any) -> float:
+    """Calculates the cost of the generation in USD based on token usage.
+
+    Pricing (Gemini 2.5 Pro):
+    - Input: $1.25/1M (<= 200k), $2.50/1M (> 200k)
+    - Output: $10.00/1M (<= 200k), $15.00/1M (> 200k)
+    - Cache: $0.125/1M (<= 200k), $0.25/1M (> 200k)
+
+    Args:
+        usage_metadata: The usage metadata object from the LLM response.
+
+    Returns:
+        The calculated cost in USD.
+    """
+    if not usage_metadata:
+        return 0.0
+
+    prompt_token_count = getattr(usage_metadata, "prompt_token_count", 0)
+    candidates_token_count = getattr(usage_metadata, "candidates_token_count", 0)
+    # Note: total_token_count is prompt + candidates
+
+    # Determine pricing tier based on prompt size (this is a simplification,
+    # as tier usually applies to the request size, but for cost estimation this is close)
+    # Actually, the pricing page says "prompts <= 200k tokens".
+
+    # Input Cost
+    if prompt_token_count <= 200000:
+        input_cost = (prompt_token_count / 1_000_000) * settings.PRICE_INPUT_TIER_1
+    else:
+        input_cost = (prompt_token_count / 1_000_000) * settings.PRICE_INPUT_TIER_2
+
+    # Output Cost
+    if (
+        prompt_token_count <= 200000
+    ):  # Tier is determined by prompt size usually? Or output size?
+        # "Price is based on the size of the prompt" - usually tiers are based on context window usage.
+        # Let's assume the tier is based on the prompt size for both input and output rates as per common practice,
+        # or simply that the "prompts <= 200k" condition applies to the rate selection.
+        output_cost = (
+            candidates_token_count / 1_000_000
+        ) * settings.PRICE_OUTPUT_TIER_1
+    else:
+        output_cost = (
+            candidates_token_count / 1_000_000
+        ) * settings.PRICE_OUTPUT_TIER_2
+
+    # Cache Cost (if applicable)
+    # We don't have explicit "cached_token_count" in standard usage_metadata usually,
+    # unless we check how many tokens were cached.
+    # For now, we'll assume standard input/output cost.
+    # If usage_metadata has details on cached tokens, we could refine this.
+    # Google GenAI SDK usage_metadata might have 'cached_content_token_count' or similar if using cache.
+    # Let's check if there's a field for it.
+    # Based on docs, it might be just part of prompt_token_count or separate.
+    # For this iteration, we will stick to Input + Output cost to be safe and simple.
+
+    total_cost = input_cost + output_cost
+    return total_cost

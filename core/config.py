@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     AUTH_PASSWORD: str = Field(
         default="defaultpassword", validation_alias="BASIC_AUTH_PASSWORD"
     )
-    
+
     # Multi-user authentication (JSON format: {"user1": "pass1", "user2": "pass2"})
     # If set, overrides AUTH_USERNAME/AUTH_PASSWORD for multiple user support
     ALLOWED_USERS_JSON: Optional[str] = None
@@ -43,7 +43,9 @@ class Settings(BaseSettings):
     )
 
     LLM_MODEL_NAME: str = "gemini-2.5-pro"
-    LLM_FALLBACK_MODEL_NAME: str = "gemini-2.5-flash"  # Fallback model when primary is overloaded
+    LLM_FALLBACK_MODEL_NAME: str = (
+        "gemini-2.5-flash"  # Fallback model when primary is overloaded
+    )
     LLM_TEMPERATURE: float = 0.5
     LLM_MAX_TOKENS: int = 64000  # Max tokens for the LLM response
 
@@ -60,11 +62,22 @@ class Settings(BaseSettings):
     )
     CACHE_TTL_DAYS: int = 2  # Time-to-live for the prompt cache in days
     CACHE_DISPLAY_NAME: str = "ReportGenerationPromptsV2"  # Display name for new caches
-    CACHE_STATE_FILE: str = "instance/cache_state.json"  # File to store dynamic cache state
+    CACHE_STATE_FILE: str = (
+        "instance/cache_state.json"  # File to store dynamic cache state
+    )
 
     LLM_API_RETRY_ATTEMPTS: int = 3  # Number of retry attempts for the LLM API call
     LLM_API_RETRY_WAIT_SECONDS: int = 2  # Time to wait between retry attempts
     LLM_API_TIMEOUT_SECONDS: int = 120  # Timeout for the entire generation call
+
+    # Pricing Settings (Gemini 2.5 Pro)
+    # Prices are per 1 million tokens
+    PRICE_INPUT_TIER_1: float = 1.25  # <= 200k tokens
+    PRICE_INPUT_TIER_2: float = 2.50  # > 200k tokens
+    PRICE_OUTPUT_TIER_1: float = 10.00  # <= 200k tokens
+    PRICE_OUTPUT_TIER_2: float = 15.00  # > 200k tokens
+    PRICE_CACHE_TIER_1: float = 0.125  # <= 200k tokens
+    PRICE_CACHE_TIER_2: float = 0.25  # > 200k tokens
 
     LOG_LEVEL: str = "INFO"
 

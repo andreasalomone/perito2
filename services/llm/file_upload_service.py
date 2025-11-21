@@ -1,4 +1,5 @@
 """File upload service for managing Gemini File Service uploads and deletions."""
+
 import asyncio
 import logging
 import os
@@ -129,7 +130,9 @@ async def upload_vision_files(
         logger.info(
             f"Starting upload of {len(upload_coroutines)} vision files to Gemini."
         )
-        upload_results = await asyncio.gather(*upload_coroutines, return_exceptions=False)
+        upload_results = await asyncio.gather(
+            *upload_coroutines, return_exceptions=False
+        )
         successful_uploads = 0
         failed_uploads = 0
 
@@ -177,9 +180,7 @@ async def delete_uploaded_file(client: genai.Client, file_name: str) -> bool:
             client.files.delete(name=file_name)
 
         await asyncio.to_thread(_delete_file_with_retry)
-        logger.debug(
-            f"Successfully deleted file {file_name} from Gemini File Service."
-        )
+        logger.debug(f"Successfully deleted file {file_name} from Gemini File Service.")
         return True
     except google_exceptions.NotFound:
         logger.warning(
@@ -222,7 +223,9 @@ async def cleanup_uploaded_files(
 
     delete_tasks = [delete_uploaded_file(client, name) for name in file_names]
 
-    logger.info(f"Starting deletion of {len(delete_tasks)} files from Gemini File Service.")
+    logger.info(
+        f"Starting deletion of {len(delete_tasks)} files from Gemini File Service."
+    )
     delete_results = await asyncio.gather(*delete_tasks)
 
     successful_deletions = sum(1 for success in delete_results if success)

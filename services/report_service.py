@@ -14,6 +14,7 @@ import llm_handler
 from core.config import settings
 from core.models import ReportStatus
 from services import db_service, docx_generator, file_service
+
 # Import tasks lazily to avoid circular imports if necessary, or use string reference if possible
 # But here we need to call .delay(), so we need the task object.
 # To avoid circular import (app -> report_service -> tasks -> app), we rely on tasks importing app inside the function.
@@ -22,9 +23,7 @@ from services.tasks import generate_report_task
 logger = logging.getLogger(__name__)
 
 
-def handle_file_upload(
-    files: List[FileStorage], upload_base_dir: str
-) -> ServiceResult:
+def handle_file_upload(files: List[FileStorage], upload_base_dir: str) -> ServiceResult:
     """
     Orchestrates the file upload and report generation process.
     Returns a ServiceResult.
@@ -37,9 +36,13 @@ def handle_file_upload(
     if not validation_result.success:
         for msg in validation_result.messages:
             result.add_message(msg.message, msg.category)
-        
+
         # Assuming the first message is the main error for DB logging
-        error_msg = validation_result.messages[0].message if validation_result.messages else "Validation failed"
+        error_msg = (
+            validation_result.messages[0].message
+            if validation_result.messages
+            else "Validation failed"
+        )
         db_service.update_report_status(
             report_log.id, ReportStatus.ERROR, error_message=error_msg
         )
@@ -102,14 +105,14 @@ def handle_file_upload(
             file_result = file_service.process_single_file_storage(
                 file_storage, temp_dir, current_total_extracted_text_length
             )
-            
+
             entries = file_result.data.get("processed_entries", [])
             text_added = file_result.data.get("text_length_added", 0)
             saved_fname = file_result.data.get("saved_filename")
-            
+
             processed_file_data.extend(entries)
             current_total_extracted_text_length += text_added
-            
+
             for msg in file_result.messages:
                 result.add_message(msg.message, msg.category)
 
@@ -141,7 +144,7 @@ def handle_file_upload(
 
         # Call LLM
         start_time = datetime.utcnow()
-        report_content: str = llm_handler.generate_report_from_content_sync(
+        report_content, api_cost_usd = llm_handler.generate_report_from_content_sync(
             processed_files=valid_processed_data, additional_text=""
         )
         end_time = datetime.utcnow()
@@ -157,6 +160,7 @@ def handle_file_upload(
                 error_message=report_content,
                 llm_raw_response=report_content,
                 generation_time_seconds=generation_time,
+                api_cost_usd=api_cost_usd,
             )
             result.success = False
             # Even on error, we might want to return filenames if we want to show them
@@ -169,7 +173,7 @@ def handle_file_upload(
             llm_raw_response=report_content,
             final_report_text=report_content,
             generation_time_seconds=generation_time,
-            api_cost_usd=0.03,
+            api_cost_usd=api_cost_usd,
         )
 
         session["report_log_id"] = report_log.id
@@ -192,13 +196,15 @@ def handle_file_upload(
         return result
 
 
-def handle_file_upload_async(files: List[FileStorage], app_root_path: str) -> ServiceResult:
+def handle_file_upload_async(
+    files: List[FileStorage], app_root_path: str
+) -> ServiceResult:
     """
     Handles file upload asynchronously.
     Validates files, saves them, creates a report entry, and triggers a Celery task.
     """
     result = ServiceResult(success=True)
-    
+
     # Validate files
     validation_result = file_service.validate_file_list(files)
     if not validation_result.success:
@@ -226,57 +232,60 @@ def handle_file_upload_async(files: List[FileStorage], app_root_path: str) -> Se
         for file in files:
             if not file or not file.filename:
                 continue
-            
+
             # Check file extension
             if not file_service.allowed_file(file.filename):
                 result.add_message(
-                    f"File type not allowed for {file.filename}. Skipping.",
-                    "warning"
+                    f"File type not allowed for {file.filename}. Skipping.", "warning"
                 )
                 continue
-            
+
             # Check file size
             file.seek(0, 2)  # Seek to end
             file_size = file.tell()
             file.seek(0)  # Reset to beginning
-            
+
             if file_size > settings.MAX_FILE_SIZE_BYTES:
                 result.add_message(
                     f"File {file.filename} exceeds size limit ({settings.MAX_FILE_SIZE_MB} MB). Skipping.",
-                    "warning"
+                    "warning",
                 )
                 continue
-            
+
             filename = secure_filename(file.filename)
             if not filename:
                 continue
-                
+
             filepath = os.path.join(temp_dir, filename)
             file.save(filepath)
             saved_file_paths.append(filepath)
             original_filenames.append(file.filename)
-            
+
             # Log document in DB
             db_service.create_document_log(
                 report_id=report_log.id,
                 original_filename=file.filename,
                 stored_filepath=filepath,
-                file_size_bytes=os.path.getsize(filepath)
+                file_size_bytes=os.path.getsize(filepath),
             )
 
         if not saved_file_paths:
             result.success = False
             result.add_message("No valid files were saved.", "error")
-            db_service.update_report_status(report_log.id, ReportStatus.ERROR, error_message="No files saved.")
+            db_service.update_report_status(
+                report_log.id, ReportStatus.ERROR, error_message="No files saved."
+            )
             return result
 
         # Trigger Celery task
-        task = generate_report_task.delay(report_log.id, saved_file_paths, original_filenames)
-        
+        task = generate_report_task.delay(
+            report_log.id, saved_file_paths, original_filenames
+        )
+
         result.data = {
             "task_id": task.id,
             "report_id": report_log.id,
-            "status": "processing"
+            "status": "processing",
         }
         result.add_message("Files uploaded successfully. Processing started.", "info")
 
@@ -284,6 +293,8 @@ def handle_file_upload_async(files: List[FileStorage], app_root_path: str) -> Se
         logger.error(f"Error in handle_file_upload_async: {e}", exc_info=True)
         result.success = False
         result.add_message("An unexpected error occurred during upload.", "error")
-        db_service.update_report_status(report_log.id, ReportStatus.ERROR, error_message=str(e))
+        db_service.update_report_status(
+            report_log.id, ReportStatus.ERROR, error_message=str(e)
+        )
 
     return result
