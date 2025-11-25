@@ -1,4 +1,5 @@
 import io
+import logging
 import os
 import re
 from typing import List
@@ -50,8 +51,6 @@ def remove_table_borders(table):
                 tcBorders.append(border_el)
             tcPr.append(tcBorders)
 
-
-import logging
 
 logger = logging.getLogger(__name__)
 

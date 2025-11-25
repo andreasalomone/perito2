@@ -162,7 +162,7 @@ Third paragraph."""
 class TestDocxStyling:
     """Test DOCX styling and formatting features."""
 
-    @patch("docx_generator.settings")
+    @patch("services.docx_generator.settings")
     def test_font_configuration_applied(self, mock_settings):
         """Test that font settings from configuration are applied."""
         # Arrange
@@ -226,7 +226,7 @@ Genova, 04 luglio 2024"""
 class TestDocxStructure:
     """Test DOCX document structure and static elements."""
 
-    @patch("docx_generator.settings")
+    @patch("services.docx_generator.settings")
     def test_static_header_elements_included(self, mock_settings):
         """Test that static header elements are included in the document."""
         # Arrange
@@ -262,7 +262,7 @@ Vs. Rif.: 12345"""
 
         assert references_found, "Should include internal references block"
 
-    @patch("docx_generator.settings")
+    @patch("services.docx_generator.settings")
     def test_footer_with_page_numbering(self, mock_settings):
         """Test that footer includes page numbering fields."""
         # Arrange
@@ -370,7 +370,7 @@ CONCLUSION:
         document = Document(result)
         assert len(document.paragraphs) > 0, "Should create document with long content"
 
-    @patch("docx_generator.Document")
+    @patch("services.docx_generator.Document")
     def test_create_styled_docx_document_creation_error(self, mock_document_class):
         """Test error handling when document creation fails."""
         # Arrange

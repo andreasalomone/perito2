@@ -1,12 +1,13 @@
 from flask import flash, redirect, render_template, request, session, url_for
 
 from core.security import auth
+
 from . import admin_bp
 from .services import (
     get_all_prompts,
     get_dashboard_stats,
-    get_paginated_reports,
     get_paginated_documents,
+    get_paginated_reports,
     get_report_by_id,
     update_prompt_content,
 )

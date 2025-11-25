@@ -1,6 +1,6 @@
-import os
 from celery import Celery
 from celery.schedules import crontab
+
 from core.config import settings
 
 
@@ -31,5 +31,5 @@ def make_celery(app_name=__name__):
 celery_app = make_celery()
 
 # Import tasks to ensure they're registered
-from services import tasks  # noqa: E402, F401
 from services import cleanup  # noqa: E402, F401
+from services import tasks  # noqa: E402, F401

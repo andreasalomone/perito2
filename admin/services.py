@@ -1,4 +1,3 @@
-import os
 from typing import Any, Dict, Tuple
 
 from flask_sqlalchemy.pagination import Pagination
@@ -70,7 +69,7 @@ def get_report_by_id(report_id: str) -> ReportLog:
 def get_paginated_documents(page: int = 1, per_page: int = 20) -> Pagination:
     """
     Fetches a paginated list of all documents from the database,
-    ordered by most recent first (using report creation time as proxy if needed, 
+    ordered by most recent first (using report creation time as proxy if needed,
     or just by ID if no timestamp on doc).
     Actually, DocumentLog doesn't have a created_at, but it's linked to ReportLog.
     Let's join to order by report date.

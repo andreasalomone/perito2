@@ -2,18 +2,17 @@ import logging
 import os
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from flask import render_template, session, url_for
+from flask import session
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
-
-from core.service_result import ServiceResult
 
 import llm_handler
 from core.config import settings
 from core.models import ReportStatus
-from services import db_service, docx_generator, file_service
+from core.service_result import ServiceResult
+from services import db_service, file_service
 
 # Import tasks lazily to avoid circular imports if necessary, or use string reference if possible
 # But here we need to call .delay(), so we need the task object.

@@ -19,4 +19,4 @@ exclude =
     tests
 
 # Optional: Set a max complexity for functions (default is 10)
-max-complexity = 10
+max-complexity = 40

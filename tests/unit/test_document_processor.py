@@ -13,7 +13,7 @@ from PIL import Image
 
 # Import the functions under test
 from services import document_processor
-from document_processor import (
+from services.document_processor import (
     extract_text_from_docx,
     extract_text_from_txt,
     extract_text_from_xlsx,
@@ -32,7 +32,7 @@ class TestFileTypeDetection:
         # Arrange
         pdf_path = "/tmp/test.pdf"
 
-        with patch("document_processor.prepare_pdf_for_llm") as mock_pdf_processor:
+        with patch("services.document_processor.prepare_pdf_for_llm") as mock_pdf_processor:
             mock_pdf_processor.return_value = {
                 "type": "vision",
                 "path": pdf_path,
@@ -57,7 +57,7 @@ class TestFileTypeDetection:
             image_path = f"/tmp/test{ext}"
 
             with patch(
-                "document_processor.prepare_image_for_llm"
+                "services.document_processor.prepare_image_for_llm"
             ) as mock_image_processor:
                 mock_image_processor.return_value = {
                     "type": "vision",
@@ -79,7 +79,7 @@ class TestFileTypeDetection:
         # Arrange
         docx_path = "/tmp/test.docx"
 
-        with patch("document_processor.extract_text_from_docx") as mock_docx_processor:
+        with patch("services.document_processor.extract_text_from_docx") as mock_docx_processor:
             mock_docx_processor.return_value = {
                 "type": "text",
                 "content": "Sample DOCX content",
@@ -99,7 +99,7 @@ class TestFileTypeDetection:
         # Arrange
         xlsx_path = "/tmp/test.xlsx"
 
-        with patch("document_processor.extract_text_from_xlsx") as mock_xlsx_processor:
+        with patch("services.document_processor.extract_text_from_xlsx") as mock_xlsx_processor:
             mock_xlsx_processor.return_value = {
                 "type": "text",
                 "content": "--- Sheet: Sheet1 ---\nData1,Data2\n",
@@ -119,7 +119,7 @@ class TestFileTypeDetection:
         # Arrange
         txt_path = "/tmp/test.txt"
 
-        with patch("document_processor.extract_text_from_txt") as mock_txt_processor:
+        with patch("services.document_processor.extract_text_from_txt") as mock_txt_processor:
             mock_txt_processor.return_value = {
                 "type": "text",
                 "content": "Sample text content",
@@ -250,7 +250,7 @@ class TestImageProcessor:
 class TestTextExtractors:
     """Test text extraction from various document types."""
 
-    @patch("document_processor.DocxDocument")
+    @patch("services.document_processor.DocxDocument")
     def test_extract_text_from_docx_success(self, mock_document):
         """Test successful text extraction from DOCX."""
         # Arrange

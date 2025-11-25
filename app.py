@@ -6,14 +6,12 @@ from typing import Tuple, Union
 
 import click
 from dotenv import load_dotenv
-from flask import (
-    Flask,
-    jsonify,
-)
+from flask import Flask
 from flask import Response as FlaskResponse
 from flask import (
     current_app,
     flash,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -21,18 +19,17 @@ from flask import (
     session,
     url_for,
 )
-from werkzeug.middleware.dispatcher import DispatcherMiddleware
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from prometheus_client import make_wsgi_app
+from werkzeug.middleware.dispatcher import DispatcherMiddleware
 
-from services import docx_generator
 from admin.routes import admin_bp
 from core import logging_config
 from core.config import settings
 from core.database import db
 from core.security import auth
-from services import db_service, report_service
+from services import db_service, docx_generator, report_service
 
 load_dotenv()
 

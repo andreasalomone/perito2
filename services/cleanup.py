@@ -6,7 +6,6 @@ that may have been left behind due to worker crashes or other failures.
 """
 
 import logging
-import os
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path

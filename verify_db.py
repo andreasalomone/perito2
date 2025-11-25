@@ -1,6 +1,7 @@
+from sqlalchemy import inspect
+
 from app import app
 from core.database import db
-from sqlalchemy import inspect
 
 with app.app_context():
     print("Database URL:", db.engine.url)

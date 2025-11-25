@@ -66,3 +66,9 @@ wcwidth==0.2.13
 websockets==15.0.1
 Werkzeug==3.1.3
 yarl==1.20.0
+black==24.3.0
+isort==5.13.2
+flake8==7.0.0
+pytest==8.1.1
+pytest-asyncio==0.23.5
+pytest-mock==3.14.0

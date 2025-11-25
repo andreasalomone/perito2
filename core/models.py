@@ -55,9 +55,11 @@ class DocumentLog(db.Model):
         String(1024), nullable=False
     )  # Path to the file in a secure storage
     file_size_bytes = Column(Integer, nullable=False)
-    
+
     # New fields for detailed tracking
-    extraction_status = Column(Enum(ExtractionStatus), default=ExtractionStatus.PROCESSING)
+    extraction_status = Column(
+        Enum(ExtractionStatus), default=ExtractionStatus.PROCESSING
+    )
     extracted_content_length = Column(Integer, default=0)
     error_message = Column(Text, nullable=True)
     file_type = Column(String(50), nullable=True)  # e.g. 'pdf', 'docx'

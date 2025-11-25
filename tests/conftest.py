@@ -57,3 +57,11 @@ def client(app):
     b64_creds = base64.b64encode(creds.encode()).decode()
     client.environ_base["HTTP_AUTHORIZATION"] = f"Basic {b64_creds}"
     return client
+
+@pytest.fixture(autouse=True)
+def mock_redis():
+    with mock.patch("redis.Redis") as mock_redis:
+        mock_instance = mock.MagicMock()
+        mock_redis.from_url.return_value = mock_instance
+        yield mock_instance
+

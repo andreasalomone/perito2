@@ -2,9 +2,9 @@ import logging
 import os
 from typing import List
 
+import llm_handler
 from core.celery_app import celery_app
 from core.models import ReportStatus
-import llm_handler
 from services import db_service, file_service
 
 logger = logging.getLogger(__name__)
@@ -57,12 +57,12 @@ def generate_report_task(
                 if result.success and result.data:
                     # Extract text from processed entries
                     entries = result.data.get("processed_entries", [])
-                    
+
                     # Collect all entries (text and vision)
                     final_processed_files.extend(entries)
 
                     file_extracted_text_len = 0
-                    
+
                     for entry in entries:
                         if entry.get("type") == "text" and entry.get("content"):
                             content = entry["content"]
@@ -71,7 +71,7 @@ def generate_report_task(
 
                     total_text_length += result.data.get("text_length_added", 0)
                     processed_files_count += 1
-                    
+
                     # Update DocumentLog with success
                     db_service.update_document_log(
                         document_id=doc_log_id,
@@ -92,8 +92,12 @@ def generate_report_task(
                         file_type=file_ext,
                     )
 
-            if not all_extracted_text.strip() and not any(f.get("type") == "vision" for f in final_processed_files):
-                logger.warning(f"No text extracted and no vision files found for report {report_id}")
+            if not all_extracted_text.strip() and not any(
+                f.get("type") == "vision" for f in final_processed_files
+            ):
+                logger.warning(
+                    f"No text extracted and no vision files found for report {report_id}"
+                )
                 db_service.update_report_status(
                     report_id,
                     ReportStatus.ERROR,

@@ -1,8 +1,6 @@
 import logging
 from typing import Optional
 
-from flask import current_app
-
 from core.database import db
 from core.models import DocumentLog, ReportLog, ReportStatus
 
@@ -99,18 +97,21 @@ def update_document_log(
             try:
                 # Import here to avoid circular imports if any, or just use the model's enum
                 from core.models import ExtractionStatus
+
                 doc_log.extraction_status = ExtractionStatus(status)
             except ValueError:
-                logger.warning(f"Invalid status '{status}' for DocumentLog {document_id}")
+                logger.warning(
+                    f"Invalid status '{status}' for DocumentLog {document_id}"
+                )
         else:
-             doc_log.extraction_status = status
+            doc_log.extraction_status = status
 
     if extracted_content_length is not None:
         doc_log.extracted_content_length = extracted_content_length
-    
+
     if error_message is not None:
         doc_log.error_message = error_message
-        
+
     if file_type is not None:
         doc_log.file_type = file_type
 

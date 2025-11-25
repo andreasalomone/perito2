@@ -2,13 +2,13 @@ import logging
 import os
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from core.service_result import ServiceResult, ServiceMessage
-
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 
-from . import document_processor
 from core.config import settings
+from core.service_result import ServiceMessage, ServiceResult
+
+from . import document_processor
 
 logger = logging.getLogger(__name__)
 
