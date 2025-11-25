@@ -1,0 +1,449 @@
+/Users/andreasalomone/perito-wrap/robotperizia/report-ai/.venv/lib/python3.13/site-packages/pytest_asyncio/plugin.py:210: PytestDeprecationWarning: The configuration option "asyncio_default_fixture_loop_scope" is unset.
+The event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module", "package", "session"
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+============================= test session starts ==============================
+platform darwin -- Python 3.13.3, pytest-8.3.5, pluggy-1.6.0
+rootdir: /Users/andreasalomone/perito-wrap/robotperizia/report-ai
+configfile: pytest.ini
+plugins: anyio-4.9.0, asyncio-1.0.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 2 items
+
+tests/test_admin_services.py EE                                          [100%]
+
+==================================== ERRORS ====================================
+__________________ ERROR at setup of test_get_dashboard_stats __________________
+
+self = <sqlalchemy.engine.base.Connection object at 0x1174c6660>
+engine = Engine(postgresql+psycopg://reportai:***@db:5432/reportai?sslmode=require)
+connection = None, _has_events = None, _allow_revalidate = True
+_allow_autobegin = True
+
+    def __init__(
+        self,
+        engine: Engine,
+        connection: Optional[PoolProxiedConnection] = None,
+        _has_events: Optional[bool] = None,
+        _allow_revalidate: bool = True,
+        _allow_autobegin: bool = True,
+    ):
+        """Construct a new Connection."""
+        self.engine = engine
+        self.dialect = dialect = engine.dialect
+    
+        if connection is None:
+            try:
+>               self._dbapi_connection = engine.raw_connection()
+
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:140: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:3294: in raw_connection
+    return self.pool.connect()
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:443: in connect
+    return _ConnectionFairy._checkout(self)
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:1257: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:706: in checkout
+    rec = pool._do_get()
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/impl.py:173: in _do_get
+    with util.safe_reraise():
+.venv/lib/python3.13/site-packages/sqlalchemy/util/langhelpers.py:147: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/impl.py:171: in _do_get
+    return self._create_connection()
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:384: in _create_connection
+    return _ConnectionRecord(self)
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:668: in __init__
+    self.__connect()
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:894: in __connect
+    with util.safe_reraise():
+.venv/lib/python3.13/site-packages/sqlalchemy/util/langhelpers.py:147: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:890: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/create.py:627: in connect
+    return dialect.connect(*cargs, **cparams)
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/default.py:604: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)
+.venv/lib/python3.13/site-packages/psycopg/connection.py:96: in connect
+    attempts = conninfo_attempts(params)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+params = {'dbname': 'reportai', 'host': 'db', 'password': 'reportai_password', 'port': 5432, ...}
+
+    def conninfo_attempts(params: ConnMapping) -> list[ConnDict]:
+        """Split a set of connection params on the single attempts to perform.
+    
+        A connection param can perform more than one attempt more than one ``host``
+        is provided.
+    
+        Also perform async resolution of the hostname into hostaddr. Because a host
+        can resolve to more than one address, this can lead to yield more attempts
+        too. Raise `OperationalError` if no host could be resolved.
+    
+        Because the libpq async function doesn't honour the timeout, we need to
+        reimplement the repeated attempts.
+        """
+        last_exc = None
+        attempts = []
+        if prefer_standby := (
+            get_param(params, "target_session_attrs") == "prefer-standby"
+        ):
+            params = {k: v for k, v in params.items() if k != "target_session_attrs"}
+    
+        for attempt in split_attempts(params):
+            try:
+                attempts.extend(_resolve_hostnames(attempt))
+            except OSError as ex:
+                logger.debug("failed to resolve host %r: %s", attempt.get("host"), ex)
+                last_exc = ex
+    
+        if not attempts:
+            assert last_exc
+            # We couldn't resolve anything
+>           raise e.OperationalError(str(last_exc))
+E           psycopg.OperationalError: [Errno 8] nodename nor servname provided, or not known
+
+.venv/lib/python3.13/site-packages/psycopg/_conninfo_attempts.py:53: OperationalError
+
+The above exception was the direct cause of the following exception:
+
+    @pytest.fixture
+    def app():
+        flask_app.config.update(
+            {
+                "TESTING": True,
+                "SECRET_KEY": "test_secret_key_for_flashing",
+                "WTF_CSRF_ENABLED": False,
+                "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:", # Use in-memory DB for tests
+            }
+        )
+    
+        # Initialize db for tests
+        with flask_app.app_context():
+            from core.database import db
+>           db.create_all()
+
+tests/conftest.py:20: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.13/site-packages/flask_sqlalchemy/extension.py:897: in create_all
+    self._call_for_binds(bind_key, "create_all")
+.venv/lib/python3.13/site-packages/flask_sqlalchemy/extension.py:878: in _call_for_binds
+    getattr(metadata, op_name)(bind=engine)
+.venv/lib/python3.13/site-packages/sqlalchemy/sql/schema.py:5859: in create_all
+    bind._run_ddl_visitor(
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:3244: in _run_ddl_visitor
+    with self.begin() as conn:
+/opt/homebrew/Cellar/python@3.13/3.13.3/Frameworks/Python.framework/Versions/3.13/lib/python3.13/contextlib.py:141: in __enter__
+    return next(self.gen)
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:3234: in begin
+    with self.connect() as conn:
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:3270: in connect
+    return self._connection_cls(self)
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:142: in __init__
+    Connection._handle_dbapi_exception_noconnection(
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:2434: in _handle_dbapi_exception_noconnection
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:140: in __init__
+    self._dbapi_connection = engine.raw_connection()
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:3294: in raw_connection
+    return self.pool.connect()
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:443: in connect
+    return _ConnectionFairy._checkout(self)
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:1257: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:706: in checkout
+    rec = pool._do_get()
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/impl.py:173: in _do_get
+    with util.safe_reraise():
+.venv/lib/python3.13/site-packages/sqlalchemy/util/langhelpers.py:147: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/impl.py:171: in _do_get
+    return self._create_connection()
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:384: in _create_connection
+    return _ConnectionRecord(self)
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:668: in __init__
+    self.__connect()
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:894: in __connect
+    with util.safe_reraise():
+.venv/lib/python3.13/site-packages/sqlalchemy/util/langhelpers.py:147: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:890: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/create.py:627: in connect
+    return dialect.connect(*cargs, **cparams)
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/default.py:604: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)
+.venv/lib/python3.13/site-packages/psycopg/connection.py:96: in connect
+    attempts = conninfo_attempts(params)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+params = {'dbname': 'reportai', 'host': 'db', 'password': 'reportai_password', 'port': 5432, ...}
+
+    def conninfo_attempts(params: ConnMapping) -> list[ConnDict]:
+        """Split a set of connection params on the single attempts to perform.
+    
+        A connection param can perform more than one attempt more than one ``host``
+        is provided.
+    
+        Also perform async resolution of the hostname into hostaddr. Because a host
+        can resolve to more than one address, this can lead to yield more attempts
+        too. Raise `OperationalError` if no host could be resolved.
+    
+        Because the libpq async function doesn't honour the timeout, we need to
+        reimplement the repeated attempts.
+        """
+        last_exc = None
+        attempts = []
+        if prefer_standby := (
+            get_param(params, "target_session_attrs") == "prefer-standby"
+        ):
+            params = {k: v for k, v in params.items() if k != "target_session_attrs"}
+    
+        for attempt in split_attempts(params):
+            try:
+                attempts.extend(_resolve_hostnames(attempt))
+            except OSError as ex:
+                logger.debug("failed to resolve host %r: %s", attempt.get("host"), ex)
+                last_exc = ex
+    
+        if not attempts:
+            assert last_exc
+            # We couldn't resolve anything
+>           raise e.OperationalError(str(last_exc))
+E           sqlalchemy.exc.OperationalError: (psycopg.OperationalError) [Errno 8] nodename nor servname provided, or not known
+E           (Background on this error at: https://sqlalche.me/e/20/e3q8)
+
+.venv/lib/python3.13/site-packages/psycopg/_conninfo_attempts.py:53: OperationalError
+________________ ERROR at setup of test_get_paginated_documents ________________
+
+self = <sqlalchemy.engine.base.Connection object at 0x1174fd310>
+engine = Engine(postgresql+psycopg://reportai:***@db:5432/reportai?sslmode=require)
+connection = None, _has_events = None, _allow_revalidate = True
+_allow_autobegin = True
+
+    def __init__(
+        self,
+        engine: Engine,
+        connection: Optional[PoolProxiedConnection] = None,
+        _has_events: Optional[bool] = None,
+        _allow_revalidate: bool = True,
+        _allow_autobegin: bool = True,
+    ):
+        """Construct a new Connection."""
+        self.engine = engine
+        self.dialect = dialect = engine.dialect
+    
+        if connection is None:
+            try:
+>               self._dbapi_connection = engine.raw_connection()
+
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:140: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:3294: in raw_connection
+    return self.pool.connect()
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:443: in connect
+    return _ConnectionFairy._checkout(self)
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:1257: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:706: in checkout
+    rec = pool._do_get()
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/impl.py:173: in _do_get
+    with util.safe_reraise():
+.venv/lib/python3.13/site-packages/sqlalchemy/util/langhelpers.py:147: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/impl.py:171: in _do_get
+    return self._create_connection()
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:384: in _create_connection
+    return _ConnectionRecord(self)
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:668: in __init__
+    self.__connect()
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:894: in __connect
+    with util.safe_reraise():
+.venv/lib/python3.13/site-packages/sqlalchemy/util/langhelpers.py:147: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:890: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/create.py:627: in connect
+    return dialect.connect(*cargs, **cparams)
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/default.py:604: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)
+.venv/lib/python3.13/site-packages/psycopg/connection.py:96: in connect
+    attempts = conninfo_attempts(params)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+params = {'dbname': 'reportai', 'host': 'db', 'password': 'reportai_password', 'port': 5432, ...}
+
+    def conninfo_attempts(params: ConnMapping) -> list[ConnDict]:
+        """Split a set of connection params on the single attempts to perform.
+    
+        A connection param can perform more than one attempt more than one ``host``
+        is provided.
+    
+        Also perform async resolution of the hostname into hostaddr. Because a host
+        can resolve to more than one address, this can lead to yield more attempts
+        too. Raise `OperationalError` if no host could be resolved.
+    
+        Because the libpq async function doesn't honour the timeout, we need to
+        reimplement the repeated attempts.
+        """
+        last_exc = None
+        attempts = []
+        if prefer_standby := (
+            get_param(params, "target_session_attrs") == "prefer-standby"
+        ):
+            params = {k: v for k, v in params.items() if k != "target_session_attrs"}
+    
+        for attempt in split_attempts(params):
+            try:
+                attempts.extend(_resolve_hostnames(attempt))
+            except OSError as ex:
+                logger.debug("failed to resolve host %r: %s", attempt.get("host"), ex)
+                last_exc = ex
+    
+        if not attempts:
+            assert last_exc
+            # We couldn't resolve anything
+>           raise e.OperationalError(str(last_exc))
+E           psycopg.OperationalError: [Errno 8] nodename nor servname provided, or not known
+
+.venv/lib/python3.13/site-packages/psycopg/_conninfo_attempts.py:53: OperationalError
+
+The above exception was the direct cause of the following exception:
+
+    @pytest.fixture
+    def app():
+        flask_app.config.update(
+            {
+                "TESTING": True,
+                "SECRET_KEY": "test_secret_key_for_flashing",
+                "WTF_CSRF_ENABLED": False,
+                "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:", # Use in-memory DB for tests
+            }
+        )
+    
+        # Initialize db for tests
+        with flask_app.app_context():
+            from core.database import db
+>           db.create_all()
+
+tests/conftest.py:20: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.13/site-packages/flask_sqlalchemy/extension.py:897: in create_all
+    self._call_for_binds(bind_key, "create_all")
+.venv/lib/python3.13/site-packages/flask_sqlalchemy/extension.py:878: in _call_for_binds
+    getattr(metadata, op_name)(bind=engine)
+.venv/lib/python3.13/site-packages/sqlalchemy/sql/schema.py:5859: in create_all
+    bind._run_ddl_visitor(
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:3244: in _run_ddl_visitor
+    with self.begin() as conn:
+/opt/homebrew/Cellar/python@3.13/3.13.3/Frameworks/Python.framework/Versions/3.13/lib/python3.13/contextlib.py:141: in __enter__
+    return next(self.gen)
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:3234: in begin
+    with self.connect() as conn:
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:3270: in connect
+    return self._connection_cls(self)
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:142: in __init__
+    Connection._handle_dbapi_exception_noconnection(
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:2434: in _handle_dbapi_exception_noconnection
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:140: in __init__
+    self._dbapi_connection = engine.raw_connection()
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py:3294: in raw_connection
+    return self.pool.connect()
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:443: in connect
+    return _ConnectionFairy._checkout(self)
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:1257: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:706: in checkout
+    rec = pool._do_get()
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/impl.py:173: in _do_get
+    with util.safe_reraise():
+.venv/lib/python3.13/site-packages/sqlalchemy/util/langhelpers.py:147: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/impl.py:171: in _do_get
+    return self._create_connection()
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:384: in _create_connection
+    return _ConnectionRecord(self)
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:668: in __init__
+    self.__connect()
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:894: in __connect
+    with util.safe_reraise():
+.venv/lib/python3.13/site-packages/sqlalchemy/util/langhelpers.py:147: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py:890: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/create.py:627: in connect
+    return dialect.connect(*cargs, **cparams)
+.venv/lib/python3.13/site-packages/sqlalchemy/engine/default.py:604: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)
+.venv/lib/python3.13/site-packages/psycopg/connection.py:96: in connect
+    attempts = conninfo_attempts(params)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+params = {'dbname': 'reportai', 'host': 'db', 'password': 'reportai_password', 'port': 5432, ...}
+
+    def conninfo_attempts(params: ConnMapping) -> list[ConnDict]:
+        """Split a set of connection params on the single attempts to perform.
+    
+        A connection param can perform more than one attempt more than one ``host``
+        is provided.
+    
+        Also perform async resolution of the hostname into hostaddr. Because a host
+        can resolve to more than one address, this can lead to yield more attempts
+        too. Raise `OperationalError` if no host could be resolved.
+    
+        Because the libpq async function doesn't honour the timeout, we need to
+        reimplement the repeated attempts.
+        """
+        last_exc = None
+        attempts = []
+        if prefer_standby := (
+            get_param(params, "target_session_attrs") == "prefer-standby"
+        ):
+            params = {k: v for k, v in params.items() if k != "target_session_attrs"}
+    
+        for attempt in split_attempts(params):
+            try:
+                attempts.extend(_resolve_hostnames(attempt))
+            except OSError as ex:
+                logger.debug("failed to resolve host %r: %s", attempt.get("host"), ex)
+                last_exc = ex
+    
+        if not attempts:
+            assert last_exc
+            # We couldn't resolve anything
+>           raise e.OperationalError(str(last_exc))
+E           sqlalchemy.exc.OperationalError: (psycopg.OperationalError) [Errno 8] nodename nor servname provided, or not known
+E           (Background on this error at: https://sqlalche.me/e/20/e3q8)
+
+.venv/lib/python3.13/site-packages/psycopg/_conninfo_attempts.py:53: OperationalError
+=============================== warnings summary ===============================
+<frozen importlib._bootstrap>:488
+<frozen importlib._bootstrap>:488
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyPacked has no __module__ attribute
+
+<frozen importlib._bootstrap>:488
+<frozen importlib._bootstrap>:488
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyObject has no __module__ attribute
+
+<frozen importlib._bootstrap>:488
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
+
+.venv/lib/python3.13/site-packages/_pytest/config/__init__.py:1441
+  /Users/andreasalomone/perito-wrap/robotperizia/report-ai/.venv/lib/python3.13/site-packages/_pytest/config/__init__.py:1441: PytestConfigWarning: Unknown config option: cov
+  
+    self._warn_or_fail_if_strict(f"Unknown config option: {key}\n")
+
+.venv/lib/python3.13/site-packages/_pytest/config/__init__.py:1441
+  /Users/andreasalomone/perito-wrap/robotperizia/report-ai/.venv/lib/python3.13/site-packages/_pytest/config/__init__.py:1441: PytestConfigWarning: Unknown config option: cov_report
+  
+    self._warn_or_fail_if_strict(f"Unknown config option: {key}\n")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+ERROR tests/test_admin_services.py::test_get_dashboard_stats - sqlalchemy.exc...
+ERROR tests/test_admin_services.py::test_get_paginated_documents - sqlalchemy...
+======================== 7 warnings, 2 errors in 0.42s =========================
+<sys>:0: DeprecationWarning: builtin type swigvarlink has no __module__ attribute

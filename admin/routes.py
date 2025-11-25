@@ -6,6 +6,7 @@ from .services import (
     get_all_prompts,
     get_dashboard_stats,
     get_paginated_reports,
+    get_paginated_documents,
     get_report_by_id,
     update_prompt_content,
 )
@@ -68,6 +69,16 @@ def reports():
     pagination = get_paginated_reports(page=page)
     return render_template(
         "admin/reports.html", user=auth.current_user(), pagination=pagination
+    )
+
+
+@admin_bp.route("/admin/documents")
+@auth.login_required
+def documents():
+    page = request.args.get("page", 1, type=int)
+    pagination = get_paginated_documents(page=page)
+    return render_template(
+        "admin/documents.html", user=auth.current_user(), pagination=pagination
     )
 
 

@@ -1,16 +1,47 @@
+:root {
+    /* Variables from main app style.css */
+    --primary-color: #007bff;
+    --primary-hover: #0056b3;
+    --background-color: #f8fafc;
+    --card-bg: #ffffff;
+    --text-color: #1e293b;
+    --text-muted: #64748b;
+    --border-color: #e2e8f0;
+    --success-color: #10b981;
+    --error-color: #ef4444;
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    --radius-md: 0.5rem;
+    --radius-lg: 0.75rem;
+}
+
 body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--background-color);
+    color: var(--text-color);
     overflow-x: hidden;
+}
+
+#wrapper {
+    overflow-x: hidden;
+    min-height: 100vh;
 }
 
 #sidebar-wrapper {
     min-height: 100vh;
     margin-left: -15rem;
     transition: margin .25s ease-out;
+    background-color: #1e293b !important;
+    /* Darker sidebar */
+    border-right: 1px solid var(--border-color);
 }
 
 #sidebar-wrapper .sidebar-heading {
     padding: 0.875rem 1.25rem;
     font-size: 1.2rem;
+    font-weight: 600;
+    color: white;
+    background-color: var(--primary-color);
 }
 
 #sidebar-wrapper .list-group {
@@ -40,19 +71,99 @@ body {
     }
 }
 
-/* Card border colors */
-.border-left-primary {
-    border-left: .25rem solid #4e73df!important;
+/* Sidebar Links */
+.list-group-item {
+    border: none;
+    padding: 1rem 1.25rem;
+    font-weight: 500;
+    color: #cbd5e1 !important;
+    /* Lighter text for dark sidebar */
+    background-color: transparent !important;
+    transition: all 0.2s;
 }
 
-.border-left-success {
-    border-left: .25rem solid #1cc88a!important;
+.list-group-item:hover {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    color: white !important;
+    padding-left: 1.5rem;
+    /* Slide effect */
 }
 
-.border-left-info {
-    border-left: .25rem solid #36b9cc!important;
+.list-group-item.active {
+    background-color: var(--primary-color) !important;
+    color: white !important;
 }
 
-.border-left-warning {
-    border-left: .25rem solid #f6c23e!important;
+/* Cards */
+.card {
+    background: var(--card-bg);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--border-color);
+    margin-bottom: 1.5rem;
+}
+
+.card-header {
+    background-color: transparent;
+    border-bottom: 1px solid var(--border-color);
+    padding: 1rem 1.5rem;
+}
+
+.card-body {
+    padding: 1.5rem;
+}
+
+/* Typography */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    color: var(--text-color);
+    font-weight: 600;
+}
+
+.text-gray-800 {
+    color: var(--text-color) !important;
+}
+
+.text-gray-300 {
+    color: #cbd5e1 !important;
+}
+
+/* Navbar */
+.navbar {
+    background-color: var(--card-bg) !important;
+    box-shadow: var(--shadow-sm);
+    border-bottom: 1px solid var(--border-color) !important;
+}
+
+/* Tables */
+.table {
+    color: var(--text-color);
+}
+
+.table th {
+    font-weight: 600;
+    color: var(--text-muted);
+    border-top: none;
+}
+
+/* Badges */
+.badge {
+    padding: 0.5em 0.75em;
+    font-weight: 600;
+    border-radius: var(--radius-md);
+}
+
+/* Buttons */
+.btn-primary {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.btn-primary:hover {
+    background-color: var(--primary-hover);
+    border-color: var(--primary-hover);
 }

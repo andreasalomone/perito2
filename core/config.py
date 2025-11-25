@@ -33,13 +33,13 @@ class Settings(BaseSettings):
         "txt",
         "eml",
     }
-    MAX_FILE_SIZE_MB: int = 25  # Maximum size for a single uploaded file in MB
+    MAX_FILE_SIZE_MB: int = 50  # Maximum size for a single uploaded file in MB
     MAX_TOTAL_UPLOAD_SIZE_MB: int = (
-        100  # Maximum total size for all files in a single upload request
+        200  # Maximum total size for all files in a single upload request
     )
     UPLOAD_FOLDER: str = "uploads"  # Directory for persistent storage of uploaded files
     MAX_EXTRACTED_TEXT_LENGTH: int = (
-        1000000  # Maximum characters for combined extracted text sent to LLM
+        4000000  # Maximum characters for combined extracted text sent to LLM
     )
 
     LLM_MODEL_NAME: str = "gemini-2.5-pro"

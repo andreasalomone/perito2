@@ -5,7 +5,7 @@ from flask_sqlalchemy.pagination import Pagination
 from sqlalchemy import func
 
 from core.database import db
-from core.models import ReportLog, ReportStatus
+from core.models import DocumentLog, ExtractionStatus, ReportLog, ReportStatus
 from core.prompt_config import prompt_manager
 
 
@@ -67,6 +67,22 @@ def get_report_by_id(report_id: str) -> ReportLog:
     return db.session.query(ReportLog).filter_by(id=report_id).first_or_404()
 
 
+def get_paginated_documents(page: int = 1, per_page: int = 20) -> Pagination:
+    """
+    Fetches a paginated list of all documents from the database,
+    ordered by most recent first (using report creation time as proxy if needed, 
+    or just by ID if no timestamp on doc).
+    Actually, DocumentLog doesn't have a created_at, but it's linked to ReportLog.
+    Let's join to order by report date.
+    """
+    return (
+        db.session.query(DocumentLog)
+        .join(ReportLog)
+        .order_by(ReportLog.created_at.desc())
+        .paginate(page=page, per_page=per_page, error_out=False)
+    )
+
+
 # --- Dashboard Statistics Services ---
 
 
@@ -99,6 +115,8 @@ def get_dashboard_stats() -> Dict[str, Any]:
             "api_cost_monthly_est": f"${total_cost:.2f}",
             "avg_generation_time_secs": f"{avg_gen_time:.0f}s",
             "processing_errors": processing_errors,
+            "total_documents": db.session.query(DocumentLog).count(),
+            "extraction_success_rate": f"{(db.session.query(DocumentLog).filter_by(extraction_status=ExtractionStatus.SUCCESS).count() / db.session.query(DocumentLog).count() * 100) if db.session.query(DocumentLog).count() > 0 else 0:.1f}%",
         }
     except Exception as e:
         # Log the error for debugging
@@ -109,4 +127,6 @@ def get_dashboard_stats() -> Dict[str, Any]:
             "api_cost_monthly_est": "$0.00",
             "avg_generation_time_secs": "N/A",
             "processing_errors": "N/A",
+            "total_documents": "N/A",
+            "extraction_success_rate": "N/A",
         }
