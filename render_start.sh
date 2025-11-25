@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Add root directory to PYTHONPATH to ensure 'app' module can be found
+export PYTHONPATH=$PYTHONPATH:.
+
 echo "Running Database Migration..."
 python scripts/migrate_schema.py
 

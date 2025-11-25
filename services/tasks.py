@@ -23,7 +23,15 @@ def generate_report_task(
     """
     # Import app here to avoid circular imports
     # (app.py imports report_service, which imports this task)
-    from app import app
+    try:
+        from app import app
+    except ImportError as e:
+        import sys
+        import os
+        logger.error(f"Failed to import app: {e}")
+        logger.error(f"Current working directory: {os.getcwd()}")
+        logger.error(f"sys.path: {sys.path}")
+        raise e
 
     with app.app_context():
         logger.info(
