@@ -12,7 +12,11 @@ logger = logging.getLogger(__name__)
 
 @celery_app.task(bind=True)
 def generate_report_task(
-    self, report_id: int, file_paths: List[str], original_filenames: List[str]
+    self,
+    report_id: int,
+    file_paths: List[str],
+    original_filenames: List[str],
+    document_log_ids: List[str],
 ):
     """
     Celery task to process files and generate a report asynchronously.
@@ -35,7 +39,9 @@ def generate_report_task(
             total_text_length = 0
 
             # Process each file
-            for filepath, original_filename in zip(file_paths, original_filenames):
+            for filepath, original_filename, doc_log_id in zip(
+                file_paths, original_filenames, document_log_ids
+            ):
                 logger.info(f"Processing file: {filepath}")
 
                 # Process the file
@@ -43,18 +49,42 @@ def generate_report_task(
                     filepath, original_filename, total_text_length
                 )
 
+                file_ext = (
+                    os.path.splitext(original_filename)[1].lower().replace(".", "")
+                )
+
                 if result.success and result.data:
                     # Extract text from processed entries
                     entries = result.data.get("processed_entries", [])
+                    file_extracted_text_len = 0
+                    
                     for entry in entries:
                         if entry.get("type") == "text" and entry.get("content"):
-                            all_extracted_text += entry["content"] + "\n\n"
+                            content = entry["content"]
+                            all_extracted_text += content + "\n\n"
+                            file_extracted_text_len += len(content)
 
                     total_text_length += result.data.get("text_length_added", 0)
                     processed_files_count += 1
+                    
+                    # Update DocumentLog with success
+                    db_service.update_document_log(
+                        document_id=doc_log_id,
+                        status="success",
+                        extracted_content_length=file_extracted_text_len,
+                        file_type=file_ext,
+                    )
                 else:
+                    error_msg = "; ".join([m.message for m in result.messages])
                     logger.warning(
                         f"Failed to process file {filepath}: {result.messages}"
+                    )
+                    # Update DocumentLog with error
+                    db_service.update_document_log(
+                        document_id=doc_log_id,
+                        status="error",
+                        error_message=error_msg,
+                        file_type=file_ext,
                     )
 
             if not all_extracted_text.strip():

@@ -67,7 +67,7 @@ Thumbs.db
 *.log
 
 # Development dependencies and config
-requirements-dev.txt
+
 .flake8
 pytest.ini
 flow.md

@@ -37,6 +37,13 @@ class ReportLog(db.Model):
         return f"<ReportLog(id={self.id}, status='{self.status}', created_at='{self.created_at}')>"
 
 
+class ExtractionStatus(enum.Enum):
+    SUCCESS = "success"
+    ERROR = "error"
+    SKIPPED = "skipped"
+    PROCESSING = "processing"
+
+
 class DocumentLog(db.Model):
     __tablename__ = "document_log"
 
@@ -48,9 +55,15 @@ class DocumentLog(db.Model):
         String(1024), nullable=False
     )  # Path to the file in a secure storage
     file_size_bytes = Column(Integer, nullable=False)
+    
+    # New fields for detailed tracking
+    extraction_status = Column(Enum(ExtractionStatus), default=ExtractionStatus.PROCESSING)
+    extracted_content_length = Column(Integer, default=0)
+    error_message = Column(Text, nullable=True)
+    file_type = Column(String(50), nullable=True)  # e.g. 'pdf', 'docx'
 
     # Establish the many-to-one relationship
     report = relationship("ReportLog", back_populates="documents")
 
     def __repr__(self):
-        return f"<DocumentLog(id={self.id}, filename='{self.original_filename}', report_id='{self.report_id}')>"
+        return f"<DocumentLog(id={self.id}, filename='{self.original_filename}', status='{self.extraction_status}')>"

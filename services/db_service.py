@@ -76,3 +76,42 @@ def get_report_log(report_log_id: int) -> Optional[ReportLog]:
         # Expunge to allow access to loaded attributes after session closes
         db.session.expunge(report_log)
     return report_log
+
+
+def update_document_log(
+    document_id: str,
+    status: Optional[str] = None,
+    extracted_content_length: Optional[int] = None,
+    error_message: Optional[str] = None,
+    file_type: Optional[str] = None,
+) -> None:
+    """Updates a DocumentLog entry."""
+    doc_log = db.session.get(DocumentLog, document_id)
+    if not doc_log:
+        logger.error(f"DocumentLog with ID {document_id} not found for update.")
+        return
+
+    if status:
+        # Convert string to Enum if necessary, or assume caller passes valid Enum/string
+        # If status is passed as string "success", map it to ExtractionStatus.SUCCESS
+        # If it's already an Enum, use it.
+        if isinstance(status, str):
+            try:
+                # Import here to avoid circular imports if any, or just use the model's enum
+                from core.models import ExtractionStatus
+                doc_log.extraction_status = ExtractionStatus(status)
+            except ValueError:
+                logger.warning(f"Invalid status '{status}' for DocumentLog {document_id}")
+        else:
+             doc_log.extraction_status = status
+
+    if extracted_content_length is not None:
+        doc_log.extracted_content_length = extracted_content_length
+    
+    if error_message is not None:
+        doc_log.error_message = error_message
+        
+    if file_type is not None:
+        doc_log.file_type = file_type
+
+    db.session.commit()

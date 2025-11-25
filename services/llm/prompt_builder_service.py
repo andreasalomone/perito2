@@ -105,7 +105,7 @@ def build_prompt_parts(
     final_prompt_parts.extend(uploaded_file_objects)
 
     # Add final instruction
-    final_instruction = "\n\nAnalizza TUTTI i documenti, foto e testi forniti (sia quelli caricati come file referenziati, sia quelli inclusi direttamente come testo) e genera il report."
+    final_instruction = "\n\nAnalizza TUTTI i documenti, foto e testi forniti (sia quelli caricati come file referenziati, sia quelli inclusi direttamente come testo) e genera il report. Per i documenti scansionati o le immagini, esegui l'OCR per estrarre tutto il testo visibile."
     if use_cache:
         final_instruction += " Utilizza le istruzioni di stile, struttura e sistema precedentemente cachate."
     else:

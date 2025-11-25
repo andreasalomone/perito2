@@ -226,6 +226,7 @@ def handle_file_upload_async(
 
     saved_file_paths = []
     original_filenames = []
+    document_log_ids = []
 
     try:
         # Validate extensions and sizes before saving
@@ -262,12 +263,13 @@ def handle_file_upload_async(
             original_filenames.append(file.filename)
 
             # Log document in DB
-            db_service.create_document_log(
+            doc_log = db_service.create_document_log(
                 report_id=report_log.id,
                 original_filename=file.filename,
                 stored_filepath=filepath,
                 file_size_bytes=os.path.getsize(filepath),
             )
+            document_log_ids.append(doc_log.id)
 
         if not saved_file_paths:
             result.success = False
@@ -279,7 +281,7 @@ def handle_file_upload_async(
 
         # Trigger Celery task
         task = generate_report_task.delay(
-            report_log.id, saved_file_paths, original_filenames
+            report_log.id, saved_file_paths, original_filenames, document_log_ids
         )
 
         result.data = {
