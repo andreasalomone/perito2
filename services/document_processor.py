@@ -79,21 +79,43 @@ def handle_extraction_errors(
 
 # PDF and Image "extraction" functions will now just return file info for the LLM
 @handle_extraction_errors()
-def prepare_pdf_for_llm(pdf_path: str) -> Dict[str, str]:
-    """Prepares PDF file information for LLM processing."""
+def prepare_pdf_for_llm(pdf_path: str) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+    """Prepares PDF file information for LLM processing, including text extraction if available."""
     # Basic validation: can it be opened?
     try:
         doc = fitz.open(pdf_path)
-        doc.close()
     except Exception as e:
         logger.error(f"PDF file {pdf_path} is likely corrupted or not a valid PDF: {e}")
         raise  # Re-raise to be caught by decorator
-    return {
+
+    vision_part = {
         "type": "vision",
         "path": pdf_path,
         "mime_type": "application/pdf",
         "filename": os.path.basename(pdf_path),
     }
+
+    # Attempt text extraction
+    text_content = ""
+    try:
+        for page in doc:
+            text_content += page.get_text()
+    except Exception as e:
+        logger.warning(f"Failed to extract text from PDF {pdf_path}: {e}")
+    finally:
+        doc.close()
+
+    # If we found significant text, return both vision and text parts
+    # Threshold of 50 chars to avoid "scanned" PDFs that might have just a tiny bit of noise/metadata text
+    if len(text_content.strip()) > 50:
+        text_part = {
+            "type": "text",
+            "content": text_content,
+            "filename": f"{os.path.basename(pdf_path)} (extracted text)",
+        }
+        return [vision_part, text_part]
+
+    return vision_part
 
 
 @handle_extraction_errors()

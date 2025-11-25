@@ -35,6 +35,7 @@ def generate_report_task(
             db_service.update_report_status(report_id, ReportStatus.PROCESSING)
 
             all_extracted_text = ""
+            final_processed_files = []
             processed_files_count = 0
             total_text_length = 0
 
@@ -56,6 +57,10 @@ def generate_report_task(
                 if result.success and result.data:
                     # Extract text from processed entries
                     entries = result.data.get("processed_entries", [])
+                    
+                    # Collect all entries (text and vision)
+                    final_processed_files.extend(entries)
+
                     file_extracted_text_len = 0
                     
                     for entry in entries:
@@ -87,22 +92,22 @@ def generate_report_task(
                         file_type=file_ext,
                     )
 
-            if not all_extracted_text.strip():
-                logger.warning(f"No text extracted for report {report_id}")
+            if not all_extracted_text.strip() and not any(f.get("type") == "vision" for f in final_processed_files):
+                logger.warning(f"No text extracted and no vision files found for report {report_id}")
                 db_service.update_report_status(
                     report_id,
                     ReportStatus.ERROR,
-                    error_message="No text could be extracted from the uploaded files.",
+                    error_message="No content (text or vision) could be processed from the uploaded files.",
                 )
                 return
 
             # Generate Report via LLM (use sync wrapper)
             logger.info(
-                f"Generating report for report {report_id} with {len(all_extracted_text)} chars"
+                f"Generating report for report {report_id} with {len(final_processed_files)} file parts ({len(all_extracted_text)} chars of text)"
             )
             report_content, api_cost_usd = (
                 llm_handler.generate_report_from_content_sync(
-                    processed_files=[{"type": "text", "content": all_extracted_text}]
+                    processed_files=final_processed_files
                 )
             )
 

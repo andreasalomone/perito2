@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+echo "Running Database Migration..."
+python scripts/migrate_schema.py
+
 echo "Starting Celery Worker..."
 celery -A core.celery_app.celery_app worker --loglevel=info --concurrency=1 --detach
 
