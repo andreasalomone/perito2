@@ -68,7 +68,7 @@ class Settings(BaseSettings):
 
     LLM_API_RETRY_ATTEMPTS: int = 3  # Number of retry attempts for the LLM API call
     LLM_API_RETRY_WAIT_SECONDS: int = 2  # Time to wait between retry attempts
-    LLM_API_TIMEOUT_SECONDS: int = 120  # Timeout for the entire generation call
+    LLM_API_TIMEOUT_SECONDS: int = 600  # Timeout for the entire generation call
 
     # Pricing Settings (Gemini 2.5 Pro)
     # Prices are per 1 million tokens

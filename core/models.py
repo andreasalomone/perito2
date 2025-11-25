@@ -63,6 +63,7 @@ class DocumentLog(db.Model):
     extracted_content_length = Column(Integer, default=0)
     error_message = Column(Text, nullable=True)
     file_type = Column(String(50), nullable=True)  # e.g. 'pdf', 'docx'
+    extraction_method = Column(String(50), nullable=True)  # 'text' or 'vision'
 
     # Establish the many-to-one relationship
     report = relationship("ReportLog", back_populates="documents")

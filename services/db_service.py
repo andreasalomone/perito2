@@ -82,6 +82,7 @@ def update_document_log(
     extracted_content_length: Optional[int] = None,
     error_message: Optional[str] = None,
     file_type: Optional[str] = None,
+    extraction_method: Optional[str] = None,
 ) -> None:
     """Updates a DocumentLog entry."""
     doc_log = db.session.get(DocumentLog, document_id)
@@ -114,5 +115,8 @@ def update_document_log(
 
     if file_type is not None:
         doc_log.file_type = file_type
+
+    if extraction_method is not None:
+        doc_log.extraction_method = extraction_method
 
     db.session.commit()

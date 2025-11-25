@@ -73,11 +73,13 @@ def generate_report_task(
                     processed_files_count += 1
 
                     # Update DocumentLog with success
+                    extraction_method = "vision" if any(e.get("type") == "vision" for e in entries) else "text"
                     db_service.update_document_log(
                         document_id=doc_log_id,
                         status="success",
                         extracted_content_length=file_extracted_text_len,
                         file_type=file_ext,
+                        extraction_method=extraction_method,
                     )
                 else:
                     error_msg = "; ".join([m.message for m in result.messages])

@@ -72,6 +72,11 @@ def migrate_schema():
                         "ALTER TABLE document_log ADD COLUMN IF NOT EXISTS file_type VARCHAR(50);"
                     )
                 )
+                conn.execute(
+                    text(
+                        "ALTER TABLE document_log ADD COLUMN IF NOT EXISTS extraction_method VARCHAR(50);"
+                    )
+                )
                 conn.commit()
             logger.info("DocumentLog table updated.")
 

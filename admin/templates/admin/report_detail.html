@@ -61,7 +61,10 @@
                         </div>
                         <div class="d-flex justify-content-between align-items-center">
                             <small>
-                                Status:
+                                Method:
+                                <span class="badge bg-info text-dark">{{ doc.extraction_method|upper if
+                                    doc.extraction_method else 'N/A' }}</span>
+                                | Status:
                                 <span
                                     class="badge bg-{{ 'success' if doc.extraction_status.value == 'success' else 'danger' if doc.extraction_status.value == 'error' else 'warning' }}">
                                     {{ doc.extraction_status.value|upper }}
