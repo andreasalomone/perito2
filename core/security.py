@@ -64,7 +64,7 @@ def verify_password(username: str, password: str) -> Optional[str]:
     Returns the username if valid, None otherwise.
     """
     if username in USERS and check_password_hash(USERS.get(username), password):
-        logger.info(f"User '{username}' authenticated successfully.")
+        logger.debug(f"User '{username}' authenticated successfully.")
         return username
 
     logger.warning(f"Failed authentication attempt for user '{username}'.")

@@ -2,6 +2,7 @@ import io
 import logging
 import os
 from datetime import datetime
+import time
 from typing import Tuple, Union
 
 import click
@@ -11,6 +12,7 @@ from flask import Response as FlaskResponse
 from flask import (
     current_app,
     flash,
+    g,
     jsonify,
     redirect,
     render_template,
@@ -87,6 +89,51 @@ with app.app_context():
 
 # Prometheus Metrics
 app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {"/metrics": make_wsgi_app()})
+
+
+# --- Request Logging Middleware ---
+@app.before_request
+def start_timer():
+    g.start = time.time()
+
+
+@app.after_request
+def log_request(response):
+    if request.path == "/favicon.ico":
+        return response
+    if request.path.startswith("/static"):
+        return response
+
+    now = time.time()
+    duration = round(now - g.start, 4) if hasattr(g, "start") else 0
+    dt = datetime.fromtimestamp(now)
+    timestamp = dt.isoformat()
+
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+    host = request.host.split(":", 1)[0]
+    args = dict(request.args)
+
+    log_params = [
+        ("method", request.method),
+        ("path", request.path),
+        ("status", response.status_code),
+        ("duration", duration),
+        ("ip", ip),
+        ("host", host),
+        ("params", args),
+    ]
+
+    parts = []
+    for name, value in log_params:
+        part = f"{name}={value}"
+        parts.append(part)
+
+    line = " ".join(parts)
+    # Use INFO level for successful requests, WARNING/ERROR for others if needed
+    # But for general visibility, INFO is good.
+    logger.info(line)
+
+    return response
 
 # --- Routes ---
 

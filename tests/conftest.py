@@ -7,6 +7,7 @@ from unittest import mock
 with mock.patch.dict(os.environ, {"DATABASE_URL": "sqlite:///:memory:"}):
     from core.config import settings
     settings.DATABASE_URL = "sqlite:///:memory:"
+    settings.REDIS_URL = "memory://"
     from app import app as flask_app
 
 @pytest.fixture

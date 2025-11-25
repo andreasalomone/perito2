@@ -22,6 +22,7 @@ def make_celery(app_name=__name__):
                 "args": (1,),  # Clean files older than 1 day
             },
         },
+        beat_schedule_filename=settings.CELERYBEAT_SCHEDULE_FILENAME,
     )
     # Auto-discover tasks from the services module
     celery.autodiscover_tasks(["services"])

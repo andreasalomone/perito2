@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     FLASK_SECRET_KEY: str
     DATABASE_URL: Optional[str] = None
     REDIS_URL: str = "redis://localhost:6379/0"
+    CELERYBEAT_SCHEDULE_FILENAME: str = "/tmp/celerybeat-schedule"
 
     AUTH_USERNAME: str = Field(default="admin", validation_alias="BASIC_AUTH_USERNAME")
     AUTH_PASSWORD: str = Field(

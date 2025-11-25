@@ -54,3 +54,13 @@ def configure_logging(app):
     _request_id_filter_instance = RequestIdFilter()
     for handler in logging.root.handlers:
         handler.addFilter(_request_id_filter_instance)
+
+    # Integration with Gunicorn
+    # If running under Gunicorn, wire up the app logger to Gunicorn's error log
+    gunicorn_logger = logging.getLogger("gunicorn.error")
+    if gunicorn_logger.handlers:
+        app.logger.handlers = gunicorn_logger.handlers
+        app.logger.setLevel(gunicorn_logger.level)
+        # Also set the root logger level to match gunicorn's level
+        logging.getLogger().setLevel(gunicorn_logger.level)
+
