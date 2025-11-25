@@ -63,4 +63,3 @@ def configure_logging(app):
         app.logger.setLevel(gunicorn_logger.level)
         # Also set the root logger level to match gunicorn's level
         logging.getLogger().setLevel(gunicorn_logger.level)
-

@@ -1,8 +1,8 @@
 import io
 import logging
 import os
-from datetime import datetime
 import time
+from datetime import datetime
 from typing import Tuple, Union
 
 import click
@@ -134,6 +134,7 @@ def log_request(response):
     logger.info(line)
 
     return response
+
 
 # --- Routes ---
 

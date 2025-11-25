@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 from typing import List
 
 import llm_handler
@@ -25,13 +26,18 @@ def generate_report_task(
     # (app.py imports report_service, which imports this task)
     try:
         from app import app
-    except ImportError as e:
-        import sys
-        import os
-        logger.error(f"Failed to import app: {e}")
-        logger.error(f"Current working directory: {os.getcwd()}")
-        logger.error(f"sys.path: {sys.path}")
-        raise e
+    except ImportError:
+        # Fallback: try adding CWD to sys.path
+        if os.getcwd() not in sys.path:
+            sys.path.append(os.getcwd())
+        
+        try:
+            from app import app
+        except ImportError as e:
+            logger.error(f"Failed to import app: {e}")
+            logger.error(f"Current working directory: {os.getcwd()}")
+            logger.error(f"sys.path: {sys.path}")
+            raise e
 
     with app.app_context():
         logger.info(
@@ -81,7 +87,11 @@ def generate_report_task(
                     processed_files_count += 1
 
                     # Update DocumentLog with success
-                    extraction_method = "vision" if any(e.get("type") == "vision" for e in entries) else "text"
+                    extraction_method = (
+                        "vision"
+                        if any(e.get("type") == "vision" for e in entries)
+                        else "text"
+                    )
                     db_service.update_document_log(
                         document_id=doc_log_id,
                         status="success",
