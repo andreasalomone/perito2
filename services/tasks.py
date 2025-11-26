@@ -32,7 +32,7 @@ def generate_report_task(
 
         if _os.getcwd() not in sys.path:
             sys.path.append(_os.getcwd())
-        
+
         try:
             from app import app
         except ImportError as e:
@@ -49,7 +49,9 @@ def generate_report_task(
         try:
             # Update status to PROCESSING
             db_service.update_report_status(report_id, ReportStatus.PROCESSING)
-            db_service.append_report_log(report_id, "Inizio elaborazione...", "processing")
+            db_service.append_report_log(
+                report_id, "Inizio elaborazione...", "processing"
+            )
 
             all_extracted_text = ""
             final_processed_files = []
@@ -160,7 +162,9 @@ def generate_report_task(
                     prompt_token_count=token_usage.get("prompt_token_count"),
                     candidates_token_count=token_usage.get("candidates_token_count"),
                     total_token_count=token_usage.get("total_token_count"),
-                    cached_content_token_count=token_usage.get("cached_content_token_count"),
+                    cached_content_token_count=token_usage.get(
+                        "cached_content_token_count"
+                    ),
                 )
 
                 logger.info(f"Report {report_id} generated successfully.")

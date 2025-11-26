@@ -143,8 +143,10 @@ def handle_file_upload(files: List[FileStorage], upload_base_dir: str) -> Servic
 
         # Call LLM
         start_time = datetime.utcnow()
-        report_content, api_cost_usd, token_usage = llm_handler.generate_report_from_content_sync(
-            processed_files=valid_processed_data, additional_text=""
+        report_content, api_cost_usd, token_usage = (
+            llm_handler.generate_report_from_content_sync(
+                processed_files=valid_processed_data, additional_text=""
+            )
         )
         end_time = datetime.utcnow()
 
@@ -163,7 +165,9 @@ def handle_file_upload(files: List[FileStorage], upload_base_dir: str) -> Servic
                 prompt_token_count=token_usage.get("prompt_token_count"),
                 candidates_token_count=token_usage.get("candidates_token_count"),
                 total_token_count=token_usage.get("total_token_count"),
-                cached_content_token_count=token_usage.get("cached_content_token_count"),
+                cached_content_token_count=token_usage.get(
+                    "cached_content_token_count"
+                ),
             )
             result.success = False
             # Even on error, we might want to return filenames if we want to show them

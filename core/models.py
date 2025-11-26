@@ -23,10 +23,14 @@ class ReportLog(db.Model):
     generation_time_seconds = Column(Float, nullable=True)
     api_cost_usd = Column(Float, nullable=True)
     error_message = Column(Text, nullable=True)
-    
+
     # Real-time progress tracking
-    progress_logs = Column(db.JSON, default=list)  # List of {"timestamp": str, "message": str}
-    current_step = Column(String(50), default="queued")  # e.g., "uploading", "processing", "generating"
+    progress_logs = Column(
+        db.JSON, default=list
+    )  # List of {"timestamp": str, "message": str}
+    current_step = Column(
+        String(50), default="queued"
+    )  # e.g., "uploading", "processing", "generating"
 
     # Token usage details
     prompt_token_count = Column(Integer, nullable=True)

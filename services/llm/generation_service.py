@@ -7,22 +7,15 @@ from typing import Any, List, Optional, Union
 import httpx
 from google import genai
 from google.api_core import exceptions as google_exceptions
-from google.genai import errors as genai_errors
 from google.genai import types
 from tenacity import (
     AsyncRetrying,
-    RetryError,
     retry_if_exception_type,
     stop_after_attempt,
     wait_fixed,
 )
 
 from core.config import settings
-from core.prompt_config import (
-    GUIDA_STILE_TERMINOLOGIA_ED_ESEMPI,
-    SCHEMA_REPORT,
-    SYSTEM_INSTRUCTION,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +121,6 @@ async def generate_with_retry(
             )
 
     return response
-
 
     return response
 

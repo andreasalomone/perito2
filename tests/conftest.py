@@ -9,6 +9,7 @@ with mock.patch.dict(os.environ, {"DATABASE_URL": "sqlite:///:memory:"}):
     settings.DATABASE_URL = "sqlite:///:memory:"
     settings.REDIS_URL = "memory://"
     from app import app as flask_app
+    from app import limiter
 
 @pytest.fixture
 def app():
@@ -18,8 +19,11 @@ def app():
             "SECRET_KEY": "test_secret_key_for_flashing",
             "WTF_CSRF_ENABLED": False,
             "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
+            "RATELIMIT_ENABLED": False,
         }
     )
+    
+    limiter.enabled = False
     
     # Initialize db for tests
     with flask_app.app_context():

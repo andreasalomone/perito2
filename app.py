@@ -106,9 +106,6 @@ def log_request(response):
 
     now = time.time()
     duration = round(now - g.start, 4) if hasattr(g, "start") else 0
-    dt = datetime.fromtimestamp(now)
-    timestamp = dt.isoformat()
-
     ip = request.headers.get("X-Forwarded-For", request.remote_addr)
     host = request.host.split(":", 1)[0]
     args = dict(request.args)

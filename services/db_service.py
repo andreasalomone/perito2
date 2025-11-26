@@ -138,14 +138,14 @@ def append_report_log(report_id: str, message: str, step: str = None) -> None:
     """
     Appends a log message to the report's progress_logs and optionally updates the current step.
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     report_log = db.session.get(ReportLog, report_id)
     if not report_log:
         logger.error(f"ReportLog with ID {report_id} not found for log append.")
         return
 
-    timestamp = datetime.utcnow().isoformat()
+    timestamp = datetime.now(timezone.utc).isoformat()
     log_entry = {"timestamp": timestamp, "message": message}
 
     # Ensure progress_logs is a list
@@ -160,4 +160,3 @@ def append_report_log(report_id: str, message: str, step: str = None) -> None:
         report_log.current_step = step
 
     db.session.commit()
-

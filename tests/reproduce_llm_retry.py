@@ -2,6 +2,12 @@
 import unittest
 from unittest.mock import MagicMock, patch, AsyncMock
 import asyncio
+import sys
+import os
+
+# Add project root to path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from google import genai
 from core.config import settings
 
@@ -60,7 +66,7 @@ class TestLLMRetryLogic(unittest.TestCase):
         self.mock_cache_service.get_or_create_prompt_cache.return_value = "cache-name"
         self.mock_generation_service.generate_with_retry = AsyncMock(return_value=MagicMock())
         
-        result, cost = self.run_async(generate_report_from_content([], ""))
+        result, cost, tokens = self.run_async(generate_report_from_content([], ""))
         
         self.assertEqual(result, "Parsed Report")
         # Verify called with cache
@@ -79,7 +85,7 @@ class TestLLMRetryLogic(unittest.TestCase):
         
         self.mock_generation_service.generate_with_retry = AsyncMock(side_effect=[error, MagicMock()])
         
-        result, cost = self.run_async(generate_report_from_content([], ""))
+        result, cost, tokens = self.run_async(generate_report_from_content([], ""))
         
         self.assertEqual(result, "Parsed Report")
         self.assertEqual(self.mock_generation_service.generate_with_retry.call_count, 2)
@@ -98,7 +104,7 @@ class TestLLMRetryLogic(unittest.TestCase):
         
         self.mock_generation_service.generate_with_retry = AsyncMock(side_effect=[error, MagicMock()])
         
-        result, cost = self.run_async(generate_report_from_content([], ""))
+        result, cost, tokens = self.run_async(generate_report_from_content([], ""))
         
         self.assertEqual(result, "Parsed Report")
         self.assertEqual(self.mock_generation_service.generate_with_retry.call_count, 2)
@@ -121,7 +127,7 @@ class TestLLMRetryLogic(unittest.TestCase):
         # 3. Retry Fallback -> Success
         self.mock_generation_service.generate_with_retry = AsyncMock(side_effect=[cache_error, overload_error, MagicMock()])
         
-        result, cost = self.run_async(generate_report_from_content([], ""))
+        result, cost, tokens = self.run_async(generate_report_from_content([], ""))
         
         self.assertEqual(result, "Parsed Report")
         self.assertEqual(self.mock_generation_service.generate_with_retry.call_count, 3)

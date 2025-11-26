@@ -39,7 +39,7 @@ class TestLogging(unittest.TestCase):
         mock_file_service.process_file_from_path.return_value = mock_result
         
         # Mock LLM response
-        mock_llm.generate_report_from_content_sync.return_value = ("Report Content", 0.01)
+        mock_llm.generate_report_from_content_sync.return_value = ("Report Content", 0.01, {})
 
         # Execute
         generate_report_task(report_id, file_paths, original_filenames, doc_log_ids)
@@ -59,7 +59,11 @@ class TestLogging(unittest.TestCase):
             ReportStatus.SUCCESS,
             llm_raw_response="Report Content",
             final_report_text="Report Content",
-            api_cost_usd=0.01
+            api_cost_usd=0.01,
+            prompt_token_count=None,
+            candidates_token_count=None,
+            total_token_count=None,
+            cached_content_token_count=None
         )
 
     @patch('services.tasks.db_service')

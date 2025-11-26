@@ -41,7 +41,7 @@ def test_generate_report_task_multimodal(mock_llm_handler, mock_file_service, mo
     mock_file_service.process_file_from_path.return_value = mock_result
 
     # Mock LLM response
-    mock_llm_handler.generate_report_from_content_sync.return_value = ("Generated Report", 0.05)
+    mock_llm_handler.generate_report_from_content_sync.return_value = ("Generated Report", 0.05, {})
 
     # Execute
     generate_report_task(
@@ -72,5 +72,9 @@ def test_generate_report_task_multimodal(mock_llm_handler, mock_file_service, mo
         ReportStatus.SUCCESS, 
         llm_raw_response="Generated Report",
         final_report_text="Generated Report",
-        api_cost_usd=0.05
+        api_cost_usd=0.05,
+        prompt_token_count=None,
+        candidates_token_count=None,
+        total_token_count=None,
+        cached_content_token_count=None
     )

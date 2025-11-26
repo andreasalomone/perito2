@@ -265,7 +265,7 @@ def process_eml_file(eml_path: str, upload_folder: str) -> List[Dict[str, Any]]:
                 missing_padding = len(payload) % 4
                 if missing_padding:
                     payload += "=" * (4 - missing_padding)
-            
+
             # Decode base64
             decoded_payload = base64.b64decode(payload)
             # Sanitize filename (simple sanitization)

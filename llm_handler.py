@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple
 
 from google import genai
 from google.api_core import exceptions as google_exceptions
@@ -87,19 +87,23 @@ async def generate_report_from_content(
             )
 
         # --- Linear Retry Logic ---
-        
+
         response = None
         last_exception = None
-        
+
         # ATTEMPT 1: Primary Model (with cache if available)
         current_model = settings.LLM_MODEL_NAME
         use_cache = bool(cache_name)
-        
+
         try:
-            logger.debug(f"Attempt 1: Sending request to Gemini. Model: {current_model}. Using cache: {use_cache}")
+            logger.debug(
+                f"Attempt 1: Sending request to Gemini. Model: {current_model}. Using cache: {use_cache}"
+            )
             prompt_parts = _get_prompt_parts(use_cache)
-            config = generation_service.build_generation_config(cache_name if use_cache else None)
-            
+            config = generation_service.build_generation_config(
+                cache_name if use_cache else None
+            )
+
             response = await generation_service.generate_with_retry(
                 client=client,
                 model=current_model,
@@ -108,43 +112,43 @@ async def generate_report_from_content(
             )
         except genai.errors.ClientError as e:
             # Check for Cache Invalid/Expired (400 INVALID_ARGUMENT)
-            if use_cache and "INVALID_ARGUMENT" in str(e) and ("400" in str(e) or getattr(e, "status_code", 0) == 400):
-                logger.warning("Attempt 1 failed: Cache invalid/expired. Proceeding to Attempt 2 (No Cache).")
+            if (
+                use_cache
+                and "INVALID_ARGUMENT" in str(e)
+                and ("400" in str(e) or getattr(e, "status_code", 0) == 400)
+            ):
+                logger.warning(
+                    "Attempt 1 failed: Cache invalid/expired. Proceeding to Attempt 2 (No Cache)."
+                )
                 last_exception = e
             else:
-                raise # Re-raise other ClientErrors immediately
+                raise  # Re-raise other ClientErrors immediately
         except genai.errors.ServerError as e:
             # Check for Overload (503 UNAVAILABLE)
             if "503" in str(e) or "overloaded" in str(e).lower():
-                logger.warning(f"Attempt 1 failed: Server overloaded. Proceeding to Attempt 3 (Fallback).")
+                logger.warning(
+                    "Attempt 1 failed: Server overloaded. Proceeding to Attempt 3 (Fallback)."
+                )
                 last_exception = e
-                # Skip Attempt 2 (No Cache) if it's an overload issue, go straight to fallback if possible?
-                # Actually, let's try Attempt 2 (No Cache) first? No, overload usually affects the model.
-                # But to be safe and follow the plan: Attempt 2 is "Primary + No Cache".
-                # If Attempt 1 failed due to overload, Attempt 2 (same model) will likely fail too.
-                # However, let's stick to the linear flow: 
-                # If Attempt 1 failed (Cache Error), we go to Attempt 2.
-                # If Attempt 1 failed (Overload), we might want to skip to Attempt 3?
-                # Let's try Attempt 2 anyway, as sometimes it's transient.
-                pass 
+                # Proceed to Attempt 2 (No Cache) as per linear flow, though overload might persist.
+                pass
             else:
-                raise # Re-raise other ServerErrors
+                raise  # Re-raise other ServerErrors
 
         # ATTEMPT 2: Primary Model WITHOUT Cache (if Attempt 1 failed and response is None)
-        # Skip this attempt if the previous failure was an Overload error (Attempt 1), 
+        # Skip this attempt if the previous failure was an Overload error (Attempt 1),
         # as retrying the same model immediately is unlikely to help.
-        is_overload_failure = (
-            isinstance(last_exception, genai.errors.ServerError) 
-            and ("503" in str(last_exception) or "overloaded" in str(last_exception).lower())
+        is_overload_failure = isinstance(last_exception, genai.errors.ServerError) and (
+            "503" in str(last_exception) or "overloaded" in str(last_exception).lower()
         )
-        
+
         if response is None and not is_overload_failure:
             use_cache = False
             try:
                 logger.debug(f"Attempt 2: Retrying with {current_model} without cache.")
                 prompt_parts = _get_prompt_parts(use_cache)
                 config = generation_service.build_generation_config(None)
-                
+
                 response = await generation_service.generate_with_retry(
                     client=client,
                     model=current_model,
@@ -153,10 +157,12 @@ async def generate_report_from_content(
                 )
             except genai.errors.ServerError as e:
                 if "503" in str(e) or "overloaded" in str(e).lower():
-                    logger.warning(f"Attempt 2 failed: Model {current_model} overloaded. Proceeding to Attempt 3 (Fallback).")
+                    logger.warning(
+                        f"Attempt 2 failed: Model {current_model} overloaded. Proceeding to Attempt 3 (Fallback)."
+                    )
                     last_exception = e
                 else:
-                    raise # Re-raise other ServerErrors
+                    raise  # Re-raise other ServerErrors
             except Exception as e:
                 # If it was a ClientError from Attempt 1 that we caught, we might catch another one here?
                 # Attempt 2 shouldn't have cache errors.
@@ -168,12 +174,12 @@ async def generate_report_from_content(
         if response is None and settings.LLM_FALLBACK_MODEL_NAME:
             fallback_model = settings.LLM_FALLBACK_MODEL_NAME
             logger.warning(f"Attempt 3: Switching to fallback model: {fallback_model}")
-            
+
             try:
                 # Ensure No Cache for fallback
                 prompt_parts = _get_prompt_parts(False)
                 config = generation_service.build_generation_config(None)
-                
+
                 response = await generation_service.generate_with_retry(
                     client=client,
                     model=fallback_model,
@@ -183,7 +189,7 @@ async def generate_report_from_content(
                 logger.info(f"Fallback to {fallback_model} succeeded.")
             except Exception as e:
                 logger.error(f"Attempt 3 (Fallback) failed: {e}")
-                raise e # If fallback fails, we give up.
+                raise e  # If fallback fails, we give up.
 
         if response is None:
             if last_exception:
@@ -206,10 +212,18 @@ async def generate_report_from_content(
             "cached_content_token_count": 0,
         }
         if usage_metadata:
-            token_usage["prompt_token_count"] = getattr(usage_metadata, "prompt_token_count", 0)
-            token_usage["candidates_token_count"] = getattr(usage_metadata, "candidates_token_count", 0)
-            token_usage["total_token_count"] = getattr(usage_metadata, "total_token_count", 0)
-            token_usage["cached_content_token_count"] = getattr(usage_metadata, "cached_content_token_count", 0)
+            token_usage["prompt_token_count"] = getattr(
+                usage_metadata, "prompt_token_count", 0
+            )
+            token_usage["candidates_token_count"] = getattr(
+                usage_metadata, "candidates_token_count", 0
+            )
+            token_usage["total_token_count"] = getattr(
+                usage_metadata, "total_token_count", 0
+            )
+            token_usage["cached_content_token_count"] = getattr(
+                usage_metadata, "cached_content_token_count", 0
+            )
 
         return report_content, api_cost_usd, token_usage
 
@@ -226,7 +240,11 @@ async def generate_report_from_content(
             e,
             exc_info=True,
         )
-        return f"Error generating report due to an unexpected LLM issue: {str(e)}", 0.0, {}
+        return (
+            f"Error generating report due to an unexpected LLM issue: {str(e)}",
+            0.0,
+            {},
+        )
     finally:
         # Step 7: Cleanup uploaded files (best-effort, don't override main errors)
         if uploaded_file_names:
