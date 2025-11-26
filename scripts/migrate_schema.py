@@ -57,6 +57,16 @@ def migrate_schema():
                         "ALTER TABLE report_log ADD COLUMN IF NOT EXISTS cached_content_token_count INTEGER;"
                     )
                 )
+                conn.execute(
+                    text(
+                        "ALTER TABLE report_log ADD COLUMN IF NOT EXISTS progress_logs JSON;"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "ALTER TABLE report_log ADD COLUMN IF NOT EXISTS current_step VARCHAR(50);"
+                    )
+                )
                 conn.commit()
             logger.info("ReportLog table updated.")
 

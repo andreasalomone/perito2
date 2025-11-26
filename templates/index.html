@@ -99,6 +99,25 @@
         const errorContainer = document.getElementById('error-container');
         const errorMessageText = document.getElementById('error-message-text');
 
+        // Add a container for real-time logs
+        const logContainer = document.createElement('div');
+        logContainer.id = 'realtime-logs';
+        logContainer.style.marginTop = '1rem';
+        logContainer.style.padding = '1rem';
+        logContainer.style.backgroundColor = '#f8fafc';
+        logContainer.style.borderRadius = '0.5rem';
+        logContainer.style.border = '1px solid #e2e8f0';
+        logContainer.style.maxHeight = '200px';
+        logContainer.style.overflowY = 'auto';
+        logContainer.style.fontFamily = 'monospace';
+        logContainer.style.fontSize = '0.875rem';
+        logContainer.style.color = '#475569';
+        logContainer.style.display = 'none'; // Hidden initially
+
+        // Insert log container after stepper
+        const stepperDiv = document.querySelector('.stepper');
+        stepperDiv.parentNode.insertBefore(logContainer, stepperDiv.nextSibling);
+
         let dataTransfer = new DataTransfer();
 
         // --- File Handling ---
@@ -206,26 +225,75 @@
 
         // --- Stepper Logic ---
 
-        function updateStepper(seconds) {
+        function updateStepper(stepName) {
+            // Map step names to IDs
+            // stepName can be: 'queued', 'processing', 'generating', 'completed'
+            // We map these to our 4 visual steps
+
+            const stepMap = {
+                'queued': 1,
+                'processing': 2, // Covers extraction, analysis
+                'generating': 3, // LLM generation
+                'completed': 4
+            };
+
+            let activeStepNum = stepMap[stepName] || 1;
+
+            // If we are in 'processing', we might want to be more granular if we had more steps,
+            // but for now let's stick to the 4 visual steps.
+
             const steps = [
-                { id: 'step-1', start: 0, end: 15 },
-                { id: 'step-2', start: 15, end: 25 },
-                { id: 'step-3', start: 25, end: 50 },
-                { id: 'step-4', start: 50, end: 999 }
+                { id: 'step-1', num: 1 },
+                { id: 'step-2', num: 2 },
+                { id: 'step-3', num: 3 },
+                { id: 'step-4', num: 4 }
             ];
 
             steps.forEach(step => {
                 const el = document.getElementById(step.id);
-                if (seconds >= step.end) {
+                if (activeStepNum > step.num) {
                     el.classList.remove('active');
                     el.classList.add('completed');
-                } else if (seconds >= step.start) {
+                } else if (activeStepNum === step.num) {
                     el.classList.add('active');
                     el.classList.remove('completed');
                 } else {
                     el.classList.remove('active', 'completed');
                 }
             });
+        }
+
+        function updateLogs(logs) {
+            if (!logs || logs.length === 0) return;
+
+            logContainer.style.display = 'block';
+            logContainer.innerHTML = ''; // Clear and rebuild (simple approach)
+
+            logs.forEach(log => {
+                const logEntry = document.createElement('div');
+                logEntry.style.marginBottom = '0.25rem';
+
+                const timeSpan = document.createElement('span');
+                timeSpan.style.color = '#94a3b8';
+                timeSpan.style.marginRight = '0.5rem';
+                // Format timestamp HH:MM:SS
+                try {
+                    const date = new Date(log.timestamp);
+                    timeSpan.textContent = date.toLocaleTimeString([], { hour12: false });
+                } catch (e) {
+                    timeSpan.textContent = '';
+                }
+
+                const msgSpan = document.createElement('span');
+                msgSpan.textContent = log.message;
+
+                logEntry.appendChild(timeSpan);
+                logEntry.appendChild(msgSpan);
+                logContainer.appendChild(logEntry);
+            });
+
+            // Auto-scroll to bottom
+            logContainer.scrollTop = logContainer.scrollHeight;
         }
 
         function showError(message) {
@@ -253,13 +321,11 @@
             // Switch UI
             uploadSection.style.display = 'none';
             stepperSection.style.display = 'block';
+            logContainer.innerHTML = ''; // Clear previous logs
+            logContainer.style.display = 'none';
 
-            let seconds = 0;
-            updateStepper(seconds);
-            const timerInterval = setInterval(() => {
-                seconds++;
-                updateStepper(seconds);
-            }, 1000);
+            // Initialize stepper
+            updateStepper('queued');
 
             const formData = new FormData();
             for (const file of dataTransfer.files) {
@@ -276,14 +342,13 @@
                 })
                 .then(data => {
                     if (data.report_id) {
-                        pollStatus(data.report_id, timerInterval);
+                        pollStatus(data.report_id);
                     } else {
                         throw new Error('No report ID returned');
                     }
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    clearInterval(timerInterval);
 
                     // Reset UI
                     uploadSection.style.display = 'block';
@@ -293,22 +358,30 @@
                 });
         });
 
-        function pollStatus(reportId, timerInterval) {
+        function pollStatus(reportId) {
             const pollInterval = setInterval(() => {
                 fetch(`/report/status/${reportId}`)
                     .then(res => res.json())
                     .then(statusData => {
+                        // Update Logs
+                        if (statusData.progress_logs) {
+                            updateLogs(statusData.progress_logs);
+                        }
+
+                        // Update Stepper based on current_step
+                        if (statusData.current_step) {
+                            updateStepper(statusData.current_step);
+                        }
+
                         if (statusData.status === 'success') {
                             clearInterval(pollInterval);
-                            clearInterval(timerInterval);
                             // Force step 4 completion visual
-                            updateStepper(100);
+                            updateStepper('completed');
                             setTimeout(() => {
                                 window.location.href = `/report/${reportId}`;
-                            }, 500);
+                            }, 1000);
                         } else if (statusData.status === 'error') {
                             clearInterval(pollInterval);
-                            clearInterval(timerInterval);
 
                             uploadSection.style.display = 'block';
                             stepperSection.style.display = 'none';
@@ -318,10 +391,9 @@
                     })
                     .catch(err => {
                         console.error('Polling error:', err);
-                        // Don't stop polling immediately on network error, but maybe count errors?
-                        // For now, just log it.
+                        // Don't stop polling immediately on network error
                     });
-            }, 2000);
+            }, 1000); // Poll every 1 second for better responsiveness
         }
     });
 </script>

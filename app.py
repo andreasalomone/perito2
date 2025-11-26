@@ -139,6 +139,12 @@ def log_request(response):
 # --- Routes ---
 
 
+@app.route("/healthz", methods=["GET", "HEAD"])
+def health_check() -> FlaskResponse:
+    """Health check endpoint for monitoring."""
+    return jsonify({"status": "healthy"})
+
+
 @app.route("/", methods=["GET"])
 @auth.login_required
 def index() -> str:
@@ -214,6 +220,8 @@ def check_report_status(report_id: str) -> FlaskResponse:
             "status": report_log.status.value,
             "report_id": report_log.id,
             "error": report_log.error_message,
+            "progress_logs": report_log.progress_logs,
+            "current_step": report_log.current_step,
         }
     )
 

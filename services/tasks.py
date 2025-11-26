@@ -49,6 +49,7 @@ def generate_report_task(
         try:
             # Update status to PROCESSING
             db_service.update_report_status(report_id, ReportStatus.PROCESSING)
+            db_service.append_report_log(report_id, "Inizio elaborazione...", "processing")
 
             all_extracted_text = ""
             final_processed_files = []
@@ -60,6 +61,9 @@ def generate_report_task(
                 file_paths, original_filenames, document_log_ids
             ):
                 logger.info(f"Processing file: {filepath}")
+                db_service.append_report_log(
+                    report_id, f"Analisi file: {original_filename}", "processing"
+                )
 
                 # Process the file
                 result = file_service.process_file_from_path(
@@ -101,6 +105,11 @@ def generate_report_task(
                         file_type=file_ext,
                         extraction_method=extraction_method,
                     )
+                    db_service.append_report_log(
+                        report_id,
+                        f"Testo estratto da {original_filename} ({file_extracted_text_len} caratteri)",
+                        "processing",
+                    )
                 else:
                     error_msg = "; ".join([m.message for m in result.messages])
                     logger.warning(
@@ -131,6 +140,9 @@ def generate_report_task(
             logger.info(
                 f"Generating report for report {report_id} with {len(final_processed_files)} file parts ({len(all_extracted_text)} chars of text)"
             )
+            db_service.append_report_log(
+                report_id, "Generazione report con AI in corso...", "generating"
+            )
             report_content, api_cost_usd, token_usage = (
                 llm_handler.generate_report_from_content_sync(
                     processed_files=final_processed_files
@@ -150,7 +162,11 @@ def generate_report_task(
                     total_token_count=token_usage.get("total_token_count"),
                     cached_content_token_count=token_usage.get("cached_content_token_count"),
                 )
+
                 logger.info(f"Report {report_id} generated successfully.")
+                db_service.append_report_log(
+                    report_id, "Report generato con successo.", "completed"
+                )
             else:
                 db_service.update_report_status(
                     report_id,

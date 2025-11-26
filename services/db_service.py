@@ -132,3 +132,32 @@ def update_document_log(
         doc_log.extraction_method = extraction_method
 
     db.session.commit()
+
+
+def append_report_log(report_id: str, message: str, step: str = None) -> None:
+    """
+    Appends a log message to the report's progress_logs and optionally updates the current step.
+    """
+    from datetime import datetime
+
+    report_log = db.session.get(ReportLog, report_id)
+    if not report_log:
+        logger.error(f"ReportLog with ID {report_id} not found for log append.")
+        return
+
+    timestamp = datetime.utcnow().isoformat()
+    log_entry = {"timestamp": timestamp, "message": message}
+
+    # Ensure progress_logs is a list
+    current_logs = report_log.progress_logs or []
+    # We need to re-assign the list to trigger SQLAlchemy's change detection for JSON types
+    # or use a mutable JSON type, but re-assigning is safer/simpler here.
+    updated_logs = list(current_logs)
+    updated_logs.append(log_entry)
+    report_log.progress_logs = updated_logs
+
+    if step:
+        report_log.current_step = step
+
+    db.session.commit()
+
