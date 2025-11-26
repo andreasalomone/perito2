@@ -53,6 +53,54 @@ def build_text_file_parts(processed_files: List[Dict[str, Any]]) -> List[str]:
     return processed_text_files_parts
 
 
+def truncate_content(text_parts: List[str], max_chars: int = 3500000) -> List[str]:
+    """Truncates the list of text parts to fit within the character limit.
+    
+    Args:
+        text_parts: List of text strings.
+        max_chars: Maximum total characters allowed (default ~3.5M chars ≈ 875k tokens).
+        
+    Returns:
+        Truncated list of text strings.
+    """
+    total_chars = sum(len(part) for part in text_parts)
+    
+    if total_chars <= max_chars:
+        return text_parts
+        
+    logger.warning(f"Total text content length ({total_chars}) exceeds limit ({max_chars}). Truncating.")
+    
+    current_chars = 0
+    truncated_parts = []
+    
+    for part in text_parts:
+        if current_chars >= max_chars:
+            break
+            
+        remaining_chars = max_chars - current_chars
+        if len(part) <= remaining_chars:
+            truncated_parts.append(part)
+            current_chars += len(part)
+        else:
+            # Truncate this part and stop
+            truncated_parts.append(part[:remaining_chars] + "\n... [TRUNCATED DUE TO LENGTH LIMIT] ...")
+            current_chars += remaining_chars
+            break
+            
+    return truncated_parts
+
+
+# Expose system prompts for fallback logic
+SYSTEM_PROMPTS = [
+    GUIDA_STILE_TERMINOLOGIA_ED_ESEMPI,
+    "\n\n",
+    SCHEMA_REPORT,
+    "\n\n",
+    SYSTEM_INSTRUCTION,
+    "\n\n",
+]
+
+
 def build_prompt_parts(
     processed_files: List[Dict[str, Any]],
     additional_text: str,
@@ -77,19 +125,14 @@ def build_prompt_parts(
     # Add fallback prompts if not using cache
     if not use_cache:
         logger.info("Including prompts directly (not using cache).")
-        final_prompt_parts.extend(
-            [
-                GUIDA_STILE_TERMINOLOGIA_ED_ESEMPI,
-                "\n\n",
-                SCHEMA_REPORT,
-                "\n\n",
-                SYSTEM_INSTRUCTION,
-                "\n\n",
-            ]
-        )
+        final_prompt_parts.extend(SYSTEM_PROMPTS)
 
     # Add text file parts
     text_parts = build_text_file_parts(processed_files)
+    
+    # Truncate text parts if necessary to avoid token limits
+    text_parts = truncate_content(text_parts)
+    
     final_prompt_parts.extend(text_parts)
 
     # Add upload error messages

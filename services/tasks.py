@@ -28,14 +28,16 @@ def generate_report_task(
         from app import app
     except ImportError:
         # Fallback: try adding CWD to sys.path
-        if os.getcwd() not in sys.path:
-            sys.path.append(os.getcwd())
+        import os as _os  # Use alias to avoid UnboundLocalError shadowing global os
+
+        if _os.getcwd() not in sys.path:
+            sys.path.append(_os.getcwd())
         
         try:
             from app import app
         except ImportError as e:
             logger.error(f"Failed to import app: {e}")
-            logger.error(f"Current working directory: {os.getcwd()}")
+            logger.error(f"Current working directory: {_os.getcwd()}")
             logger.error(f"sys.path: {sys.path}")
             raise e
 

@@ -165,17 +165,27 @@ def extract_text_from_docx(docx_path: str) -> Dict[str, str]:
 def extract_text_from_xlsx(xlsx_path: str) -> Dict[str, str]:
     """Extracts text from an XLSX file, converting sheets to CSV-like text."""
     text_content: str = ""
-    workbook = openpyxl.load_workbook(xlsx_path)
-    for sheet_name in workbook.sheetnames:
-        text_content += f"--- Sheet: {sheet_name} ---\n"
-        sheet = workbook[sheet_name]
-        for row in sheet.iter_rows():
-            row_values: List[str] = [
-                str(cell.value) if cell.value is not None else "" for cell in row
-            ]
-            text_content += ",".join(row_values) + "\n"
-        text_content += "\n"
-    workbook.close()
+    try:
+        # Use read_only=True and data_only=True for better performance and stability with complex files
+        workbook = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
+        for sheet_name in workbook.sheetnames:
+            text_content += f"--- Sheet: {sheet_name} ---\n"
+            sheet = workbook[sheet_name]
+            for row in sheet.iter_rows(values_only=True):
+                row_values: List[str] = [
+                    str(cell) if cell is not None else "" for cell in row
+                ]
+                text_content += ",".join(row_values) + "\n"
+            text_content += "\n"
+        workbook.close()
+    except Exception as e:
+        logger.warning(f"Failed to read XLSX file {xlsx_path}: {e}")
+        return {
+            "type": "text",
+            "content": f"[ERROR: Could not read Excel file content: {str(e)}]",
+            "filename": os.path.basename(xlsx_path),
+        }
+
     return {
         "type": "text",
         "content": text_content,
@@ -248,6 +258,15 @@ def process_eml_file(eml_path: str, upload_folder: str) -> List[Dict[str, Any]]:
 
         # CORRECTED LOGIC: Attempt to process ALL attachments, letting process_uploaded_file handle filtering.
         try:
+            # Ensure payload is a string and strip whitespace
+            if isinstance(payload, str):
+                payload = payload.strip()
+                # Fix incorrect padding
+                missing_padding = len(payload) % 4
+                if missing_padding:
+                    payload += "=" * (4 - missing_padding)
+            
+            # Decode base64
             decoded_payload = base64.b64decode(payload)
             # Sanitize filename (simple sanitization)
             safe_filename = "".join(
