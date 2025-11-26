@@ -223,7 +223,7 @@ def check_report_status(report_id: str) -> FlaskResponse:
     )
 
 
-@app.route("/download_report/<report_id>", methods=["POST"])
+@app.route("/download_report/<report_id>", methods=["GET", "POST"])
 @limiter.limit("30 per minute")
 @auth.login_required
 def download_report(report_id: str) -> Union[FlaskResponse, Tuple[str, int]]:

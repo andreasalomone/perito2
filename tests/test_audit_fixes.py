@@ -29,7 +29,7 @@ def test_download_report_success(mock_create_docx, mock_get_report_log, client):
     with client.session_transaction() as sess:
         sess['_user_id'] = '1' # Simulate logged in user if using Flask-Login or similar
 
-    response = client.post('/download_report/test_report_id')
+    response = client.get('/download_report/test_report_id')
     
     
     if response.status_code == 302:
@@ -45,7 +45,7 @@ def test_download_report_success(mock_create_docx, mock_get_report_log, client):
 def test_download_report_not_found(mock_get_report_log, client):
     mock_get_report_log.return_value = None
     
-    response = client.post('/download_report/invalid_id')
+    response = client.get('/download_report/invalid_id')
     
     # Should redirect to index with flash message
     assert response.status_code == 302

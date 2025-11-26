@@ -106,7 +106,7 @@ def test_upload_and_report_generation(client, app, tmp_path):
         # but it might be fine to let it run if it just writes text.
         # Let's let it run or mock it if it fails.
         
-        response = client.post(f'/download_report/{report_id}')
+        response = client.get(f'/download_report/{report_id}')
         assert response.status_code == 200
         assert response.headers['Content-Type'] == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         assert "Perizia_" in response.headers['Content-Disposition']
