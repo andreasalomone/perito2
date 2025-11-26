@@ -1,18 +1,35 @@
 :root {
     /* Variables from main app style.css */
-    --primary-color: #007bff;
-    --primary-hover: #0056b3;
-    --background-color: #f8fafc;
+    --primary-color: #4f46e5;
+    /* Indigo 600 */
+    --primary-hover: #4338ca;
+    /* Indigo 700 */
+    --secondary-color: #64748b;
+    /* Slate 500 */
+    --background-color: #f1f5f9;
+    /* Slate 100 */
     --card-bg: #ffffff;
-    --text-color: #1e293b;
+    --text-color: #0f172a;
+    /* Slate 900 */
     --text-muted: #64748b;
+    /* Slate 500 */
     --border-color: #e2e8f0;
+    /* Slate 200 */
     --success-color: #10b981;
+    /* Emerald 500 */
+    --warning-color: #f59e0b;
+    /* Amber 500 */
     --error-color: #ef4444;
+    /* Red 500 */
+    --info-color: #3b82f6;
+    /* Blue 500 */
+
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
     --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
     --radius-md: 0.5rem;
-    --radius-lg: 0.75rem;
+    --radius-lg: 1rem;
 }
 
 body {
@@ -37,11 +54,12 @@ body {
 }
 
 #sidebar-wrapper .sidebar-heading {
-    padding: 0.875rem 1.25rem;
-    font-size: 1.2rem;
-    font-weight: 600;
+    padding: 1.5rem 1.25rem;
+    font-size: 1.25rem;
+    font-weight: 700;
     color: white;
-    background-color: var(--primary-color);
+    background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 #sidebar-wrapper .list-group {
@@ -98,9 +116,36 @@ body {
 .card {
     background: var(--card-bg);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-md);
+    box-shadow: var(--shadow-sm);
     border: 1px solid var(--border-color);
     margin-bottom: 1.5rem;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+/* Card Border Accents */
+.border-left-primary {
+    border-left: 4px solid var(--primary-color) !important;
+}
+
+.border-left-success {
+    border-left: 4px solid var(--success-color) !important;
+}
+
+.border-left-info {
+    border-left: 4px solid var(--info-color) !important;
+}
+
+.border-left-warning {
+    border-left: 4px solid var(--warning-color) !important;
+}
+
+.border-left-danger {
+    border-left: 4px solid var(--error-color) !important;
 }
 
 .card-header {

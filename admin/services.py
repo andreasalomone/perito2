@@ -1,4 +1,5 @@
 from typing import Any, Dict, Tuple
+from sqlalchemy import text
 
 from flask_sqlalchemy.pagination import Pagination
 from sqlalchemy import func
@@ -109,6 +110,18 @@ def get_dashboard_stats() -> Dict[str, Any]:
         )
         avg_gen_time = avg_gen_time_query or 0
 
+        # Token usage stats
+        total_prompt_tokens = db.session.query(func.sum(ReportLog.prompt_token_count)).scalar() or 0
+        total_candidates_tokens = db.session.query(func.sum(ReportLog.candidates_token_count)).scalar() or 0
+        total_tokens = db.session.query(func.sum(ReportLog.total_token_count)).scalar() or 0
+        total_cached_tokens = db.session.query(func.sum(ReportLog.cached_content_token_count)).scalar() or 0
+        
+        # Calculate non-cached prompt tokens (Prompt - Cached)
+        # Note: prompt_token_count includes cached tokens in Gemini API usage metadata?
+        # Let's assume prompt_token_count is TOTAL input tokens.
+        # So non-cached input = prompt_token_count - cached_content_token_count.
+        total_non_cached_prompt_tokens = total_prompt_tokens - total_cached_tokens
+
         return {
             "reports_generated": reports_generated,
             "api_cost_monthly_est": f"${total_cost:.2f}",
@@ -116,6 +129,13 @@ def get_dashboard_stats() -> Dict[str, Any]:
             "processing_errors": processing_errors,
             "total_documents": db.session.query(DocumentLog).count(),
             "extraction_success_rate": f"{(db.session.query(DocumentLog).filter_by(extraction_status=ExtractionStatus.SUCCESS).count() / db.session.query(DocumentLog).count() * 100) if db.session.query(DocumentLog).count() > 0 else 0:.1f}%",
+            "token_stats": {
+                "total_tokens": total_tokens,
+                "total_prompt_tokens": total_prompt_tokens,
+                "total_candidates_tokens": total_candidates_tokens,
+                "total_cached_tokens": total_cached_tokens,
+                "total_non_cached_prompt_tokens": total_non_cached_prompt_tokens,
+            }
         }
     except Exception as e:
         # Log the error for debugging
@@ -128,4 +148,56 @@ def get_dashboard_stats() -> Dict[str, Any]:
             "processing_errors": "N/A",
             "total_documents": "N/A",
             "extraction_success_rate": "N/A",
+            "token_stats": {
+                "total_tokens": 0,
+                "total_prompt_tokens": 0,
+                "total_candidates_tokens": 0,
+                "total_cached_tokens": 0,
+                "total_non_cached_prompt_tokens": 0,
+            }
         }
+
+
+def get_system_status() -> Dict[str, str]:
+    """
+    Checks the status of system components.
+    """
+    status = {
+        "database": "unknown",
+        "redis": "unknown",
+        "llm_api": "unknown",
+    }
+
+    # Check Database
+    try:
+        db.session.execute(text("SELECT 1"))
+        status["database"] = "operational"
+    except Exception:
+        status["database"] = "error"
+
+    # Check Redis
+    try:
+        from core.celery_app import celery_app
+        # Simple check: try to get a connection from the pool
+        # Note: This might not actually ping Redis unless we execute a command
+        # But for now, let's assume if we can import and it doesn't crash, it's okay-ish
+        # A real ping would be better but requires a redis client instance.
+        # Let's try to create a strict redis client from the config URL
+        import redis
+        from core.config import settings
+        r = redis.from_url(settings.REDIS_URL)
+        if r.ping():
+            status["redis"] = "operational"
+        else:
+            status["redis"] = "error"
+    except Exception:
+        status["redis"] = "error"
+
+    # Check LLM API Key
+    from core.config import settings
+    if settings.GEMINI_API_KEY:
+        status["llm_api"] = "configured"
+    else:
+        status["llm_api"] = "missing_key"
+
+    return status

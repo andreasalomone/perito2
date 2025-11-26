@@ -9,35 +9,7 @@ from app import app as flask_app  # Your Flask app instance
 from core.config import settings  # To potentially mock settings
 
 
-@pytest.fixture
-def app():
-    flask_app.config.update(
-        {
-            "TESTING": True,
-            "SECRET_KEY": "test_secret_key_for_flashing",  # For flash messages
-            "WTF_CSRF_ENABLED": False,  # Disable CSRF for simpler form posts in tests
-        }
-    )
-    # Ensure the logger is configured for tests if it hasn't been already
-    if not hasattr(flask_app, "logger_configured_for_tests"):
-        logging_level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
-        logging.basicConfig(
-            level=logging_level,
-            format="%(asctime)s - %(levelname)s - %(name)s - %(request_id)s - %(message)s",
-        )
-        flask_app.logger_configured_for_tests = True
-    yield flask_app
 
-
-@pytest.fixture
-def client(app):
-    client = app.test_client()
-    # Set up Basic Auth headers
-    import base64
-    creds = f"{settings.AUTH_USERNAME}:{settings.AUTH_PASSWORD}"
-    b64_creds = base64.b64encode(creds.encode()).decode()
-    client.environ_base["HTTP_AUTHORIZATION"] = f"Basic {b64_creds}"
-    return client
 
 
 @mock.patch("services.report_service.db_service")

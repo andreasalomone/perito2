@@ -110,6 +110,76 @@
 </div>
 
 <div class="row">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-info shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Total Tokens</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.token_stats.total_tokens }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="bi bi-cpu-fill fs-2 text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-primary shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Prompt Tokens (Total)
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.token_stats.total_prompt_tokens }}
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="bi bi-arrow-right-circle-fill fs-2 text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-success shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Output Tokens</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.token_stats.total_candidates_tokens
+                            }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="bi bi-arrow-left-circle-fill fs-2 text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-warning shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Cached Tokens</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ stats.token_stats.total_cached_tokens }}
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="bi bi-hdd-stack-fill fs-2 text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
     <div class="col-lg-6 mb-4">
         <div class="card shadow mb-4">
             <div class="card-header py-3">
@@ -126,7 +196,48 @@
                 <h6 class="m-0 font-weight-bold text-primary">System Status</h6>
             </div>
             <div class="card-body">
-                <p>Coming soon: Status indicators for OpenAI API, Database, etc.</p>
+                <div class="mb-3">
+                    <h4 class="small font-weight-bold">Database <span class="float-end">
+                            {% if system_status.database == 'operational' %}
+                            <span class="badge bg-success">Operational</span>
+                            {% else %}
+                            <span class="badge bg-danger">Error</span>
+                            {% endif %}
+                        </span></h4>
+                    <div class="progress mb-4">
+                        <div class="progress-bar bg-{{ 'success' if system_status.database == 'operational' else 'danger' }}"
+                            role="progressbar" style="width: 100%" aria-valuenow="100" aria-valuemin="0"
+                            aria-valuemax="100"></div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <h4 class="small font-weight-bold">Redis (Celery Broker) <span class="float-end">
+                            {% if system_status.redis == 'operational' %}
+                            <span class="badge bg-success">Operational</span>
+                            {% else %}
+                            <span class="badge bg-danger">Error</span>
+                            {% endif %}
+                        </span></h4>
+                    <div class="progress mb-4">
+                        <div class="progress-bar bg-{{ 'success' if system_status.redis == 'operational' else 'danger' }}"
+                            role="progressbar" style="width: 100%" aria-valuenow="100" aria-valuemin="0"
+                            aria-valuemax="100"></div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <h4 class="small font-weight-bold">Gemini API <span class="float-end">
+                            {% if system_status.llm_api == 'configured' %}
+                            <span class="badge bg-success">Configured</span>
+                            {% else %}
+                            <span class="badge bg-danger">Missing Key</span>
+                            {% endif %}
+                        </span></h4>
+                    <div class="progress mb-4">
+                        <div class="progress-bar bg-{{ 'success' if system_status.llm_api == 'configured' else 'danger' }}"
+                            role="progressbar" style="width: 100%" aria-valuenow="100" aria-valuemin="0"
+                            aria-valuemax="100"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

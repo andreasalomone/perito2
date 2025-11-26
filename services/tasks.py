@@ -131,7 +131,7 @@ def generate_report_task(
             logger.info(
                 f"Generating report for report {report_id} with {len(final_processed_files)} file parts ({len(all_extracted_text)} chars of text)"
             )
-            report_content, api_cost_usd = (
+            report_content, api_cost_usd, token_usage = (
                 llm_handler.generate_report_from_content_sync(
                     processed_files=final_processed_files
                 )
@@ -145,6 +145,10 @@ def generate_report_task(
                     llm_raw_response=report_content,
                     final_report_text=report_content,
                     api_cost_usd=api_cost_usd,
+                    prompt_token_count=token_usage.get("prompt_token_count"),
+                    candidates_token_count=token_usage.get("candidates_token_count"),
+                    total_token_count=token_usage.get("total_token_count"),
+                    cached_content_token_count=token_usage.get("cached_content_token_count"),
                 )
                 logger.info(f"Report {report_id} generated successfully.")
             else:

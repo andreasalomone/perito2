@@ -9,7 +9,9 @@ from .services import (
     get_paginated_documents,
     get_paginated_reports,
     get_report_by_id,
+    get_report_by_id,
     update_prompt_content,
+    get_system_status,
 )
 
 
@@ -18,8 +20,9 @@ from .services import (
 def dashboard():
     """Admin dashboard page."""
     stats = get_dashboard_stats()
+    system_status = get_system_status()
     return render_template(
-        "admin/dashboard.html", user=auth.current_user(), stats=stats
+        "admin/dashboard.html", user=auth.current_user(), stats=stats, system_status=system_status
     )
 
 

@@ -37,6 +37,26 @@ def migrate_schema():
                         "ALTER TABLE report_log ADD COLUMN IF NOT EXISTS final_report_text TEXT;"
                     )
                 )
+                conn.execute(
+                    text(
+                        "ALTER TABLE report_log ADD COLUMN IF NOT EXISTS prompt_token_count INTEGER;"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "ALTER TABLE report_log ADD COLUMN IF NOT EXISTS candidates_token_count INTEGER;"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "ALTER TABLE report_log ADD COLUMN IF NOT EXISTS total_token_count INTEGER;"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "ALTER TABLE report_log ADD COLUMN IF NOT EXISTS cached_content_token_count INTEGER;"
+                    )
+                )
                 conn.commit()
             logger.info("ReportLog table updated.")
 

@@ -51,13 +51,24 @@ def app():
 
 @pytest.fixture
 def client(app):
-    client = app.test_client()
-    # Set up Basic Auth headers
-    import base64
-    creds = f"{settings.AUTH_USERNAME}:{settings.AUTH_PASSWORD}"
-    b64_creds = base64.b64encode(creds.encode()).decode()
-    client.environ_base["HTTP_AUTHORIZATION"] = f"Basic {b64_creds}"
-    return client
+    from werkzeug.security import generate_password_hash
+    
+    # Define test credentials
+    test_username = "testuser"
+    test_password = "testpassword"
+    
+    # Patch the USERS dict in core.security to ensure we have a known valid user
+    # We use mock.patch.dict to update the global USERS dictionary in core.security
+    with mock.patch.dict("core.security.USERS", {test_username: generate_password_hash(test_password)}, clear=True):
+        client = app.test_client()
+        
+        # Set up Basic Auth headers
+        import base64
+        creds = f"{test_username}:{test_password}"
+        b64_creds = base64.b64encode(creds.encode()).decode()
+        client.environ_base["HTTP_AUTHORIZATION"] = f"Basic {b64_creds}"
+        
+        yield client
 
 @pytest.fixture(autouse=True)
 def mock_redis():

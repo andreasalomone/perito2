@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 
 from google import genai
 from google.api_core import exceptions as google_exceptions
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 async def generate_report_from_content(
     processed_files: List[Dict[str, Any]], additional_text: str = ""
-) -> Tuple[str, float]:
+) -> Tuple[str, float, Dict[str, int]]:
     """Generate an insurance report using Google Gemini with multimodal content and context caching.
 
     Orchestrates the report generation by:
@@ -40,10 +40,12 @@ async def generate_report_from_content(
 
     Returns:
         The generated report content as a string, or an error message starting with "Error:".
+        The API cost in USD.
+        A dictionary containing token usage details.
     """
     if not settings.GEMINI_API_KEY:
         logger.error("GEMINI_API_KEY not configured in settings.")
-        return "Error: LLM service is not configured (API key missing).", 0.0
+        return "Error: LLM service is not configured (API key missing).", 0.0, {}
 
     client: genai.Client = genai.Client(api_key=settings.GEMINI_API_KEY)
     uploaded_file_names: List[str] = []
@@ -84,140 +86,110 @@ async def generate_report_from_content(
                 use_cache=use_cache_flag,
             )
 
-        # Initial attempt configuration
-        current_model = settings.LLM_MODEL_NAME
-        use_cache_current = bool(cache_name)
+        # --- Linear Retry Logic ---
         
-        # Build initial prompt and config
-        prompt_parts = _get_prompt_parts(use_cache_current)
-        config = generation_service.build_generation_config(cache_name if use_cache_current else None)
-
+        response = None
+        last_exception = None
+        
+        # ATTEMPT 1: Primary Model (with cache if available)
+        current_model = settings.LLM_MODEL_NAME
+        use_cache = bool(cache_name)
+        
         try:
-            # ATTEMPT 1: Primary Model (with cache if available)
-            logger.debug(f"Attempt 1: Sending request to Gemini. Model: {current_model}. Using cache: {use_cache_current}")
+            logger.debug(f"Attempt 1: Sending request to Gemini. Model: {current_model}. Using cache: {use_cache}")
+            prompt_parts = _get_prompt_parts(use_cache)
+            config = generation_service.build_generation_config(cache_name if use_cache else None)
+            
             response = await generation_service.generate_with_retry(
                 client=client,
                 model=current_model,
                 contents=prompt_parts,
                 config=config,
             )
-
         except genai.errors.ClientError as e:
-            # Handle Cache Invalid/Expired (400 INVALID_ARGUMENT)
-            is_cache_error = (
-                use_cache_current
-                and "INVALID_ARGUMENT" in str(e)
-                and ("400" in str(e) or (hasattr(e, "status_code") and e.status_code == 400))
-            )
-
-            if is_cache_error:
-                logger.warning("Attempt 1 failed: Cache invalid/expired. Retrying without cache.")
-                # ATTEMPT 2: Primary Model WITHOUT Cache
-                use_cache_current = False
-                prompt_parts = _get_prompt_parts(use_cache_current) # Rebuild prompt with full text
-                config = generation_service.build_generation_config(None) # Config without cache
-                
-                try:
-                    logger.debug(f"Attempt 2: Retrying with {current_model} without cache.")
-                    response = await generation_service.generate_with_retry(
-                        client=client,
-                        model=current_model,
-                        contents=prompt_parts,
-                        config=config,
-                    )
-                except Exception as retry_error:
-                    # If retry fails, check for overload to try fallback model
-                    if "503" in str(retry_error) or "overloaded" in str(retry_error).lower():
-                         logger.warning(f"Attempt 2 failed: Model {current_model} overloaded. Trying fallback model.")
-                         # Proceed to fallback model logic below (shared)
-                         raise retry_error 
-                    else:
-                        raise # Re-raise other errors
+            # Check for Cache Invalid/Expired (400 INVALID_ARGUMENT)
+            if use_cache and "INVALID_ARGUMENT" in str(e) and ("400" in str(e) or getattr(e, "status_code", 0) == 400):
+                logger.warning("Attempt 1 failed: Cache invalid/expired. Proceeding to Attempt 2 (No Cache).")
+                last_exception = e
             else:
-                raise # Re-raise non-cache ClientErrors
-
+                raise # Re-raise other ClientErrors immediately
         except genai.errors.ServerError as e:
-            # Handle Overloaded (503 UNAVAILABLE) - caught from Attempt 1
-            logger.warning(f"Attempt 1 failed: Server error ({e}). Checking for overload...")
-            raise # Re-raise to be caught by outer try/except or handled here? 
-            # Actually, let's handle it here to keep flow linear or use a loop. 
-            # But simpler: just let it raise and catch generic Exception? No, we want specific handling.
-            # Let's restructure to use a loop or explicit steps.
-            pass # Fall through to fallback logic if needed, but we need to know if it was overload.
+            # Check for Overload (503 UNAVAILABLE)
+            if "503" in str(e) or "overloaded" in str(e).lower():
+                logger.warning(f"Attempt 1 failed: Server overloaded. Proceeding to Attempt 3 (Fallback).")
+                last_exception = e
+                # Skip Attempt 2 (No Cache) if it's an overload issue, go straight to fallback if possible?
+                # Actually, let's try Attempt 2 (No Cache) first? No, overload usually affects the model.
+                # But to be safe and follow the plan: Attempt 2 is "Primary + No Cache".
+                # If Attempt 1 failed due to overload, Attempt 2 (same model) will likely fail too.
+                # However, let's stick to the linear flow: 
+                # If Attempt 1 failed (Cache Error), we go to Attempt 2.
+                # If Attempt 1 failed (Overload), we might want to skip to Attempt 3?
+                # Let's try Attempt 2 anyway, as sometimes it's transient.
+                pass 
+            else:
+                raise # Re-raise other ServerErrors
 
-        # Wait, the try/except block above is getting messy. Let's simplify.
-        # We need to handle:
-        # 1. Cache Error -> Retry No Cache
-        # 2. Overload Error (from 1 or 2) -> Retry Fallback Model (No Cache)
-        
-    except (genai.errors.ClientError, genai.errors.ServerError) as e:
-        # Unified Error Handling and Fallback Logic
-        
-        # Check if we should try fallback model
-        should_try_fallback = False
-        fallback_reason = ""
-        
-        # Check for Cache Error (400)
-        is_cache_error = (
-            bool(cache_name)
-            and isinstance(e, genai.errors.ClientError)
-            and "INVALID_ARGUMENT" in str(e)
+        # ATTEMPT 2: Primary Model WITHOUT Cache (if Attempt 1 failed and response is None)
+        # Skip this attempt if the previous failure was an Overload error (Attempt 1), 
+        # as retrying the same model immediately is unlikely to help.
+        is_overload_failure = (
+            isinstance(last_exception, genai.errors.ServerError) 
+            and ("503" in str(last_exception) or "overloaded" in str(last_exception).lower())
         )
         
-        # Check for Overload (503)
-        is_overloaded = (
-            isinstance(e, genai.errors.ServerError)
-            and ("503" in str(e) or "overloaded" in str(e).lower())
-        )
+        if response is None and not is_overload_failure:
+            use_cache = False
+            try:
+                logger.debug(f"Attempt 2: Retrying with {current_model} without cache.")
+                prompt_parts = _get_prompt_parts(use_cache)
+                config = generation_service.build_generation_config(None)
+                
+                response = await generation_service.generate_with_retry(
+                    client=client,
+                    model=current_model,
+                    contents=prompt_parts,
+                    config=config,
+                )
+            except genai.errors.ServerError as e:
+                if "503" in str(e) or "overloaded" in str(e).lower():
+                    logger.warning(f"Attempt 2 failed: Model {current_model} overloaded. Proceeding to Attempt 3 (Fallback).")
+                    last_exception = e
+                else:
+                    raise # Re-raise other ServerErrors
+            except Exception as e:
+                # If it was a ClientError from Attempt 1 that we caught, we might catch another one here?
+                # Attempt 2 shouldn't have cache errors.
+                logger.warning(f"Attempt 2 failed with unexpected error: {e}")
+                last_exception = e
+                # Fall through to Attempt 3
 
-        if is_cache_error:
-            logger.warning("LLM Cache invalid/expired. Switching to non-cached request.")
-            # Prepare for retry without cache
-            use_cache_current = False
-            prompt_parts = _get_prompt_parts(use_cache_current)
-            config = generation_service.build_generation_config(None)
+        # ATTEMPT 3: Fallback Model (if Attempt 2 failed and response is None)
+        if response is None and settings.LLM_FALLBACK_MODEL_NAME:
+            fallback_model = settings.LLM_FALLBACK_MODEL_NAME
+            logger.warning(f"Attempt 3: Switching to fallback model: {fallback_model}")
             
             try:
-                # Retry with Primary Model + No Cache
-                logger.info(f"Retrying with {current_model} (No Cache)...")
+                # Ensure No Cache for fallback
+                prompt_parts = _get_prompt_parts(False)
+                config = generation_service.build_generation_config(None)
+                
                 response = await generation_service.generate_with_retry(
-                    client=client, model=current_model, contents=prompt_parts, config=config
+                    client=client,
+                    model=fallback_model,
+                    contents=prompt_parts,
+                    config=config,
                 )
-                # If successful, we are done
-            except genai.errors.ServerError as e2:
-                # If retry fails with overload, mark for fallback
-                if "503" in str(e2) or "overloaded" in str(e2).lower():
-                    is_overloaded = True
-                    e = e2 # Update exception to the latest one
-                else:
-                    raise e2 # Re-raise other server errors
-            except Exception as e2:
-                raise e2 # Re-raise other errors
+                logger.info(f"Fallback to {fallback_model} succeeded.")
+            except Exception as e:
+                logger.error(f"Attempt 3 (Fallback) failed: {e}")
+                raise e # If fallback fails, we give up.
 
-        # If we are here and is_overloaded is True (either from initial call or cache retry)
-        if is_overloaded and settings.LLM_FALLBACK_MODEL_NAME:
-            fallback_model = settings.LLM_FALLBACK_MODEL_NAME
-            logger.warning(f"Model {current_model} overloaded. Switching to fallback: {fallback_model}")
-            
-            # Ensure we are using No Cache for fallback (different model = different cache)
-            use_cache_current = False
-            prompt_parts = _get_prompt_parts(use_cache_current)
-            config = generation_service.build_generation_config(None)
-            
-            # Retry with Fallback Model
-            response = await generation_service.generate_with_retry(
-                client=client, model=fallback_model, contents=prompt_parts, config=config
-            )
-            logger.info(f"Fallback to {fallback_model} succeeded.")
-        elif is_overloaded:
-             logger.error("Model overloaded but no fallback model configured.")
-             raise e
-        elif not is_cache_error: # If it wasn't a cache error and we didn't handle it above
-             raise e
-
-        # If we reached here without raising, 'response' should be set from one of the retries.
-        if not response:
-            raise Exception("LLM generation failed (unknown state).")
+        if response is None:
+            if last_exception:
+                raise last_exception
+            else:
+                raise Exception("LLM generation failed (unknown state).")
 
         # Step 6: Parse and validate response
         report_content = response_parser_service.parse_llm_response(response)
@@ -226,13 +198,20 @@ async def generate_report_from_content(
         usage_metadata = getattr(response, "usage_metadata", None)
         api_cost_usd = generation_service.calculate_cost(usage_metadata)
 
-        return report_content, api_cost_usd
+        # Extract token counts
+        token_usage = {
+            "prompt_token_count": 0,
+            "candidates_token_count": 0,
+            "total_token_count": 0,
+            "cached_content_token_count": 0,
+        }
+        if usage_metadata:
+            token_usage["prompt_token_count"] = getattr(usage_metadata, "prompt_token_count", 0)
+            token_usage["candidates_token_count"] = getattr(usage_metadata, "candidates_token_count", 0)
+            token_usage["total_token_count"] = getattr(usage_metadata, "total_token_count", 0)
+            token_usage["cached_content_token_count"] = getattr(usage_metadata, "cached_content_token_count", 0)
 
-        # Success path for Attempt 1
-        report_content = response_parser_service.parse_llm_response(response)
-        usage_metadata = getattr(response, "usage_metadata", None)
-        api_cost_usd = generation_service.calculate_cost(usage_metadata)
-        return report_content, api_cost_usd
+        return report_content, api_cost_usd, token_usage
 
     except asyncio.CancelledError:
         # Important for async correctness: don't swallow cancellations.
@@ -240,14 +219,14 @@ async def generate_report_from_content(
         raise
     except google_exceptions.GoogleAPIError as e:
         logger.error("Gemini API error during report generation: %s", e, exc_info=True)
-        return f"Error generating report due to an LLM API issue: {str(e)}", 0.0
+        return f"Error generating report due to an LLM API issue: {str(e)}", 0.0, {}
     except Exception as e:  # noqa: BLE001 (we want a last-resort guardrail here)
         logger.error(
             "An unexpected error occurred with the Gemini service: %s",
             e,
             exc_info=True,
         )
-        return f"Error generating report due to an unexpected LLM issue: {str(e)}", 0.0
+        return f"Error generating report due to an unexpected LLM issue: {str(e)}", 0.0, {}
     finally:
         # Step 7: Cleanup uploaded files (best-effort, don't override main errors)
         if uploaded_file_names:
@@ -265,6 +244,6 @@ async def generate_report_from_content(
 
 def generate_report_from_content_sync(
     processed_files: List[Dict[str, Any]], additional_text: str = ""
-) -> str:
+) -> Tuple[str, float, Dict[str, int]]:
     """Synchronous wrapper for generate_report_from_content."""
     return asyncio.run(generate_report_from_content(processed_files, additional_text))

@@ -10,17 +10,8 @@ with patch('core.config.settings.REDIS_URL', "memory://"), \
      patch('core.security.auth', mock_auth):
     from app import app
 from services import db_service
-
-
-@pytest.fixture
-def client():
-    app.config['TESTING'] = True
-    app.config['WTF_CSRF_ENABLED'] = False
-    app.config['RATELIMIT_ENABLED'] = False # Disable rate limiting for tests
-    with app.test_client() as client:
-        yield client
-
 import io
+
 
 @patch('services.db_service.get_report_log')
 @patch('services.docx_generator.create_styled_docx')
@@ -38,11 +29,8 @@ def test_download_report_success(mock_create_docx, mock_get_report_log, client):
     with client.session_transaction() as sess:
         sess['_user_id'] = '1' # Simulate logged in user if using Flask-Login or similar
 
-    headers = {
-        'Authorization': 'Basic YWRtaW46ZGVmYXVsdHBhc3N3b3Jk' # admin:defaultpassword base64
-    }
-
-    response = client.post('/download_report/test_report_id', headers=headers)
+    response = client.post('/download_report/test_report_id')
+    
     
     if response.status_code == 302:
         # Follow redirect to see flash messages
@@ -57,11 +45,7 @@ def test_download_report_success(mock_create_docx, mock_get_report_log, client):
 def test_download_report_not_found(mock_get_report_log, client):
     mock_get_report_log.return_value = None
     
-    headers = {
-        'Authorization': 'Basic YWRtaW46ZGVmYXVsdHBhc3N3b3Jk'
-    }
-
-    response = client.post('/download_report/invalid_id', headers=headers)
+    response = client.post('/download_report/invalid_id')
     
     # Should redirect to index with flash message
     assert response.status_code == 302

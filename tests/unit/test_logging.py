@@ -49,7 +49,8 @@ class TestLogging(unittest.TestCase):
             document_id="doc-123",
             status="success",
             extracted_content_length=11,
-            file_type="pdf"
+            file_type="pdf",
+            extraction_method="text"
         )
         
         mock_db_service.update_report_status.assert_any_call(report_id, ReportStatus.PROCESSING)

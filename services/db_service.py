@@ -28,6 +28,10 @@ def update_report_status(
     final_report_text: Optional[str] = None,
     generation_time_seconds: Optional[float] = None,
     api_cost_usd: Optional[float] = None,
+    prompt_token_count: Optional[int] = None,
+    candidates_token_count: Optional[int] = None,
+    total_token_count: Optional[int] = None,
+    cached_content_token_count: Optional[int] = None,
 ) -> None:
     """Updates the status and other fields of a ReportLog."""
     report_log = db.session.get(ReportLog, report_log_id)
@@ -46,6 +50,14 @@ def update_report_status(
         report_log.generation_time_seconds = generation_time_seconds
     if api_cost_usd is not None:
         report_log.api_cost_usd = api_cost_usd
+    if prompt_token_count is not None:
+        report_log.prompt_token_count = prompt_token_count
+    if candidates_token_count is not None:
+        report_log.candidates_token_count = candidates_token_count
+    if total_token_count is not None:
+        report_log.total_token_count = total_token_count
+    if cached_content_token_count is not None:
+        report_log.cached_content_token_count = cached_content_token_count
 
     db.session.commit()
 

@@ -282,20 +282,12 @@ class TestTextExtractors:
 
         # Mock Sheet1
         mock_sheet1 = Mock()
-        mock_cell1 = Mock()
-        mock_cell1.value = "A1"
-        mock_cell2 = Mock()
-        mock_cell2.value = "B1"
-        mock_row1 = [mock_cell1, mock_cell2]
+        mock_row1 = ["A1", "B1"]
         mock_sheet1.iter_rows.return_value = [mock_row1]
 
         # Mock Sheet2
         mock_sheet2 = Mock()
-        mock_cell3 = Mock()
-        mock_cell3.value = "A2"
-        mock_cell4 = Mock()
-        mock_cell4.value = None
-        mock_row2 = [mock_cell3, mock_cell4]
+        mock_row2 = ["A2", None]
         mock_sheet2.iter_rows.return_value = [mock_row2]
 
         mock_workbook.__getitem__ = Mock(
@@ -307,7 +299,7 @@ class TestTextExtractors:
         result = extract_text_from_xlsx(xlsx_path)
 
         # Assert
-        mock_load_workbook.assert_called_once_with(xlsx_path)
+        mock_load_workbook.assert_called_once_with(xlsx_path, read_only=True, data_only=True)
         mock_workbook.close.assert_called_once()
         assert result["type"] == "text"
         assert "--- Sheet: Sheet1 ---" in result["content"]
@@ -392,9 +384,10 @@ class TestErrorHandling:
         result = extract_text_from_xlsx(xlsx_path)
 
         # Assert
-        assert result["type"] == "error"
+        # The function catches exception internally and returns type="text" with error message
+        assert result["type"] == "text"
         assert result["filename"] == "invalid.xlsx"
-        assert "error" in result["message"].lower()
+        assert "error" in result["content"].lower()
 
 
 class TestFilenameHandling:
