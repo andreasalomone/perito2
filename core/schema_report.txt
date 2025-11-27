@@ -123,12 +123,29 @@ Data e luogo perizia:[Data/e perizia GG/MM/AAAA]
 [FINE_DATI_GENERALI]
 
 (NOTA LLM: Includi solo i campi rilevanti per la perizia in oggetto, omettendo quelli non applicabili o non presenti nei documenti.)
-(NOTA LLM: Dettaglio Spedizione si riferisce alle merce trasportata, ovvero Si riferisce alla **totalità** della merce oggetto del trasporto, non solo quella sinistrata/danneggiata (es. si trasportavano 60 colli con 10,050 pezzi, di cui danneggiati X, inserisci in questo campo 60 colli e 10,050 pezzi). Numero colli, quantità pezzi (se applicabile), tipo di merce, valore (aggiungi: 'come da fattura n°...'), peso lordo e peso netto]
+(NOTA LLM: Dettaglio Spedizione si riferisce alle merce trasportata, ovvero Si riferisce alla **totalità** della merce oggetto del trasporto, non solo quella sinistrata/danneggiata (es. si trasportavano 60 colli con 10,050 pezzi, di cui danneggiati X, inserisci in questo campo 60 colli e 10,050 pezzi). Numero colli, quantità pezzi (se applicabile), tipo di merce, valore (aggiungi: 'come da fattura n°...'), peso lordo e peso netto)
 
 (**NOTA LLM**: I dati generali differiscono da perizia a perizia.
 - Sii intelligente a capire quale dati generali sono rilevanti per la perizia in oggetto, quali omettere, quali aggiungere, quali titoli modificare.
 - Non generare dati generali che non siano presenti nei documenti forniti.
-- IMPORTANTE:Aggiungi, rimuovi o modifica i titoli + valore dei dati generali in base ai documenti forniti, al tipo di trasporto, di sinistro, ecc.
+- IMPORTANTE:Aggiungi, rimuovi o modifica i titoli + valore dei dati generali in base ai documenti forniti, al tipo di trasporto (terrestre o marittimo), di sinistro, ecc.
+– IMPORTANTE: a partire dai documenti devi capire se si tratta di un trasporto marittimo o terrestre.
+Se è marittimo inserisci nei dati generali nella formattazione di cui sopra:
+    Vettore marittimo
+    Hbl
+    B/l
+    Nave
+    Container
+    Porto imbarco
+    Porto sbarco
+
+Se terrestre inserisci
+    Vettore contrattuale
+    Subvettore
+    Vettore effettivo
+    Targa mezzo
+    Autista
+
 - Esempi: Ecco alcuni esempi di entries per i dati generali ovvero i dati relativi alla spedizione:
     *   **Veicolo (se applicabile):**
         *   Tipo: [Es. Trattore stradale, Semirimorchio, Furgone]
