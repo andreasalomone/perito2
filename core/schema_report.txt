@@ -132,7 +132,7 @@ Data e luogo perizia:[Data/e perizia GG/MM/AAAA]
 – IMPORTANTE: a partire dai documenti devi capire se si tratta di un trasporto marittimo o terrestre.
 Se è marittimo inserisci nei dati generali nella formattazione di cui sopra:
     Vettore marittimo
-    Hbl
+    Hbl/MBL
     B/l
     Nave
     Container
