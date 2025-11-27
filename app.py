@@ -31,7 +31,7 @@ from core import logging_config
 from core.config import settings
 from core.database import db
 from core.security import auth
-from services import db_service, docx_generator, report_service
+from services import db_service, docx_generator, docx_generator_salomone, report_service
 
 load_dotenv()
 
@@ -260,8 +260,18 @@ def download_report(report_id: str) -> Union[FlaskResponse, Tuple[str, int]]:
 
         current_app.logger.info(f"Generating DOCX for ReportLog ID {report_id}")
 
+        # Determine which generator to use based on user selection
+        report_format = request.args.get("format", "bn_surveys")
+        
+        if report_format == "salomone":
+            current_app.logger.info(f"Using Salomone & Associati generator for ReportLog ID {report_id}")
+            generator_module = docx_generator_salomone
+        else:
+            current_app.logger.info(f"Using BN Surveys generator for ReportLog ID {report_id}")
+            generator_module = docx_generator
+
         # Run CPU-bound docx generation directly (WSGI workers handle concurrency)
-        file_stream: io.BytesIO = docx_generator.create_styled_docx(
+        file_stream: io.BytesIO = generator_module.create_styled_docx(
             report_content_from_db
         )
 
