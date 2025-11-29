@@ -1,26 +1,57 @@
 "use client";
-import { useState } from "react";
+
+import { useState, useRef } from "react";
 import axios from "axios";
 import { useAuth } from "@/context/AuthContext";
-import { UploadCloud, FileText, CheckCircle, Loader2, AlertCircle } from "lucide-react";
+import {
+    UploadCloud,
+    FileText,
+    CheckCircle2,
+    Loader2,
+    AlertCircle,
+    X,
+    File as FileIcon,
+    ArrowRight
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
+interface LogMessage {
+    message: string;
+    timestamp?: string;
+}
 
 export default function ReportGenerator() {
     const { getToken } = useAuth();
     const [files, setFiles] = useState<File[]>([]);
     const [status, setStatus] = useState<"idle" | "uploading" | "processing" | "completed" | "error">("idle");
+    const [progress, setProgress] = useState(0);
     const [logs, setLogs] = useState<string[]>([]);
     const [reportId, setReportId] = useState<string | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files) setFiles(Array.from(e.target.files));
+        if (e.target.files) {
+            setFiles(Array.from(e.target.files));
+            setStatus("idle");
+            setLogs([]);
+            setProgress(0);
+        }
+    };
+
+    const removeFile = (index: number) => {
+        setFiles(files.filter((_, i) => i !== index));
     };
 
     const startProcess = async () => {
         if (files.length === 0) return;
         setStatus("uploading");
-        setLogs(["Requesting upload permissions..."]);
+        setProgress(10);
+        setLogs(["Avvio sessione di caricamento sicuro..."]);
 
         try {
             const token = await getToken();
@@ -29,8 +60,9 @@ export default function ReportGenerator() {
             const originalNames: string[] = [];
 
             // 1. Direct Upload to Google Cloud Storage
+            let uploadedCount = 0;
             for (const file of files) {
-                setLogs((prev) => [...prev, `Uploading ${file.name}...`]);
+                setLogs((prev) => [...prev, `Caricamento ${file.name}...`]);
 
                 // Get Signed URL from Backend
                 const { data: signData } = await axios.post(
@@ -44,13 +76,16 @@ export default function ReportGenerator() {
                     headers: { "Content-Type": file.type },
                 });
 
-                uploadedPaths.push(signData.gcs_path); // Save the gs:// path
+                uploadedPaths.push(signData.gcs_path);
                 originalNames.push(file.name);
+                uploadedCount++;
+                setProgress(10 + (uploadedCount / files.length) * 30); // Upload is 10-40%
             }
 
             // 2. Trigger Backend Generation
-            setLogs((prev) => [...prev, "Files uploaded. Starting AI analysis..."]);
+            setLogs((prev) => [...prev, "Tutti i file caricati in modo sicuro.", "Avvio motore di analisi IA..."]);
             setStatus("processing");
+            setProgress(50);
 
             const { data: genData } = await axios.post(
                 `${API_URL}/api/reports/generate`,
@@ -61,11 +96,20 @@ export default function ReportGenerator() {
             setReportId(genData.report_id);
             pollStatus(genData.report_id, token!);
 
-        } catch (error) {
+        } catch (error: unknown) {
             console.error(error);
             setStatus("error");
-            setLogs((prev) => [...prev, "Critical Error: " + (error as any).message]);
+            const errorMessage = error instanceof Error ? error.message : "Errore sconosciuto";
+            setLogs((prev) => [...prev, "Errore Critico: " + errorMessage]);
         }
+    };
+
+    const resetState = () => {
+        setFiles([]);
+        setStatus("idle");
+        setProgress(0);
+        setLogs([]);
+        setReportId(null);
     };
 
     const pollStatus = (id: string, token: string) => {
@@ -77,101 +121,197 @@ export default function ReportGenerator() {
 
                 // Update logs from backend progress
                 if (data.progress_logs?.length > 0) {
-                    const messages = data.progress_logs.map((l: any) => l.message);
-                    // Simple way to show latest logs
+                    const messages = data.progress_logs.map((l: LogMessage) => l.message);
                     setLogs(messages);
                 }
 
                 if (data.status === "success") {
                     clearInterval(interval);
                     setStatus("completed");
+                    setProgress(100);
                 } else if (data.status === "error") {
                     clearInterval(interval);
                     setStatus("error");
-                    setLogs((prev) => [...prev, "Error: " + data.error]);
+                    setLogs((prev) => [...prev, "Errore: " + data.error]);
+                } else {
+                    // Simulate progress during processing (50-90%)
+                    setProgress((prev) => Math.min(prev + 5, 90));
                 }
-            } catch (e) {
-                console.error("Polling failed", e);
+            } catch (error: unknown) {
+                console.error("Polling failed", error);
             }
-        }, 2000); // Poll every 2s
+        }, 2000);
     };
 
     return (
-        <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-lg border border-gray-100">
-            <h2 className="text-2xl font-bold mb-6 text-gray-800">Generate New Report</h2>
+        <Card className="w-full border-border/60 shadow-lg">
+            <CardHeader>
+                <CardTitle>Nuova Analisi</CardTitle>
+                <CardDescription>Carica i tuoi file (PDF, Immagini, Excel) per generare un report.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
 
-            {/* Upload Area */}
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:bg-gray-50 transition-colors">
-                <UploadCloud className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                <input type="file" multiple onChange={handleFileChange} className="hidden" id="fileInput" />
-                <label htmlFor="fileInput" className="cursor-pointer text-blue-600 font-medium hover:underline">
-                    Click to upload
-                </label>
-                <p className="text-sm text-gray-500 mt-2">PDFs, Images, or Excel files</p>
-                {files.length > 0 && (
-                    <div className="mt-4 text-sm font-semibold text-gray-700">
-                        Selected: {files.length} files
+                {/* Upload Area */}
+                {status === "idle" || status === "uploading" ? (
+                    <div
+                        onClick={() => status === "idle" && fileInputRef.current?.click()}
+                        className={cn(
+                            "border-2 border-dashed rounded-xl p-10 text-center transition-all duration-200 ease-in-out",
+                            status === "idle"
+                                ? "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50 cursor-pointer"
+                                : "border-muted-foreground/10 bg-muted/10 cursor-default"
+                        )}
+                    >
+                        <input
+                            type="file"
+                            multiple
+                            onChange={handleFileChange}
+                            className="hidden"
+                            ref={fileInputRef}
+                            disabled={status !== "idle"}
+                        />
+                        <div className="flex flex-col items-center gap-4">
+                            <div className="p-4 bg-primary/5 rounded-full">
+                                <UploadCloud className="h-10 w-10 text-primary" />
+                            </div>
+                            <div className="space-y-1">
+                                <h3 className="font-semibold text-lg">
+                                    {files.length > 0 ? `${files.length} file selezionati` : "Clicca per caricare i file"}
+                                </h3>
+                                <p className="text-sm text-muted-foreground">
+                                    Supporto per PDF, JPG, PNG, XLSX
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
+
+                {/* File List */}
+                {files.length > 0 && status === "idle" && (
+                    <div className="space-y-2">
+                        {files.map((file, i) => (
+                            <div key={i} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border/50">
+                                <div className="flex items-center gap-3 overflow-hidden">
+                                    <FileIcon className="h-5 w-5 text-blue-500 flex-shrink-0" />
+                                    <span className="text-sm font-medium truncate">{file.name}</span>
+                                    <span className="text-xs text-muted-foreground flex-shrink-0">
+                                        ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                                    </span>
+                                </div>
+                                <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); removeFile(i); }} className="h-8 w-8 text-muted-foreground hover:text-destructive">
+                                    <X className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        ))}
                     </div>
                 )}
-            </div>
 
-            {/* Action Button */}
-            {status !== "completed" && (
-                <button
-                    onClick={startProcess}
-                    disabled={files.length === 0 || status === "uploading" || status === "processing"}
-                    className="w-full mt-6 bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-300 transition-all flex justify-center items-center gap-2"
-                >
-                    {status === "uploading" && <Loader2 className="animate-spin" />}
-                    {status === "idle" ? "Start Analysis" : status.toUpperCase()}
-                </button>
-            )}
-
-            {/* Logs / Status */}
-            {(status !== "idle") && (
-                <div className="mt-6 bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm h-48 overflow-y-auto">
-                    {logs.map((log, i) => (
-                        <div key={i} className="mb-1">{">"} {log}</div>
-                    ))}
-                    {status === "completed" && <div className="text-white font-bold mt-2">DONE. Report Ready.</div>}
-                </div>
-            )}
-
-            {/* Download Link */}
-            {status === "completed" && reportId && (
-                <div className="mt-6 p-6 bg-green-50 border border-green-200 rounded-xl flex flex-col md:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-bottom-4">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-green-100 p-2 rounded-full">
-                            <CheckCircle className="h-6 w-6 text-green-600" />
+                {/* Progress State */}
+                {status !== "idle" && status !== "completed" && (
+                    <div className="space-y-4 py-4">
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="font-medium flex items-center gap-2">
+                                {status === "uploading" ? "Caricamento file..." : "Analisi contenuto..."}
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                            </span>
+                            <span className="text-muted-foreground">{Math.round(progress)}%</span>
                         </div>
-                        <div>
-                            <h3 className="font-semibold text-green-900">Analysis Complete</h3>
-                            <p className="text-green-700 text-sm">Your professional report is ready.</p>
+                        <Progress value={progress} className="h-2" />
+
+                        {/* Terminal-like Logs */}
+                        <div className="bg-zinc-950 rounded-lg p-4 font-mono text-xs text-zinc-400 h-32 overflow-y-auto border border-zinc-800 shadow-inner">
+                            {logs.map((log, i) => (
+                                <div key={i} className="mb-1.5 flex gap-2">
+                                    <span className="text-zinc-600">{">"}</span>
+                                    <span className={i === logs.length - 1 ? "text-zinc-100" : ""}>{log}</span>
+                                </div>
+                            ))}
                         </div>
                     </div>
+                )}
 
-                    <button
-                        onClick={async () => {
-                            try {
-                                const token = await getToken();
-                                // 1. Get the secure link
-                                const { data } = await axios.get(
-                                    `${API_URL}/api/reports/${reportId}/download`,
-                                    { headers: { Authorization: `Bearer ${token}` } }
-                                );
-                                // 2. Open it
-                                window.open(data.download_url, "_blank");
-                            } catch (e) {
-                                alert("Error downloading file");
-                            }
-                        }}
-                        className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold shadow-sm transition-all"
-                    >
-                        <FileText className="h-5 w-5" />
-                        Download DOCX
-                    </button>
-                </div>
-            )}
-        </div>
+                {/* Success State */}
+                {status === "completed" && reportId && (
+                    <div className="rounded-xl border border-accent/20 bg-accent/5 p-6 flex flex-col items-center text-center gap-4 animate-in fade-in zoom-in-95 duration-300">
+                        <div className="h-12 w-12 bg-accent/10 rounded-full flex items-center justify-center">
+                            <CheckCircle2 className="h-6 w-6 text-accent" />
+                        </div>
+                        <div className="space-y-1">
+                            <h3 className="font-semibold text-xl text-foreground">Perizia completata.</h3>
+                            <p className="text-muted-foreground">Il tuo report è stato generato con successo.</p>
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-3 mt-2 w-full sm:w-auto">
+                            <Button
+                                onClick={resetState}
+                                variant="outline"
+                                size="lg"
+                                className="w-full sm:w-auto border-accent/20 text-accent hover:bg-accent/10 hover:text-accent"
+                            >
+                                Nuova Perizia
+                            </Button>
+                            <Button
+                                onClick={async () => {
+                                    try {
+                                        const token = await getToken();
+                                        const { data } = await axios.get(
+                                            `${API_URL}/api/reports/${reportId}/download`,
+                                            { headers: { Authorization: `Bearer ${token}` } }
+                                        );
+                                        window.open(data.download_url, "_blank");
+                                    } catch {
+                                        alert("Error downloading file");
+                                    }
+                                }}
+
+                                className="bg-accent hover:bg-accent/90 text-accent-foreground gap-2 w-full sm:w-auto"
+                                size="lg"
+                            >
+                                <FileText className="h-4 w-4" />
+                                Download Report
+                            </Button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Error State */}
+                {status === "error" && (
+                    <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 flex items-start gap-3 text-destructive">
+                        <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+                        <div className="text-sm">
+                            <p className="font-semibold">Generazione fallita</p>
+                            <p className="opacity-90 mt-1">
+                                {logs[logs.length - 1] || "Si è verificato un errore imprevisto."}
+                            </p>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="mt-3 border-destructive/30 hover:bg-destructive/10 text-destructive"
+                                onClick={() => setStatus("idle")}
+                            >
+                                Riprova
+                            </Button>
+                        </div>
+                    </div>
+                )}
+
+            </CardContent>
+
+            {/* Footer Actions */}
+            {
+                status === "idle" && (
+                    <CardFooter className="flex justify-end pt-2">
+                        <Button
+                            onClick={startProcess}
+                            disabled={files.length === 0}
+                            size="lg"
+                            className="w-full sm:w-auto gap-2"
+                        >
+                            Avvia Analisi
+                            <ArrowRight className="h-4 w-4" />
+                        </Button>
+                    </CardFooter>
+                )
+            }
+        </Card >
     );
 }
