@@ -1,6 +1,6 @@
 "use client";
 
-import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Loader2, Sparkles } from "lucide-react";

@@ -1,8 +1,11 @@
 "use client";
 import { useAuth } from "@/context/AuthContext";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { ShieldCheck, LayoutDashboard, FilePlus, LogOut } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export default function DashboardLayout({
     children,
@@ -11,6 +14,7 @@ export default function DashboardLayout({
 }) {
     const { user, dbUser, loading, logout } = useAuth();
     const router = useRouter();
+    const pathname = usePathname();
 
     useEffect(() => {
         if (!loading && !user) {
@@ -19,42 +23,72 @@ export default function DashboardLayout({
     }, [user, loading, router]);
 
     if (loading) {
-        return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+        return <div className="min-h-screen flex items-center justify-center bg-background text-muted-foreground">Caricamento...</div>;
     }
 
     if (!user) {
-        return null; // Will redirect
+        return null;
     }
 
+    const navItems = [
+        { href: "/dashboard", label: "I Miei Report", icon: LayoutDashboard },
+        { href: "/dashboard/create", label: "Nuova Perizia", icon: FilePlus },
+    ];
+
     return (
-        <div className="min-h-screen bg-gray-50 flex">
+        <div className="min-h-screen bg-muted/30 flex">
             {/* Sidebar */}
-            <aside className="w-64 bg-white border-r border-gray-200 hidden md:block">
-                <div className="p-6">
-                    <h1 className="text-2xl font-bold text-blue-600">RobotPerizia</h1>
-                    <p className="text-xs text-gray-500 mt-1">{dbUser?.email}</p>
+            <aside className="w-64 bg-card border-r border-border hidden md:flex flex-col">
+                <div className="p-6 border-b border-border/50">
+                    <div className="flex items-center gap-2 mb-1">
+                        <div className="bg-primary text-primary-foreground p-1 rounded">
+                            <ShieldCheck className="h-5 w-5" />
+                        </div>
+                        <h1 className="text-xl font-bold tracking-tight">PeritoAI</h1>
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate" title={dbUser?.email || user.email || ""}>
+                        {dbUser?.email || user.email}
+                    </p>
                 </div>
-                <nav className="mt-6 px-4 space-y-2">
-                    <Link href="/dashboard" className="block px-4 py-2 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-md">
-                        Reports
-                    </Link>
-                    <Link href="/dashboard/create" className="block px-4 py-2 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-md">
-                        New Report
-                    </Link>
+
+                <nav className="flex-1 p-4 space-y-1">
+                    {navItems.map((item) => {
+                        const isActive = pathname === item.href;
+                        return (
+                            <Link
+                                key={item.href}
+                                href={item.href}
+                                className={cn(
+                                    "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                                    isActive
+                                        ? "bg-primary/10 text-primary"
+                                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                )}
+                            >
+                                <item.icon className="h-4 w-4" />
+                                {item.label}
+                            </Link>
+                        );
+                    })}
                 </nav>
-                <div className="absolute bottom-0 w-64 p-4 border-t border-gray-200">
-                    <button
+
+                <div className="p-4 border-t border-border/50">
+                    <Button
+                        variant="ghost"
                         onClick={() => logout()}
-                        className="w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-md text-left"
+                        className="w-full justify-start gap-3 text-destructive hover:text-destructive hover:bg-destructive/10"
                     >
-                        Sign Out
-                    </button>
+                        <LogOut className="h-4 w-4" />
+                        Esci
+                    </Button>
                 </div>
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 p-8">
-                {children}
+            <main className="flex-1 p-8 overflow-y-auto">
+                <div className="max-w-5xl mx-auto">
+                    {children}
+                </div>
             </main>
         </div>
     );

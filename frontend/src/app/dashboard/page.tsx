@@ -2,6 +2,10 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { FileText, Download, Plus, Calendar, Loader2 } from "lucide-react";
 
 interface Report {
     id: string;
@@ -28,7 +32,11 @@ export default function DashboardPage() {
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    setReports(data);
+                    // Sort by created_at desc
+                    const sorted = data.sort((a: Report, b: Report) =>
+                        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+                    );
+                    setReports(sorted);
                 }
             } catch (error) {
                 console.error("Failed to fetch reports", error);
@@ -40,70 +48,103 @@ export default function DashboardPage() {
         fetchReports();
     }, [getToken]);
 
-    if (loading) return <div>Loading reports...</div>;
+    const getStatusBadge = (status: string) => {
+        switch (status) {
+            case "success":
+                return <Badge variant="success">Completato</Badge>;
+            case "error":
+                return <Badge variant="destructive">Errore</Badge>;
+            case "processing":
+                return <Badge variant="secondary" className="animate-pulse">In Corso</Badge>;
+            default:
+                return <Badge variant="outline">{status}</Badge>;
+        }
+    };
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        );
+    }
 
     return (
-        <div>
-            <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
-                <Link href="/dashboard/create" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-                    Create New Report
+        <div className="space-y-8">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight">I Miei Report</h1>
+                    <p className="text-muted-foreground">Gestisci e scarica le tue perizie generate.</p>
+                </div>
+                <Link href="/dashboard/create">
+                    <Button className="gap-2 shadow-lg shadow-primary/20">
+                        <Plus className="h-4 w-4" />
+                        Nuova Perizia
+                    </Button>
                 </Link>
             </div>
 
-            <div className="bg-white shadow overflow-hidden sm:rounded-md">
-                <ul className="divide-y divide-gray-200">
-                    {reports.length === 0 ? (
-                        <li className="px-6 py-4 text-center text-gray-500">
-                            No reports found. Create your first one!
-                        </li>
-                    ) : (
-                        reports.map((report) => (
-                            <li key={report.id}>
-                                <div className="px-4 py-4 sm:px-6">
-                                    <div className="flex items-center justify-between">
-                                        <p className="text-sm font-medium text-blue-600 truncate">
-                                            Report {report.id.slice(0, 8)}...
-                                        </p>
-                                        <div className="ml-2 flex-shrink-0 flex">
-                                            <p className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${report.status === 'success' ? 'bg-green-100 text-green-800' :
-                                                    report.status === 'error' ? 'bg-red-100 text-red-800' :
-                                                        'bg-yellow-100 text-yellow-800'
-                                                }`}>
-                                                {report.status}
-                                            </p>
-                                        </div>
+            {reports.length === 0 ? (
+                <Card className="border-dashed border-2 bg-muted/10">
+                    <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                        <div className="p-4 bg-muted rounded-full mb-4">
+                            <FileText className="h-8 w-8 text-muted-foreground" />
+                        </div>
+                        <h3 className="text-lg font-semibold">Nessun report trovato</h3>
+                        <p className="text-muted-foreground mb-6 max-w-sm">
+                            Non hai ancora generato nessuna perizia. Inizia caricando i documenti per il tuo primo caso.
+                        </p>
+                        <Link href="/dashboard/create">
+                            <Button variant="outline">Crea la tua prima perizia</Button>
+                        </Link>
+                    </CardContent>
+                </Card>
+            ) : (
+                <div className="grid gap-4">
+                    {reports.map((report) => (
+                        <Card key={report.id} className="overflow-hidden transition-all hover:shadow-md hover:border-primary/20">
+                            <div className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-3">
+                                        <h3 className="font-semibold text-lg flex items-center gap-2">
+                                            <FileText className="h-4 w-4 text-primary" />
+                                            Report #{report.id.slice(0, 8)}
+                                        </h3>
+                                        {getStatusBadge(report.status)}
                                     </div>
-                                    <div className="mt-2 sm:flex sm:justify-between">
-                                        <div className="sm:flex">
-                                            <p className="flex items-center text-sm text-gray-500">
-                                                Created on {new Date(report.created_at).toLocaleDateString()}
-                                            </p>
-                                        </div>
-                                        <div className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
-                                            {report.status === 'success' && (
-                                                <button
-                                                    onClick={async () => {
-                                                        const token = await getToken();
-                                                        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/reports/${report.id}/download`, {
-                                                            headers: { Authorization: `Bearer ${token}` }
-                                                        });
-                                                        const data = await res.json();
-                                                        if (data.download_url) window.open(data.download_url, '_blank');
-                                                    }}
-                                                    className="text-blue-600 hover:text-blue-900"
-                                                >
-                                                    Download
-                                                </button>
-                                            )}
-                                        </div>
+                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                        <Calendar className="h-3.5 w-3.5" />
+                                        <span>Creato il {new Date(report.created_at).toLocaleDateString("it-IT", {
+                                            day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                                        })}</span>
                                     </div>
                                 </div>
-                            </li>
-                        ))
-                    )}
-                </ul>
-            </div>
+
+                                <div className="flex items-center gap-2">
+                                    {report.status === 'success' && (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="gap-2 border-primary/20 text-primary hover:bg-primary/5 hover:text-primary"
+                                            onClick={async () => {
+                                                const token = await getToken();
+                                                const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/reports/${report.id}/download`, {
+                                                    headers: { Authorization: `Bearer ${token}` }
+                                                });
+                                                const data = await res.json();
+                                                if (data.download_url) window.open(data.download_url, '_blank');
+                                            }}
+                                        >
+                                            <Download className="h-4 w-4" />
+                                            Scarica DOCX
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
+                        </Card>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
