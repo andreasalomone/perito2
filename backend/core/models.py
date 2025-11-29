@@ -10,6 +10,10 @@ from sqlalchemy.orm import relationship
 # Note: We use absolute import assuming running from 'backend/' root
 from database import Base
 
+class UserRole(enum.Enum):
+    ADMIN = "admin"
+    MEMBER = "member"
+
 class ReportStatus(enum.Enum):
     SUCCESS = "success"
     ERROR = "error"
@@ -21,6 +25,35 @@ class ExtractionStatus(enum.Enum):
     SKIPPED = "skipped"
     PROCESSING = "processing"
 
+class Organization(Base):
+    __tablename__ = "organization"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    users = relationship("User", back_populates="organization")
+    reports = relationship("ReportLog", back_populates="organization")
+
+    def __repr__(self):
+        return f"<Organization(id={self.id}, name='{self.name}')>"
+
+class User(Base):
+    __tablename__ = "user"
+
+    id = Column(String(128), primary_key=True) # Firebase UID
+    email = Column(String(255), nullable=False, unique=True)
+    organization_id = Column(String(36), ForeignKey("organization.id"), nullable=False)
+    role = Column(Enum(UserRole), default=UserRole.ADMIN)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    organization = relationship("Organization", back_populates="users")
+
+    def __repr__(self):
+        return f"<User(id={self.id}, email='{self.email}', org={self.organization_id})>"
+
 class ReportLog(Base):
     __tablename__ = "report_log"
 
@@ -29,6 +62,7 @@ class ReportLog(Base):
     # --- NEW: Multi-tenancy Field ---
     # Stores the Firebase UID (User ID) to secure data access
     user_id = Column(String(128), nullable=False, index=True) 
+    organization_id = Column(String(36), ForeignKey("organization.id"), nullable=True) # Made nullable for migration, but should be populated
     
     created_at = Column(DateTime, default=datetime.utcnow)
     status = Column(Enum(ReportStatus), nullable=False, default=ReportStatus.PROCESSING)
@@ -57,6 +91,7 @@ class ReportLog(Base):
 
     # Relationships
     documents = relationship("DocumentLog", back_populates="report", cascade="all, delete-orphan")
+    organization = relationship("Organization", back_populates="reports")
 
     def __repr__(self):
         return f"<ReportLog(id={self.id}, user={self.user_id}, status='{self.status}')>"

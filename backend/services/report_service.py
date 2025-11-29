@@ -69,7 +69,10 @@ async def generate_report_logic(report_id: str, user_id: str, file_paths: list, 
         
         # 5. Upload Result
         bucket_name = settings.STORAGE_BUCKET_NAME
-        blob_name = f"reports/{user_id}/{report_id}/Perizia_Finale.docx"
+        
+        # Use organization_id for storage path if available, else fallback to user_id
+        storage_scope = report.organization_id if report.organization_id else user_id
+        blob_name = f"reports/{storage_scope}/{report_id}/Perizia_Finale.docx"
         
         storage_client = get_storage_client()
         bucket = storage_client.bucket(bucket_name)

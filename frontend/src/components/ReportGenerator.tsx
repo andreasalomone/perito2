@@ -269,6 +269,13 @@ export default function ReportGenerator() {
                                 <FileText className="h-4 w-4" />
                                 Download Report
                             </Button>
+                            <Button
+                                onClick={() => window.location.href = "/dashboard"}
+                                variant="ghost"
+                                className="w-full sm:w-auto"
+                            >
+                                Vai alla Dashboard
+                            </Button>
                         </div>
                     </div>
                 )}

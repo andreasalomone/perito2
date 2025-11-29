@@ -38,12 +38,14 @@ def get_upload_url(
     """
     Step 1: Frontend requests a secure URL to upload a file.
     """
-    user_id = current_user['uid']
+    organization_id = current_user.get('organization_id')
+    if not organization_id:
+        raise HTTPException(status_code=400, detail="User not assigned to an organization")
     
     # Generate unique filename to avoid overwrites
     safe_filename = f"{uuid.uuid4()}_{req.filename}"
     
-    data = generate_upload_signed_url(safe_filename, req.content_type, user_id)
+    data = generate_upload_signed_url(safe_filename, req.content_type, organization_id)
     return data
 
 import os
@@ -59,12 +61,18 @@ async def trigger_generation(
     Step 2: Frontend confirms files are uploaded and starts processing.
     """
     user_id = current_user['uid']
+    organization_id = current_user.get('organization_id')
+    
+    if not organization_id:
+        raise HTTPException(status_code=400, detail="User not assigned to an organization. Please refresh.")
+
     report_id = str(uuid.uuid4())
 
     # 1. Create ReportLog entry (Status: PROCESSING)
     new_report = ReportLog(
         id=report_id,
         user_id=user_id,
+        organization_id=organization_id,
         status=ReportStatus.PROCESSING,
         created_at=datetime.utcnow(),
         current_step="queued"
@@ -152,7 +160,11 @@ def check_status(
         raise HTTPException(status_code=404, detail="Report not found")
         
     # Security: Ensure user owns this report
-    if report.user_id != current_user['uid']:
+    # Security: Ensure user belongs to the same organization
+    # We allow any member of the org to see the report
+    user_org_id = current_user.get('organization_id')
+    
+    if not user_org_id or report.organization_id != user_org_id:
         raise HTTPException(status_code=403, detail="Not authorized")
         
     return {
@@ -178,7 +190,10 @@ def download_report(
         raise HTTPException(status_code=404, detail="Report not found")
         
     # Security Check
-    if report.user_id != current_user['uid']:
+    # Security Check
+    user_org_id = current_user.get('organization_id')
+    
+    if not user_org_id or report.organization_id != user_org_id:
         raise HTTPException(status_code=403, detail="Not authorized")
         
     if report.status != ReportStatus.SUCCESS or not report.final_docx_path:
@@ -188,3 +203,29 @@ def download_report(
     download_url = generate_download_signed_url(report.final_docx_path)
     
     return {"download_url": download_url}
+
+class ReportSummary(BaseModel):
+    id: str
+    status: str
+    created_at: datetime
+    final_docx_path: str | None = None
+    
+    class Config:
+        from_attributes = True
+
+@router.get("/", response_model=List[ReportSummary])
+def list_reports(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Step 5: List all reports for the user's organization.
+    """
+    user_org_id = current_user.get('organization_id')
+    
+    if not user_org_id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+        
+    reports = db.query(ReportLog).filter(ReportLog.organization_id == user_org_id).order_by(ReportLog.created_at.desc()).all()
+    
+    return reports

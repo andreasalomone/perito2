@@ -8,7 +8,7 @@ def get_storage_client():
 def generate_upload_signed_url(
     filename: str, 
     content_type: str, 
-    user_id: str
+    organization_id: str
 ) -> dict:
     """
     Generates a secure V4 Signed URL. 
@@ -17,9 +17,9 @@ def generate_upload_signed_url(
     client = get_storage_client()
     bucket = client.bucket(settings.STORAGE_BUCKET_NAME)
     
-    # Organize files by user_id to prevent collisions
-    # Example: uploads/user_123/2025-11-29_report.pdf
-    blob_name = f"uploads/{user_id}/{filename}"
+    # Organize files by organization_id to prevent collisions and separate tenant data
+    # Example: uploads/org_123/2025-11-29_report.pdf
+    blob_name = f"uploads/{organization_id}/{filename}"
     blob = bucket.blob(blob_name)
 
     # Generate the URL

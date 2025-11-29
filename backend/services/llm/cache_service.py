@@ -8,7 +8,7 @@ from typing import Optional
 
 from google import genai
 from google.api_core import exceptions as google_exceptions
-from google.genai import types
+from google.genai import types, errors
 from tenacity import (
     RetryError,
     retry,
@@ -159,6 +159,16 @@ def get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
             logger.warning(
                 f"Existing cache {existing_cache_name} not found (404). Will create a new one."
             )
+        except errors.ClientError as e:
+            if e.code in (403, 404):
+                logger.warning(
+                    f"Existing cache {existing_cache_name} not found or permission denied ({e.code}). Will create a new one."
+                )
+            else:
+                logger.error(
+                    f"ClientError retrieving cache {existing_cache_name}: {e}. Will attempt to create a new one.",
+                    exc_info=True,
+                )
         except RetryError as re:
             logger.error(
                 f"Failed to retrieve cache {existing_cache_name} after multiple retries: {re}. Will attempt to create a new one.",

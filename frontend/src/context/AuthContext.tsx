@@ -3,8 +3,16 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged, User, signInWithPopup, signOut } from "firebase/auth";
 import { auth, googleProvider } from "@/lib/firebase";
 
+interface DBUser {
+    id: string;
+    email: string;
+    organization_id: string;
+    role: string;
+}
+
 interface AuthContextType {
     user: User | null;
+    dbUser: DBUser | null;
     loading: boolean;
     login: () => Promise<void>;
     logout: () => Promise<void>;
@@ -15,11 +23,38 @@ const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
+    const [dbUser, setDbUser] = useState<DBUser | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-            setUser(user);
+        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+            setUser(firebaseUser);
+
+            if (firebaseUser) {
+                try {
+                    const token = await firebaseUser.getIdToken();
+                    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/sync`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        setDbUser(data);
+                    } else {
+                        console.error("Failed to sync user");
+                        setDbUser(null);
+                    }
+                } catch (error) {
+                    console.error("Error syncing user:", error);
+                    setDbUser(null);
+                }
+            } else {
+                setDbUser(null);
+            }
+
             setLoading(false);
         });
         return () => unsubscribe();
@@ -31,6 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const logout = async () => {
         await signOut(auth);
+        setDbUser(null);
     };
 
     const getToken = async () => {
@@ -38,7 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     return (
-        <AuthContext.Provider value={{ user, loading, login, logout, getToken }}>
+        <AuthContext.Provider value={{ user, dbUser, loading, login, logout, getToken }}>
             {!loading && children}
         </AuthContext.Provider>
     );

@@ -10,7 +10,7 @@ from config import settings
 from core.models import ReportLog, DocumentLog
 
 # Import routers
-from routes import reports, tasks
+from routes import reports, tasks, auth
 
 app = FastAPI(
     title="RobotPerizia API",
@@ -34,3 +34,4 @@ def health_check():
 # Include Routers
 app.include_router(reports.router, prefix="/api/reports", tags=["Reports"])
 app.include_router(tasks.router, prefix="/tasks", tags=["Cloud Tasks"])
+app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
