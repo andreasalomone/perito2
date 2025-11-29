@@ -1,0 +1,88 @@
+import enum
+import uuid
+from datetime import datetime
+from typing import List, Optional
+
+from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, Integer, String, Text, JSON
+from sqlalchemy.orm import relationship
+
+# Import Base from your new database configuration
+# Note: We use absolute import assuming running from 'backend/' root
+from database import Base
+
+class ReportStatus(enum.Enum):
+    SUCCESS = "success"
+    ERROR = "error"
+    PROCESSING = "processing"
+
+class ExtractionStatus(enum.Enum):
+    SUCCESS = "success"
+    ERROR = "error"
+    SKIPPED = "skipped"
+    PROCESSING = "processing"
+
+class ReportLog(Base):
+    __tablename__ = "report_log"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    
+    # --- NEW: Multi-tenancy Field ---
+    # Stores the Firebase UID (User ID) to secure data access
+    user_id = Column(String(128), nullable=False, index=True) 
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    status = Column(Enum(ReportStatus), nullable=False, default=ReportStatus.PROCESSING)
+    
+    generation_time_seconds = Column(Float, nullable=True)
+    api_cost_usd = Column(Float, nullable=True)
+    error_message = Column(Text, nullable=True)
+
+    # Real-time progress tracking
+    # Changed db.JSON to standard sqlalchemy JSON
+    progress_logs = Column(JSON, default=list) 
+    current_step = Column(String(50), default="queued")
+
+    # Token usage details
+    prompt_token_count = Column(Integer, nullable=True)
+    candidates_token_count = Column(Integer, nullable=True)
+    total_token_count = Column(Integer, nullable=True)
+    cached_content_token_count = Column(Integer, nullable=True)
+
+    # Content
+    llm_raw_response = Column(Text, nullable=True)
+    final_report_text = Column(Text, nullable=True)
+    
+    # Link to the final DOCX in Cloud Storage (Optional, good for history)
+    final_docx_path = Column(String(1024), nullable=True)
+
+    # Relationships
+    documents = relationship("DocumentLog", back_populates="report", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<ReportLog(id={self.id}, user={self.user_id}, status='{self.status}')>"
+
+class DocumentLog(Base):
+    __tablename__ = "document_log"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    report_id = Column(String(36), ForeignKey("report_log.id"), nullable=False)
+
+    original_filename = Column(String(255), nullable=False)
+    
+    # This will now store the 'gs://' path or the blob name
+    stored_filepath = Column(String(1024), nullable=False) 
+    
+    file_size_bytes = Column(Integer, nullable=False)
+
+    # Tracking
+    extraction_status = Column(Enum(ExtractionStatus), default=ExtractionStatus.PROCESSING)
+    extracted_content_length = Column(Integer, default=0)
+    error_message = Column(Text, nullable=True)
+    file_type = Column(String(50), nullable=True)
+    extraction_method = Column(String(50), nullable=True)
+
+    # Relationships
+    report = relationship("ReportLog", back_populates="documents")
+
+    def __repr__(self):
+        return f"<DocumentLog(id={self.id}, filename='{self.original_filename}')>"
