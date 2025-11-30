@@ -122,10 +122,8 @@ async def generate_with_retry(
 
     return response
 
-    return response
 
-
-def calculate_cost(usage_metadata: Any) -> float:
+def calculate_cost(usage_metadata: Any, pricing_config: Any = None) -> float:
     """Calculates the cost of the generation in USD based on token usage.
 
     Pricing (Gemini 2.5 Pro):
@@ -135,6 +133,7 @@ def calculate_cost(usage_metadata: Any) -> float:
 
     Args:
         usage_metadata: The usage metadata object from the LLM response.
+        pricing_config: Optional PricingConfig object or dict with pricing details.
 
     Returns:
         The calculated cost in USD.
@@ -146,15 +145,31 @@ def calculate_cost(usage_metadata: Any) -> float:
     candidates_token_count = getattr(usage_metadata, "candidates_token_count", 0)
     # Note: total_token_count is prompt + candidates
 
+    # Determine prices (Default to settings)
+    p_in_t1 = settings.PRICE_INPUT_TIER_1
+    p_in_t2 = settings.PRICE_INPUT_TIER_2
+    p_out_t1 = settings.PRICE_OUTPUT_TIER_1
+    p_out_t2 = settings.PRICE_OUTPUT_TIER_2
+    
+    # Override with dynamic config if available
+    if pricing_config:
+        # Handle SQLAlchemy model or dict
+        get_val = lambda k: getattr(pricing_config, k, None) if not isinstance(pricing_config, dict) else pricing_config.get(k)
+        
+        if get_val('price_input_tier_1') is not None: p_in_t1 = get_val('price_input_tier_1')
+        if get_val('price_input_tier_2') is not None: p_in_t2 = get_val('price_input_tier_2')
+        if get_val('price_output_tier_1') is not None: p_out_t1 = get_val('price_output_tier_1')
+        if get_val('price_output_tier_2') is not None: p_out_t2 = get_val('price_output_tier_2')
+
     # Determine pricing tier based on prompt size (this is a simplification,
     # as tier usually applies to the request size, but for cost estimation this is close)
     # Actually, the pricing page says "prompts <= 200k tokens".
 
     # Input Cost
     if prompt_token_count <= 200000:
-        input_cost = (prompt_token_count / 1_000_000) * settings.PRICE_INPUT_TIER_1
+        input_cost = (prompt_token_count / 1_000_000) * p_in_t1
     else:
-        input_cost = (prompt_token_count / 1_000_000) * settings.PRICE_INPUT_TIER_2
+        input_cost = (prompt_token_count / 1_000_000) * p_in_t2
 
     # Output Cost
     if (
@@ -165,11 +180,11 @@ def calculate_cost(usage_metadata: Any) -> float:
         # or simply that the "prompts <= 200k" condition applies to the rate selection.
         output_cost = (
             candidates_token_count / 1_000_000
-        ) * settings.PRICE_OUTPUT_TIER_1
+        ) * p_out_t1
     else:
         output_cost = (
             candidates_token_count / 1_000_000
-        ) * settings.PRICE_OUTPUT_TIER_2
+        ) * p_out_t2
 
     # Cache Cost (if applicable)
     # We don't have explicit "cached_token_count" in standard usage_metadata usually,

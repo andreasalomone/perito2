@@ -132,7 +132,15 @@ export default function DashboardPage() {
                                                     headers: { Authorization: `Bearer ${token}` }
                                                 });
                                                 const data = await res.json();
-                                                if (data.download_url) window.open(data.download_url, '_blank');
+                                                if (data.download_url) {
+                                                    const link = document.createElement('a');
+                                                    link.href = data.download_url;
+                                                    link.target = '_blank';
+                                                    link.rel = 'noopener noreferrer';
+                                                    document.body.appendChild(link);
+                                                    link.click();
+                                                    document.body.removeChild(link);
+                                                }
                                             }}
                                         >
                                             <Download className="h-4 w-4" />

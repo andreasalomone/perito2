@@ -45,6 +45,7 @@ gcloud run deploy robotperizia-backend \
   --region $REGION \
   --project $PROJECT_ID \
   --allow-unauthenticated \
+  --memory 2Gi \
   --set-env-vars="GOOGLE_CLOUD_PROJECT=$PROJECT_ID" \
   --set-env-vars="GOOGLE_CLOUD_REGION=$REGION" \
   --set-env-vars="CLOUD_SQL_CONNECTION_NAME=$DB_CONNECTION" \

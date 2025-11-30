@@ -121,3 +121,26 @@ class DocumentLog(Base):
 
     def __repr__(self):
         return f"<DocumentLog(id={self.id}, filename='{self.original_filename}')>"
+
+class PricingConfig(Base):
+    __tablename__ = "pricing_config"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    active = Column(Integer, default=1) # 1 = active, 0 = inactive
+    
+    # Input Prices (per 1M tokens)
+    price_input_tier_1 = Column(Float, default=1.25) # <= 128k
+    price_input_tier_2 = Column(Float, default=2.50) # > 128k
+    
+    # Output Prices (per 1M tokens)
+    price_output_tier_1 = Column(Float, default=3.75) # <= 128k
+    price_output_tier_2 = Column(Float, default=7.50) # > 128k
+    
+    # Cache Prices (per 1M tokens)
+    price_cache_tier_1 = Column(Float, default=0.30)
+    price_cache_tier_2 = Column(Float, default=0.60)
+    
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<PricingConfig(id={self.id}, active={self.active})>"

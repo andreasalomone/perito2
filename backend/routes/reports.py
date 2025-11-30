@@ -12,6 +12,9 @@ from config import settings
 from deps import get_current_user
 from services.gcs_service import generate_upload_signed_url, generate_download_signed_url
 from core.models import ReportLog, ReportStatus, DocumentLog, ExtractionStatus 
+
+import logging
+logger = logging.getLogger(__name__) 
 # Note: Ensure you moved your models.py to backend/core/models.py
 
 router = APIRouter()
@@ -100,13 +103,13 @@ async def trigger_generation(
     # 3. Dispatch Logic
     if settings.RUN_LOCALLY:
         # --- LOCAL DEV PATH (Synchronous) ---
-        print(f"⚠️ Running task locally for report {report_id}")
+        logger.warning(f"⚠️ Running task locally for report {report_id}")
         # Run the logic immediately in the background (using FastAPI background tasks would be better, 
         # but awaiting here is fine for testing)
         try:
             await generate_report_logic(report_id, user_id, req.file_paths, db)
         except Exception as e:
-            print(f"Error during local execution: {e}")
+            logger.error(f"Error during local execution: {e}")
             # We don't raise HTTP exception here because we already returned 200 technically, 
             # but since we are awaiting, the frontend will see the error.
             raise HTTPException(status_code=500, detail=str(e))

@@ -3,21 +3,28 @@ import uuid
 import shutil
 import tempfile
 import pathlib
+import asyncio
+import logging
 from datetime import datetime
 from sqlalchemy.orm import Session
 
-from core.models import ReportLog, ReportStatus
+from core.models import ReportLog, ReportStatus, PricingConfig
 from services.gcs_service import download_file_to_temp, get_storage_client
 from config import settings
 from services import document_processor, llm_handler, docx_generator
+
+logger = logging.getLogger(__name__)
 
 async def generate_report_logic(report_id: str, user_id: str, file_paths: list, db: Session):
     # 1. Setup - Get Report Record
     report = db.query(ReportLog).filter(ReportLog.id == report_id).first()
     if not report:
-        print("Report not found in DB")
+        logger.error(f"Report {report_id} not found in DB")
         return
 
+    # Fetch Pricing Config
+    pricing_config = db.query(PricingConfig).filter(PricingConfig.active == 1).first()
+    
     # Update status
     report.status = ReportStatus.PROCESSING
     report.current_step = "processing_files"
@@ -42,16 +49,13 @@ async def generate_report_logic(report_id: str, user_id: str, file_paths: list, 
             local_filename = f"file_{idx}_{uuid.uuid4()}{suffix}"
             local_path = os.path.join(tmp_dir, local_filename)
             
-            print(f"Downloading {gcs_path} to {local_path}...")
-            download_file_to_temp(gcs_path, local_path)
+            logger.info(f"Downloading {gcs_path} to {local_path}...")
+            # Run blocking download in thread
+            await asyncio.to_thread(download_file_to_temp, gcs_path, local_path)
             
-            # Run extraction
-            processed = document_processor.process_uploaded_file(local_path, tmp_dir)
-            
-            if isinstance(processed, list):
-                processed_data_for_llm.extend(processed)
-            else:
-                processed_data_for_llm.append(processed)
+            # Run blocking extraction in thread
+            processed = await asyncio.to_thread(document_processor.process_uploaded_file, local_path, tmp_dir)
+            processed_data_for_llm.extend(processed)
 
         # 3. Generate with Gemini
         report.current_step = "generating_ai"
@@ -59,13 +63,16 @@ async def generate_report_logic(report_id: str, user_id: str, file_paths: list, 
         report.progress_logs = current_logs + [{"timestamp": str(datetime.now()), "message": "Generazione testo con Gemini 2.5..."}]
         db.commit()
         
+        # This is already async
         report_text, cost, token_usage = await llm_handler.generate_report_from_content(
-            processed_files=processed_data_for_llm
+            processed_files=processed_data_for_llm,
+            pricing_config=pricing_config
         )
 
         # 4. Generate DOCX
-        print("Generating DOCX...")
-        docx_stream = docx_generator.create_styled_docx(report_text)
+        logger.info("Generating DOCX...")
+        # Run blocking DOCX generation in thread
+        docx_stream = await asyncio.to_thread(docx_generator.create_styled_docx, report_text)
         
         # 5. Upload Result
         bucket_name = settings.STORAGE_BUCKET_NAME
@@ -74,13 +81,15 @@ async def generate_report_logic(report_id: str, user_id: str, file_paths: list, 
         storage_scope = report.organization_id if report.organization_id else user_id
         blob_name = f"reports/{storage_scope}/{report_id}/Perizia_Finale.docx"
         
-        storage_client = get_storage_client()
-        bucket = storage_client.bucket(bucket_name)
-        blob = bucket.blob(blob_name)
-        blob.upload_from_file(docx_stream, content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-        
-        # Construct proper Authenticated URL or Storage Path
-        final_docx_path = f"gs://{bucket_name}/{blob_name}"
+        def upload_blob():
+            storage_client = get_storage_client()
+            bucket = storage_client.bucket(bucket_name)
+            blob = bucket.blob(blob_name)
+            blob.upload_from_file(docx_stream, content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            return f"gs://{bucket_name}/{blob_name}"
+
+        # Run blocking upload in thread
+        final_docx_path = await asyncio.to_thread(upload_blob)
 
         # 6. Save Success
         report.status = ReportStatus.SUCCESS
@@ -94,10 +103,10 @@ async def generate_report_logic(report_id: str, user_id: str, file_paths: list, 
         report.progress_logs = final_logs
         
         db.commit()
-        print("✅ Report generation completed successfully.")
+        logger.info("✅ Report generation completed successfully.")
 
     except Exception as e:
-        print(f"❌ Error during generation: {e}")
+        logger.error(f"❌ Error during generation: {e}", exc_info=True)
         report.status = ReportStatus.ERROR
         report.error_message = str(e)
         db.commit()

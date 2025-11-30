@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 
-from core.config import settings
+from config import settings
 from core.service_result import ServiceMessage, ServiceResult
 
 from . import document_processor
@@ -81,31 +81,21 @@ def process_file_from_path(
     result = ServiceResult(success=True)
 
     try:
-        processed_info: Union[Dict[str, Any], List[Dict[str, Any]]] = (
-            document_processor.process_uploaded_file(
-                filepath, os.path.dirname(filepath)
-            )
+        processed_parts = document_processor.process_uploaded_file(
+            filepath, os.path.dirname(filepath)
         )
-
-        parts_to_process: List[Dict[str, Any]] = []
-        was_eml = isinstance(processed_info, list)
-        if was_eml:
-            if processed_info:
-                parts_to_process.extend(processed_info)
-        elif isinstance(processed_info, dict):
-            parts_to_process.append(processed_info)
 
         temp_processed_file_data_list_for_this_file: List[Dict[str, Any]] = []
         current_length_for_this_file_processing = current_total_extracted_text_length
 
-        for part in parts_to_process:
+        for part in processed_parts:
             part_type = part.get("type")
             part_filename = part.get("filename", original_filename)
 
             if part_type in ["error", "unsupported"]:
                 processed_entries.append(part)
             elif part_type == "text" and part.get("content"):
-                source_desc = f"from {original_filename}" if was_eml else "file content"
+                source_desc = f"from {original_filename}"
 
                 (
                     temp_processed_file_data_list_for_this_file,
@@ -123,6 +113,13 @@ def process_file_from_path(
 
             elif part_type == "vision":
                 processed_entries.append(part)
+            
+            # Handle attachment references if any (from our new storage logic)
+            elif part_type == "attachment_reference":
+                # For now, just log or ignore, or add to processed entries if the frontend can handle it
+                # The frontend likely expects "text", "vision", "error", "unsupported".
+                # Let's treat it as "unsupported" or just skip for now to avoid breaking things.
+                pass
 
         processed_entries.extend(temp_processed_file_data_list_for_this_file)
         text_length_added_by_this_file = (

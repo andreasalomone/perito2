@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     
     # Local or Not
     RUN_LOCALLY: bool = False  # Default to False (Production)
+    
+    # CORS Settings
+    # In production, this should be the Cloud Run URL of the frontend
+    FRONTEND_URL: str = "*"
 
     # Security
     # In production (Cloud Run), Firebase credentials are auto-detected via IAM.

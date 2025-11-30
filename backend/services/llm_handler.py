@@ -20,7 +20,9 @@ logger = logging.getLogger(__name__)
 
 
 async def generate_report_from_content(
-    processed_files: List[Dict[str, Any]], additional_text: str = ""
+    processed_files: List[Dict[str, Any]], 
+    additional_text: str = "",
+    pricing_config: Any = None
 ) -> Tuple[str, float, Dict[str, int]]:
     """Generate an insurance report using Google Gemini with multimodal content and context caching.
 
@@ -37,6 +39,7 @@ async def generate_report_from_content(
         processed_files: List of processed file information dictionaries containing
             file type, path, content, and metadata.
         additional_text: Optional additional text to include in the prompt.
+        pricing_config: Optional PricingConfig object (SQLAlchemy model) or dict.
 
     Returns:
         The generated report content as a string, or an error message starting with "Error:".
@@ -202,7 +205,7 @@ async def generate_report_from_content(
 
         # Calculate cost
         usage_metadata = getattr(response, "usage_metadata", None)
-        api_cost_usd = generation_service.calculate_cost(usage_metadata)
+        api_cost_usd = generation_service.calculate_cost(usage_metadata, pricing_config)
 
         # Extract token counts
         token_usage = {

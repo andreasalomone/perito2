@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import lifespan
 from config import settings
-from core.models import ReportLog, DocumentLog
+from core.models import ReportLog, DocumentLog, PricingConfig
 
 # Import routers
 from routes import reports, tasks, auth
@@ -21,7 +21,7 @@ app = FastAPI(
 # In production, replace "*" with your actual Cloud Run Frontend URL
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=[settings.FRONTEND_URL], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
