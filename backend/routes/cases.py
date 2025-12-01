@@ -3,9 +3,9 @@ from sqlalchemy.orm import Session
 from typing import List
 from uuid import UUID
 
-from database import get_db
+from database import get_db as get_raw_db # Keep if needed, but we need the secure one
 from core.models import Case, Document, ReportVersion, Client
-from deps import get_current_user_token
+from deps import get_current_user_token, get_db # Import secure get_db
 import schemas
 from services import gcs_service, case_service
 
@@ -16,6 +16,25 @@ router = APIRouter()
 def list_cases(db: Session = Depends(get_db)):
     # RLS magic: This only returns rows for the current tenant
     return db.query(Case).order_by(Case.created_at.desc()).all()
+
+# 1.5 GET CASE STATUS (Lightweight for Polling)
+@router.get("/{case_id}/status", response_model=schemas.CaseStatusRead)
+def get_case_status(case_id: UUID, db: Session = Depends(get_db)):
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    
+    # Check if any doc is processing to infer "is_generating" hint
+    # In a real system, we might check a specific "Case Job" table.
+    # For now, if any doc is pending/processing, we say generating is active.
+    is_generating = any(d.ai_status in ["pending", "processing"] for d in case.documents)
+    
+    return {
+        "id": case.id,
+        "status": case.status,
+        "documents": case.documents,
+        "is_generating": is_generating
+    }
 
 # 2. CREATE CASE
 @router.post("/", response_model=schemas.CaseRead)
@@ -72,7 +91,7 @@ def get_doc_upload_url(
     )
 
 # 5. REGISTER UPLOADED DOC & TRIGGER AI
-@router.post("/{case_id}/documents/register")
+@router.post("/{case_id}/documents/register", response_model=schemas.DocumentRead)
 def register_document(
     case_id: UUID,
     gcs_path: str,
@@ -92,12 +111,13 @@ def register_document(
     )
     db.add(new_doc)
     db.commit()
+    db.refresh(new_doc)
     
     # Trigger Async Extraction (Cloud Task or Background)
     # We pass org_id because the Worker needs to set RLS context manually!
     case_service.trigger_extraction_task(new_doc.id, str(case.organization_id))
     
-    return {"status": "registered", "doc_id": new_doc.id}
+    return new_doc
 
 # 6. TRIGGER GENERATION
 @router.post("/{case_id}/generate")
@@ -123,7 +143,7 @@ async def trigger_generation(
     return {"status": "generation_started"}
 
 # 7. FINALIZE CASE
-@router.post("/{case_id}/finalize")
+@router.post("/{case_id}/finalize", response_model=schemas.VersionRead)
 def finalize_case_endpoint(
     case_id: UUID,
     payload: schemas.FinalizePayload,
@@ -141,19 +161,21 @@ def finalize_case_endpoint(
         final_docx_path=payload.final_docx_path
     )
     
-    return {"status": "finalized", "version_id": final_version.id}
+    return final_version
 
-# 8. DOWNLOAD GENERATED VARIANT
-@router.post("/{case_id}/versions/{version_id}/download-generated")
-async def download_generated_variant(
+# 8. DOWNLOAD VERSION (Generated or Final)
+@router.post("/{case_id}/versions/{version_id}/download")
+async def download_version(
     case_id: UUID,
     version_id: UUID,
-    payload: schemas.DownloadVariantPayload,
+    payload: schemas.DownloadVariantPayload, # Optional: template choice
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user_token)
 ):
     """
-    Generates and returns a signed URL for a specific template variant (BN or Salomone).
+    Unified download endpoint.
+    - If Final: Returns signed URL for the stored final DOCX.
+    - If Draft: Generates the requested template variant on the fly.
     """
     # Verify access (RLS)
     case = db.query(Case).filter(Case.id == case_id).first()
@@ -165,6 +187,16 @@ async def download_generated_variant(
     if not version:
         raise HTTPException(status_code=404, detail="Version not found")
 
+    # A. FINAL VERSION -> Direct Download
+    if version.is_final:
+        if not version.docx_storage_path:
+             raise HTTPException(status_code=404, detail="File path missing for final version")
+        
+        # Generate Signed URL for the existing file
+        url = gcs_service.generate_download_signed_url(version.docx_storage_path)
+        return {"download_url": url}
+
+    # B. DRAFT VERSION -> Generate Variant
     from services import generation_service
     try:
         url = await generation_service.generate_docx_variant(

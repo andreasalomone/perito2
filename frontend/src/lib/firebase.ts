@@ -2,9 +2,16 @@ import { initializeApp, getApps } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
 // Helper to get env var from window (runtime) or process (build time/dev)
+interface WindowWithEnv extends Window {
+    __ENV?: Record<string, string>;
+}
+
 const getEnv = (key: string, fallback: string | undefined) => {
-    if (typeof window !== 'undefined' && (window as any).__ENV && (window as any).__ENV[key]) {
-        return (window as any).__ENV[key];
+    if (typeof window !== 'undefined') {
+        const win = window as unknown as WindowWithEnv;
+        if (win.__ENV && win.__ENV[key]) {
+            return win.__ENV[key];
+        }
     }
     return fallback;
 };

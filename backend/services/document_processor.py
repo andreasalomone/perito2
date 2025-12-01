@@ -11,6 +11,18 @@ import mailparser
 import openpyxl
 from docx import Document as DocxDocument
 from PIL import Image
+import re
+
+def sanitize_filename(filename: str) -> str:
+    """
+    Sanitizes a filename to prevent path traversal and remove dangerous characters.
+    Keeps alphanumeric, dots, dashes, and underscores.
+    """
+    # Remove path components
+    filename = os.path.basename(filename)
+    # Replace anything that isn't alphanumeric, ., -, or _
+    filename = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)
+    return filename
 
 
 
@@ -49,7 +61,7 @@ def prepare_pdf_for_llm(pdf_path: str) -> List[Dict[str, Any]]:
         "type": "vision",
         "path": pdf_path,
         "mime_type": "application/pdf",
-        "filename": os.path.basename(pdf_path),
+        "filename": sanitize_filename(os.path.basename(pdf_path)),
     })
 
     # 2. Text Part (Optional, if text exists)
@@ -58,11 +70,12 @@ def prepare_pdf_for_llm(pdf_path: str) -> List[Dict[str, Any]]:
         text_content = "".join(page.get_text() for page in doc)
         doc.close()
         
-        if len(text_content.strip()) > 50:
+        # Improved check: Just check if there is any non-whitespace text
+        if text_content.strip():
             parts.append({
                 "type": "text",
                 "content": text_content,
-                "filename": f"{os.path.basename(pdf_path)} (extracted text)",
+                "filename": f"{sanitize_filename(os.path.basename(pdf_path))} (extracted text)",
             })
     except Exception as e:
         logger.warning(f"Could not extract text from PDF: {e}")
@@ -83,7 +96,7 @@ def prepare_image_for_llm(image_path: str) -> List[Dict[str, Any]]:
         "type": "vision",
         "path": image_path,
         "mime_type": mime_type,
-        "filename": os.path.basename(image_path),
+        "filename": sanitize_filename(os.path.basename(image_path)),
     }]
 
 @handle_extraction_errors()
@@ -93,7 +106,7 @@ def extract_text_from_docx(docx_path: str) -> List[Dict[str, Any]]:
     return [{
         "type": "text",
         "content": "\n".join(full_text),
-        "filename": os.path.basename(docx_path),
+        "filename": sanitize_filename(os.path.basename(docx_path)),
     }]
 
 @handle_extraction_errors()
@@ -120,7 +133,7 @@ def extract_text_from_xlsx(xlsx_path: str) -> List[Dict[str, Any]]:
     return [{
         "type": "text",
         "content": text_content,
-        "filename": os.path.basename(xlsx_path),
+        "filename": sanitize_filename(os.path.basename(xlsx_path)),
     }]
 
 @handle_extraction_errors()
@@ -130,15 +143,23 @@ def extract_text_from_txt(txt_path: str) -> List[Dict[str, Any]]:
     return [{
         "type": "text", 
         "content": content, 
-        "filename": os.path.basename(txt_path)
+        "filename": sanitize_filename(os.path.basename(txt_path))
     }]
 
 @handle_extraction_errors()
-def process_eml_file(eml_path: str, upload_folder: str) -> List[Dict[str, Any]]:
+def process_eml_file(eml_path: str, upload_folder: str, depth: int = 0) -> List[Dict[str, Any]]:
     """
     Processes an .eml file, extracting its text body and saving/processing attachments.
     Returns a FLAT LIST of dictionaries.
     """
+    if depth > 3:
+        logger.warning(f"Max recursion depth reached for {eml_path}")
+        return [{
+            "type": "error",
+            "filename": os.path.basename(eml_path),
+            "message": "Max recursion depth reached (nested attachments)",
+        }]
+
     mail = mailparser.parse_from_file(eml_path)
     all_parts: List[Dict[str, Any]] = []
 
@@ -154,7 +175,7 @@ def process_eml_file(eml_path: str, upload_folder: str) -> List[Dict[str, Any]]:
     all_parts.append({
         "type": "text",
         "content": text_content,
-        "filename": f"{os.path.basename(eml_path)} (body)",
+        "filename": f"{sanitize_filename(os.path.basename(eml_path))} (body)",
         "original_filetype": "eml",
     })
 
@@ -200,7 +221,7 @@ def process_eml_file(eml_path: str, upload_folder: str) -> List[Dict[str, Any]]:
             
             # Recurse
             if os.path.exists(local_path):
-                attachment_parts = process_uploaded_file(local_path, upload_folder)
+                attachment_parts = process_uploaded_file(local_path, upload_folder, depth=depth + 1)
                 if isinstance(attachment_parts, list):
                     all_parts.extend(attachment_parts)
                 else:
@@ -214,7 +235,7 @@ def process_eml_file(eml_path: str, upload_folder: str) -> List[Dict[str, Any]]:
 
     return all_parts
 
-def process_uploaded_file(filepath: str, upload_folder: str) -> List[Dict[str, Any]]:
+def process_uploaded_file(filepath: str, upload_folder: str, depth: int = 0) -> List[Dict[str, Any]]:
     _, ext = os.path.splitext(filepath)
     ext = ext.lower()
     
@@ -232,7 +253,7 @@ def process_uploaded_file(filepath: str, upload_folder: str) -> List[Dict[str, A
     }
     
     if ext == ".eml":
-        return process_eml_file(filepath, upload_folder)
+        return process_eml_file(filepath, upload_folder, depth=depth)
     
     processor = processors.get(ext)
     

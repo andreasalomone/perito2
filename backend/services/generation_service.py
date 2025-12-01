@@ -57,7 +57,19 @@ async def process_case_logic(case_id: str, organization_id: str, db: Session):
             return
 
         # 3. Process Each File
+        # 3. Process Each File
         for doc in documents:
+            # OPTIMIZATION: Check if already processed by async worker
+            if doc.ai_status == "processed" and doc.ai_extracted_data:
+                logger.info(f"Using pre-extracted data for {doc.filename}")
+                # Ensure it's a list
+                data = doc.ai_extracted_data
+                if isinstance(data, dict):
+                    data = [data]
+                processed_data_for_llm.extend(data)
+                continue
+
+            # Fallback: Process now if not ready
             gcs_path = doc.gcs_path
             # FIX: Force extraction of extension using pathlib
             suffix = pathlib.Path(gcs_path).suffix
@@ -72,18 +84,20 @@ async def process_case_logic(case_id: str, organization_id: str, db: Session):
             await asyncio.to_thread(download_file_to_temp, gcs_path, local_path)
             
             # Run blocking extraction in thread
-            processed = await asyncio.to_thread(document_processor.process_uploaded_file, local_path, tmp_dir)
+            # Pass depth=0 explicitly
+            processed = await asyncio.to_thread(document_processor.process_uploaded_file, local_path, tmp_dir, 0)
             processed_data_for_llm.extend(processed)
             
             # Update Doc Status
             doc.ai_status = "processed"
-            # doc.ai_extracted_data = processed # Optional: Save raw extraction to DB (JSONB)
-            db.commit()
+            doc.ai_extracted_data = processed # Save for future
+            
+        # Batch commit after all documents are processed
+        db.commit()
 
         # 4. Generate with Gemini
         logger.info("Generating text with Gemini...")
         
-        # This is already async
         # This is already async
         report_text, token_usage = await llm_handler.generate_report_from_content(
             processed_files=processed_data_for_llm
@@ -114,8 +128,17 @@ async def process_case_logic(case_id: str, organization_id: str, db: Session):
         # We use the case_service helper, but we need to adapt it since we are inside a transaction/session
         # Or just create it directly here.
         
+        # 7. Save Version 1
+        # CRITICAL FIX: Lock the PARENT Case row to serialize version creation.
+        # Locking the version row itself fails if it doesn't exist yet (insert race).
+        db.query(Case).filter(Case.id == case_id).with_for_update().first()
+        
         # Check if v1 exists (idempotency)
-        v1 = db.query(ReportVersion).filter(ReportVersion.case_id == case_id, ReportVersion.version_number == 1).first()
+        v1 = db.query(ReportVersion).filter(
+            ReportVersion.case_id == case_id, 
+            ReportVersion.version_number == 1
+        ).first()
+        
         if not v1:
             v1 = ReportVersion(
                 case_id=case_id,

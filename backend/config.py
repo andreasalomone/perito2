@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     # CORS Settings
     # In production, this should be the Cloud Run URL of the frontend
     FRONTEND_URL: str = "*"
+    # The URL of this backend service (for Cloud Tasks to target)
+    BACKEND_URL: str = "http://localhost:8000"
 
     # Security
     # In production (Cloud Run), Firebase credentials are auto-detected via IAM.

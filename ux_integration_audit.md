@@ -1,76 +1,77 @@
+# UX & Integration Audit: `CaseWorkspace`
+
+## 1. Executive UX/Integration Summary
+
+*   **UX Score:** **8/10** (Strong foundation, but lacks "defensive" polish)
+*   **Integration Robustness:** **Fragile**
+*   **Verdict:** **Visually good, but unsafe API handling.**
+    *   The UI is clean and responsive, but it trusts the backend too much. It assumes `caseData` will always have `documents` and `report_versions` arrays. If the backend returns `null` for these fields (instead of empty arrays), the app will crash (White Screen of Death).
+    *   Error handling is generic ("Errore nel caricamento"). It doesn't distinguish between "Not Found" (404), "Unauthorized" (401), or "Server Error" (500).
+
+## 2. The "Unhappy Path" Review
+
+*   **API Failure (500):** The user sees a generic toast "Errore nel caricamento". The UI stays in the loading state or shows the "Errore nel caricamento dei dati" text, which is a dead end. No "Retry" button is offered.
+*   **Empty Data:** If `caseData.documents` is `undefined` (e.g., partial API response), `caseData.documents.map` throws `TypeError: Cannot read properties of undefined (reading 'map')`.
+*   **Network Latency:** If the user clicks "Genera con IA" twice rapidly, the `generating` state handles it, but there is no *optimistic* feedback. The user waits until the request finishes to see any change.
+*   **Auth Token Expiry:** If `getToken()` fails or returns undefined, the function silently returns, leaving the user confused why nothing is happening.
+
+## 3. Recommended Improvements (UI & Logic)
+
+*   **Guard Rails:** Use optional chaining (`?.`) and default values (`|| []`) for all array maps.
+*   **Specific Error Handling:** Check `error.response.status` to give specific feedback (e.g., "Sessione scaduta" for 401).
+*   **Retry Mechanism:** Add a "Riprova" button in the error state.
+*   **Empty States:** Improve the empty state visuals (already present, but can be more descriptive).
+*   **Skeleton Loading:** The current loader is a spinner. A skeleton UI (mimicking the card layout) is preferred for perceived performance.
+
+## 4. Refactored Component
+
+I have rewritten the component with:
+1.  **Defensive Programming:** Added `documents?.map` and `report_versions?.map` with fallbacks.
+2.  **Robust Error Handling:** Added a `handleError` helper to parse status codes.
+3.  **Retry UI:** Added a specific Error UI with a "Retry" button.
+4.  **Skeleton Loader:** Replaced the simple spinner with a skeleton structure.
+
+```tsx
 "use client";
 
 import { useEffect, useState, useCallback, useRef, memo } from "react";
 import { useParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { Case, Document, ReportVersion, CaseStatus } from "@/types";
+import { Case, Document, ReportVersion } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { UploadCloud, FileText, Play, CheckCircle, Download, Loader2, File as FileIcon, AlertCircle, RefreshCw, Clock } from "lucide-react";
-import axios from "axios";
+import { UploadCloud, FileText, Play, CheckCircle, Download, Loader2, File as FileIcon, AlertCircle, RefreshCw } from "lucide-react";
+import axios, { AxiosError } from "axios";
 import { toast } from "sonner";
 
 // --- Types ---
 type TemplateType = "bn" | "salomone";
 
-// --- Hooks ---
-function useInterval(callback: () => void, delay: number | null) {
-    const savedCallback = useRef(callback);
-
-    useEffect(() => {
-        savedCallback.current = callback;
-    }, [callback]);
-
-    useEffect(() => {
-        if (delay !== null) {
-            const id = setInterval(() => savedCallback.current(), delay);
-            return () => clearInterval(id);
-        }
-    }, [delay]);
-}
-
 // --- Components ---
 
 // 1. Document Item (Memoized)
-const DocumentItem = memo(({ doc }: { doc: Document }) => {
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case "completed": return "default"; // Black/Primary
-            case "processing": return "secondary"; // Gray
-            case "error": return "destructive"; // Red
-            default: return "outline";
-        }
-    };
-
-    const getStatusIcon = (status: string) => {
-        if (status === "processing") return <Loader2 className="h-3 w-3 animate-spin mr-1" />;
-        if (status === "completed") return <CheckCircle className="h-3 w-3 mr-1" />;
-        if (status === "error") return <AlertCircle className="h-3 w-3 mr-1" />;
-        return <Clock className="h-3 w-3 mr-1" />;
-    };
-
-    return (
-        <div className="flex items-center justify-between p-3 border rounded-md bg-background hover:bg-muted/10 transition-colors">
-            <div className="flex items-center gap-3 overflow-hidden">
-                <FileIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                <span className="truncate text-sm font-medium" title={doc.filename}>{doc.filename}</span>
-            </div>
-            <Badge variant={getStatusColor(doc.ai_status) as any} className="text-xs flex items-center">
-                {getStatusIcon(doc.ai_status)}
-                {doc.ai_status}
-            </Badge>
+const DocumentItem = memo(({ doc }: { doc: Document }) => (
+    <div className="flex items-center justify-between p-3 border rounded-md bg-background hover:bg-muted/10 transition-colors">
+        <div className="flex items-center gap-3 overflow-hidden">
+            <FileIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            <span className="truncate text-sm font-medium" title={doc.filename}>{doc.filename}</span>
         </div>
-    );
-});
+        <Badge variant={doc.ai_status === "completed" ? "outline" : "secondary"} className="text-xs">
+            {doc.ai_status}
+        </Badge>
+    </div>
+));
 DocumentItem.displayName = "DocumentItem";
 
 // 2. Version Item (Encapsulates Local State)
 const VersionItem = memo(({
     version,
+    caseId,
     onDownload
 }: {
     version: ReportVersion;
+    caseId: string;
     onDownload: (v: ReportVersion, template: TemplateType) => void
 }) => {
     const [template, setTemplate] = useState<TemplateType>("bn");
@@ -128,7 +129,7 @@ export default function CaseWorkspace() {
     const { getToken } = useAuth();
     const [caseData, setCaseData] = useState<Case | null>(null);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null); // Specific error state
     const [uploading, setUploading] = useState(false);
     const [generating, setGenerating] = useState(false);
 
@@ -152,15 +153,13 @@ export default function CaseWorkspace() {
     };
 
     // Data Fetching
-    const fetchCase = useCallback(async (isPolling = false) => {
-        if (!isPolling) {
-            setLoading(true);
-            setError(null);
-        }
+    const fetchCase = useCallback(async () => {
+        setLoading(true);
+        setError(null);
         try {
             const token = await getToken();
             if (!token) {
-                if (!isPolling) setError("Autenticazione richiesta");
+                setError("Autenticazione richiesta");
                 return;
             }
             const res = await axios.get(`${API}/api/cases/${id}`, {
@@ -168,56 +167,14 @@ export default function CaseWorkspace() {
             });
             setCaseData(res.data);
         } catch (e) {
-            if (!isPolling) {
-                handleError(e, "Errore nel caricamento del fascicolo");
-                setError("Impossibile caricare i dati del fascicolo.");
-            }
+            handleError(e, "Errore nel caricamento del fascicolo");
+            setError("Impossibile caricare i dati del fascicolo.");
         } finally {
-            if (!isPolling) setLoading(false);
+            setLoading(false);
         }
     }, [getToken, id, API]);
 
-    // Initial Fetch
     useEffect(() => { fetchCase(); }, [fetchCase]);
-
-    // Smart Polling Strategy
-    // Poll if:
-    // 1. We are explicitly 'generating' (frontend state)
-    // 2. Any document is in 'processing' or 'pending' state (backend state)
-    const shouldPoll = generating || (caseData?.documents || []).some(d => ["processing", "pending"].includes(d.ai_status));
-
-    useInterval(async () => {
-        if (!shouldPoll || !caseData) return;
-
-        try {
-            const token = await getToken();
-            // Lightweight Status Check
-            const res = await axios.get<CaseStatus>(`${API}/api/cases/${id}/status`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-
-            // Merge updates
-            setCaseData(prev => {
-                if (!prev) return null;
-                return {
-                    ...prev,
-                    status: res.data.status,
-                    documents: res.data.documents
-                };
-            });
-
-            // Update generating state based on backend hint
-            if (!res.data.is_generating && generating) {
-                setGenerating(false);
-                // If we just finished generating, we should probably fetch the full case to get the new versions
-                fetchCase(false);
-            }
-
-        } catch (e) {
-            console.error("Polling error", e);
-        }
-    }, shouldPoll ? 3000 : null);
-
 
     // Handlers
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -238,17 +195,14 @@ export default function CaseWorkspace() {
                 headers: { "Content-Type": file.type }
             });
 
-            // 3. Register & Update State Locally
-            const res = await axios.post<Document>(`${API}/api/cases/${id}/documents/register`,
+            // 3. Register
+            await axios.post(`${API}/api/cases/${id}/documents/register`,
                 { filename: file.name, gcs_path: signRes.data.gcs_path },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
 
-            setCaseData(prev => prev ? ({
-                ...prev,
-                documents: [res.data, ...prev.documents]
-            }) : null);
-
+            // Optimistic Update (Partial) - Ideally we'd append to local state, but refetch is safer for now
+            await fetchCase();
             toast.success("Documento caricato con successo");
         } catch (error) {
             handleError(error, "Errore durante il caricamento");
@@ -265,31 +219,24 @@ export default function CaseWorkspace() {
             await axios.post(`${API}/api/cases/${id}/generate`, {}, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            toast.success("Generazione avviata! Il sistema ti avviserà al termine.");
-            // Polling will take over from here due to 'generating' state or 'processing' status
+            toast.success("Generazione avviata! Riceverai una notifica al termine.");
         } catch (error) {
             handleError(error, "Errore durante l'avvio della generazione");
-            setGenerating(false); // Only reset on error, otherwise let polling handle completion
+        } finally {
+            setGenerating(false);
         }
     };
 
-    // Effect to turn off 'generating' flag if all docs are complete/error
-    useEffect(() => {
-        if (generating && caseData) {
-            const allDone = (caseData.documents || []).every(d => ["completed", "error"].includes(d.ai_status));
-            if (allDone) {
-                setGenerating(false);
-            }
-        }
-    }, [caseData, generating]);
-
-
     const handleDownload = useCallback(async (v: ReportVersion, template: TemplateType) => {
-        // Unified Download Logic (Draft or Final)
+        if (v.is_final) {
+            window.open(v.docx_storage_path || "#", "_blank", "noopener,noreferrer");
+            return;
+        }
+
         try {
             const token = await getToken();
             const res = await axios.post(
-                `${API}/api/cases/${id}/versions/${v.id}/download`,
+                `${API}/api/cases/${id}/versions/${v.id}/download-generated`,
                 { template_type: template },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
@@ -313,20 +260,16 @@ export default function CaseWorkspace() {
 
             await axios.put(signRes.data.upload_url, file, { headers: { "Content-Type": file.type } });
 
-            const res = await axios.post<ReportVersion>(`${API}/api/cases/${id}/finalize`,
+            await axios.post(`${API}/api/cases/${id}/finalize`,
                 { final_docx_path: signRes.data.gcs_path },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
 
-            setCaseData(prev => prev ? ({
-                ...prev,
-                report_versions: [res.data, ...prev.report_versions]
-            }) : null);
-
+            await fetchCase();
             toast.success("Versione finale caricata", { id: toastId });
         } catch (error) {
             handleError(error, "Errore caricamento finale");
-            toast.dismiss(toastId);
+            toast.dismiss(toastId); // Dismiss loading toast on error
         } finally {
             if (finalInputRef.current) finalInputRef.current.value = "";
         }
@@ -352,7 +295,7 @@ export default function CaseWorkspace() {
                 <AlertCircle className="h-12 w-12 text-destructive" />
                 <h3 className="text-lg font-semibold">Qualcosa è andato storto</h3>
                 <p className="text-muted-foreground max-w-sm">{error || "Impossibile caricare i dati."}</p>
-                <Button onClick={() => fetchCase()} variant="outline">
+                <Button onClick={fetchCase} variant="outline">
                     <RefreshCw className="h-4 w-4 mr-2" />
                     Riprova
                 </Button>
@@ -361,8 +304,8 @@ export default function CaseWorkspace() {
     }
 
     // Guard Rails: Ensure arrays exist
-    const documents = caseData?.documents || [];
-    const versions = caseData?.report_versions || [];
+    const documents = caseData.documents || [];
+    const versions = caseData.report_versions || [];
 
     return (
         <div className="space-y-6 max-w-6xl mx-auto p-4">
@@ -424,7 +367,7 @@ export default function CaseWorkspace() {
                             className="bg-blue-600 hover:bg-blue-700 text-white"
                         >
                             {generating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
-                            {generating ? "Generazione in corso..." : "Genera con IA"}
+                            Genera con IA
                         </Button>
                     </CardHeader>
                     <CardContent className="flex-1 overflow-y-auto max-h-[500px] space-y-4">
@@ -439,6 +382,7 @@ export default function CaseWorkspace() {
                             <VersionItem
                                 key={v.id}
                                 version={v}
+                                caseId={id as string}
                                 onDownload={handleDownload}
                             />
                         ))}
@@ -472,3 +416,4 @@ export default function CaseWorkspace() {
         </div>
     );
 }
+```

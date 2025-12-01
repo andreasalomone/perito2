@@ -17,6 +17,11 @@ class TaskPayload(BaseModel):
     case_id: str
     organization_id: str
 
+class DocumentTaskPayload(BaseModel):
+    document_id: str
+    organization_id: str
+
+
 async def verify_cloud_tasks_auth(
     x_cloudtasks_queuename: str = Header(None, alias="X-AppEngine-QueueName"),
     oidc_token: str = Header(None, alias="Authorization")
@@ -44,9 +49,12 @@ async def process_case(
 ):
     logger.info(f"🚀 Starting task for case {payload.case_id} in org {payload.organization_id}")
 
-    # 1. Manually set RLS context for the worker
-    # The worker is a "superuser" in terms of connection, but needs to assume the tenant identity
-    db.execute(text(f"SET app.current_org_id = '{payload.organization_id}'"))
+    # 1. Manually set RLS context for the worker (Securely)
+    # Use set_config to avoid SQL injection
+    db.execute(
+        text("SELECT set_config('app.current_org_id', :org_id, false)"), 
+        {"org_id": payload.organization_id}
+    )
     
     # 2. Now the worker can see the case
     case = db.query(Case).filter(Case.id == payload.case_id).first()
@@ -68,4 +76,36 @@ async def process_case(
     
     logger.info(f"✅ Case {case.reference_code} processed successfully.")
     
+    return {"status": "success"}
+
+@router.post("/process-document")
+async def process_document(
+    payload: DocumentTaskPayload,
+    db: Session = Depends(get_db),
+    authorized: bool = Depends(verify_cloud_tasks_auth)
+):
+    logger.info(f"🚀 Starting extraction task for doc {payload.document_id} in org {payload.organization_id}")
+
+    # 1. Set RLS (Securely)
+    db.execute(
+        text("SELECT set_config('app.current_org_id', :org_id, false)"), 
+        {"org_id": payload.organization_id}
+    )
+
+    # 2. Get Document
+    from core.models import Document
+    doc = db.query(Document).filter(Document.id == payload.document_id).first()
+    if not doc:
+        logger.error("❌ Worker cannot find document")
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # 3. Run Extraction Logic
+    # We need to import the logic. Since it involves downloading and processing, 
+    # we might want to put this logic in a service method to keep the route clean.
+    # But for now, let's keep it here or call a new method in case_service.
+    
+    from services import case_service
+    await case_service.process_document_extraction(doc.id, payload.organization_id, db)
+
+    logger.info(f"✅ Document {doc.filename} processed successfully.")
     return {"status": "success"}

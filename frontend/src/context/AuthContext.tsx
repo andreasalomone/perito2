@@ -2,13 +2,8 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged, User, signInWithPopup, signOut } from "firebase/auth";
 import { auth, googleProvider } from "@/lib/firebase";
-
-interface DBUser {
-    id: string;
-    email: string;
-    organization_id: string;
-    role: string;
-}
+import { DBUser } from "@/types";
+import axios from "axios";
 
 interface AuthContextType {
     user: User | null;
@@ -33,20 +28,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (firebaseUser) {
                 try {
                     const token = await firebaseUser.getIdToken();
-                    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/sync`, {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${token}`
+                    const response = await axios.post(
+                        `${process.env.NEXT_PUBLIC_API_URL}/api/auth/sync`,
+                        {},
+                        {
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
                         }
-                    });
+                    );
 
-                    if (response.ok) {
-                        const data = await response.json();
-                        setDbUser(data);
-                    } else {
-                        console.error("Failed to sync user");
-                        setDbUser(null);
-                    }
+                    setDbUser(response.data);
                 } catch (error) {
                     console.error("Error syncing user:", error);
                     setDbUser(null);

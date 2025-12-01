@@ -5,17 +5,31 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Loader2, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 function LandingPage() {
   const { user, login, loading } = useAuth();
   const router = useRouter();
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   useEffect(() => {
     if (user) {
       router.push("/dashboard");
     }
   }, [user, router]);
+
+  const handleLogin = async () => {
+    setIsLoggingIn(true);
+    try {
+      await login();
+      // Redirect handled by useEffect
+    } catch (error) {
+      console.error("Login failed", error);
+      toast.error("Accesso fallito. Riprova.");
+      setIsLoggingIn(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -50,10 +64,12 @@ function LandingPage() {
           </CardHeader>
           <CardContent>
             <Button
-              onClick={() => login()}
+              onClick={handleLogin}
               size="lg"
               className="w-full text-base font-semibold h-12"
+              disabled={isLoggingIn}
             >
+              {isLoggingIn ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Accedi con Google
             </Button>
           </CardContent>

@@ -1,57 +1,115 @@
 "use client";
-import { useEffect, useState } from "react";
+
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Folder, Plus, Calendar, Loader2, ArrowRight } from "lucide-react";
+import { Folder, Plus, Calendar, ArrowRight, AlertCircle, RefreshCw } from "lucide-react";
 import { Case } from "@/types";
+import { toast } from "sonner";
+import axios from "axios";
+
+// --- Hooks ---
+function useInterval(callback: () => void, delay: number | null) {
+    const savedCallback = useRef(callback);
+
+    useEffect(() => {
+        savedCallback.current = callback;
+    }, [callback]);
+
+    useEffect(() => {
+        if (delay !== null) {
+            const id = setInterval(() => savedCallback.current(), delay);
+            return () => clearInterval(id);
+        }
+    }, [delay]);
+}
 
 export default function DashboardPage() {
     const { getToken } = useAuth();
     const [cases, setCases] = useState<Case[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        const fetchCases = async () => {
+    const fetchCases = useCallback(async (isPolling = false) => {
+        if (!isPolling) {
+            setLoading(true);
+            setError(null);
+        }
+        try {
             const token = await getToken();
             if (!token) return;
 
-            try {
-                const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/cases/`, {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    // Sort by created_at desc
-                    const sorted = data.sort((a: Case, b: Case) =>
-                        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-                    );
-                    setCases(sorted);
-                }
-            } catch (error) {
-                console.error("Failed to fetch cases", error);
-            } finally {
-                setLoading(false);
-            }
-        };
+            const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/cases/`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
 
-        fetchCases();
+            // Sort by created_at desc
+            const sorted = (res.data || []).sort((a: Case, b: Case) =>
+                new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+            );
+            setCases(sorted);
+        } catch (error) {
+            if (!isPolling) {
+                console.error("Failed to fetch cases", error);
+                setError("Impossibile caricare i fascicoli.");
+                if (axios.isAxiosError(error)) {
+                    if (error.response?.status === 401) toast.error("Sessione scaduta.");
+                    else toast.error("Errore nel caricamento dei dati.");
+                }
+            }
+        } finally {
+            if (!isPolling) setLoading(false);
+        }
     }, [getToken]);
+
+    // Initial Fetch
+    useEffect(() => {
+        fetchCases();
+    }, [fetchCases]);
+
+    // Polling every 5 seconds to keep status updated
+    useInterval(() => {
+        fetchCases(true);
+    }, 5000);
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center h-64">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div className="space-y-4 max-w-5xl mx-auto">
+                <div className="flex justify-between items-center">
+                    <div className="h-8 w-48 bg-muted rounded animate-pulse" />
+                    <div className="h-10 w-32 bg-muted rounded animate-pulse" />
+                </div>
+                <div className="space-y-4">
+                    {[1, 2, 3].map((i) => (
+                        <div key={i} className="h-24 bg-muted rounded-lg animate-pulse" />
+                    ))}
+                </div>
             </div>
         );
     }
 
+    if (error) {
+        return (
+            <div className="flex flex-col items-center justify-center h-64 text-center space-y-4">
+                <AlertCircle className="h-12 w-12 text-destructive" />
+                <h3 className="text-lg font-semibold">Qualcosa è andato storto</h3>
+                <p className="text-muted-foreground">{error}</p>
+                <Button onClick={() => fetchCases()} variant="outline">
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Riprova
+                </Button>
+            </div>
+        );
+    }
+
+    // Guard Rails
+    const safeCases = cases || [];
+
     return (
-        <div className="space-y-8">
+        <div className="space-y-8 max-w-5xl mx-auto">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">I Miei Fascicoli</h1>
@@ -65,7 +123,7 @@ export default function DashboardPage() {
                 </Link>
             </div>
 
-            {cases.length === 0 ? (
+            {safeCases.length === 0 ? (
                 <Card className="border-dashed border-2 bg-muted/10">
                     <CardContent className="flex flex-col items-center justify-center py-16 text-center">
                         <div className="p-4 bg-muted rounded-full mb-4">
@@ -82,7 +140,7 @@ export default function DashboardPage() {
                 </Card>
             ) : (
                 <div className="grid gap-4">
-                    {cases.map((c) => (
+                    {safeCases.map((c) => (
                         <Card key={c.id} className="overflow-hidden transition-all hover:shadow-md hover:border-primary/20 group">
                             <div className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                 <div className="space-y-1">

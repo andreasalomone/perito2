@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -17,6 +18,7 @@ export const metadata: Metadata = {
   description: "Automazione professionale per perizie assicurative.",
 };
 
+import { Toaster } from "sonner";
 import { AuthProvider } from "@/context/AuthContext";
 
 export default function RootLayout({
@@ -29,9 +31,10 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
-        <script src="/env-config.js" />
+        <Script src="/env-config.js" strategy="beforeInteractive" />
         <AuthProvider>
           {children}
+          <Toaster />
         </AuthProvider>
       </body>
     </html>

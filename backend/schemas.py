@@ -2,6 +2,18 @@ from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
 from datetime import datetime
 from uuid import UUID
+from enum import Enum
+
+# --- ENUMS ---
+class AIStatus(str, Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    ERROR = "error"
+
+class CaseStatus(str, Enum):
+    OPEN = "open"
+    CLOSED = "closed"
 
 # --- BASE ---
 class CaseBase(BaseModel):
@@ -14,18 +26,16 @@ class CaseCreate(CaseBase):
 class CaseRead(CaseBase):
     id: UUID
     organization_id: UUID
-    status: str
+    status: CaseStatus
     created_at: datetime
     
-    # We will expand this with docs later
     model_config = ConfigDict(from_attributes=True)
 
 # --- DOCUMENTS ---
 class DocumentRead(BaseModel):
     id: UUID
     filename: str
-    gcs_path: str
-    ai_status: str
+    ai_status: AIStatus
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
@@ -34,7 +44,7 @@ class VersionRead(BaseModel):
     id: UUID
     version_number: int
     is_final: bool
-    docx_storage_path: Optional[str]
+    # REMOVED: docx_storage_path (Security Risk)
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
@@ -42,6 +52,13 @@ class VersionRead(BaseModel):
 class CaseDetail(CaseRead):
     documents: List[DocumentRead] = []
     report_versions: List[VersionRead] = []
+
+# --- LIGHTWEIGHT STATUS ---
+class CaseStatusRead(BaseModel):
+    id: UUID
+    status: CaseStatus
+    documents: List[DocumentRead]
+    is_generating: bool = False # Computed field
 
 class FinalizePayload(BaseModel):
     final_docx_path: str
