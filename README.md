@@ -1,6 +1,6 @@
 # RobotPerizia "Hyperion" v2.0
 
-**RobotPerizia** is an advanced, AI-powered report generation platform designed to streamline the workflow of insurance surveyors, legal experts, and claims adjusters. By leveraging the power of Google's Gemini 2.5 LLM via Vertex AI, it automates the extraction of critical information from uploaded documents and generates comprehensive, professionally formatted reports (DOCX).
+**RobotPerizia** is an advanced, AI-powered **Case Management System** designed to streamline the workflow of insurance surveyors, legal experts, and claims adjusters. By leveraging the power of **Google's Gemini 2.5 LLM via Vertex AI**, it automates the extraction of critical information from uploaded documents and generates comprehensive, professionally formatted reports (DOCX).
 
 ## 🎯 Target Audience
 
@@ -11,11 +11,12 @@ This application is specifically built for:
 
 ## ✨ Key Features
 
+*   **End-to-End Case Management:** Create cases, track status, and manage document lifecycles from a unified dashboard.
 *   **AI-Driven Analysis:** Utilizes **Vertex AI (Gemini 2.5)** for deep semantic understanding of documents and accurate data extraction.
+*   **Multi-Template Reports:** Generate reports in various professional formats (e.g., "BN Surveys", "Salomone & Associati") on demand.
 *   **Secure & Scalable:** Built on a **Cloud-Native Hybrid Architecture** using Google Cloud Platform (GCP).
 *   **Direct-to-Cloud Uploads:** Secure, high-performance file uploads directly to Google Cloud Storage (GCS) using signed URLs.
 *   **Real-Time Progress Tracking:** Users can monitor the status of their report generation in real-time.
-*   **Multi-Format Support:** Generates reports in various professional formats (e.g., "BN Surveys", "Salomone & Associati").
 *   **Secure Multi-Tenancy:** Robust user authentication and data isolation using **Firebase Authentication**.
 
 ## 🏗️ Technical Architecture (The "Google Stack")
@@ -26,7 +27,7 @@ We have decoupled the legacy monolith into a **Cloud-Native Hybrid Architecture*
 
 | Component | Technology Selection | Justification |
 | :--- | :--- | :--- |
-| **Frontend** | **Next.js 15 + Firebase Auth** | Hosted on **Cloud Run**. Client-side uploads directly to storage. |
+| **Frontend** | **Next.js 16 + Firebase Auth** | Hosted on **Cloud Run**. Client-side uploads directly to storage. Styled with **Tailwind CSS v4**. |
 | **Backend** | **FastAPI + Cloud Tasks** | Hosted on **Cloud Run**. Replaces Celery workers with HTTP-triggered task handlers. |
 | **Database** | **Cloud SQL (PostgreSQL)** | Managed Postgres. Connections secured via *Cloud SQL Auth Connector* (no public IP exposure). |
 | **Storage** | **Google Cloud Storage (GCS)** | Replaces local disk. Configured with CORS for secure browser-direct uploads. |
@@ -49,7 +50,7 @@ We have decoupled the legacy monolith into a **Cloud-Native Hybrid Architecture*
 *   **Asynchronous Processing (Queue Layer):**
     *   **Rate Limit:** Max 10 tasks/sec dispatch to protect the DB.
     *   **Concurrency:** Max 20 concurrent instances to protect the DB connection pool.
-    *   **Retry Policy:** Max 5 attempts with exponential backoff to handle temporary AI glitches. |
+    *   **Retry Policy:** Max 5 attempts with exponential backoff to handle temporary AI glitches.
 
 ## 🚀 Getting Started
 
@@ -99,6 +100,7 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 *   `backend/`: FastAPI application, database models, and AI logic.
 *   `frontend/`: Next.js application, UI components, and client-side logic.
 *   `docs/`: Project documentation and architectural decisions.
+*   `tests/`: Unit and integration tests (currently under development).
 
 ## 📄 License
 

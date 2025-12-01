@@ -15,6 +15,7 @@ from services.llm import (
     prompt_builder_service,
     response_parser_service,
 )
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +106,26 @@ async def generate_report_from_content(
                 cache_name if use_cache else None
             )
 
-            response = await generation_service.generate_with_retry(
+            # Define retry strategy: Wait 2^x * 1 seconds between retries, up to 10 seconds, max 5 attempts
+            # Only retry on transient errors (503, 429)
+            RETRY_STRATEGY = retry(
+                stop=stop_after_attempt(5),
+                wait=wait_exponential(multiplier=1, min=2, max=10),
+                retry=retry_if_exception_type(
+                    (google_exceptions.ServiceUnavailable, google_exceptions.TooManyRequests)
+                ),
+                before_sleep=lambda retry_state: logger.warning(f"Retrying LLM request... (Attempt {retry_state.attempt_number})")
+            )
+
+            @RETRY_STRATEGY
+            async def _generate_with_backoff(client, model, contents, config):
+                return await client.aio.models.generate_content(
+                    model=model,
+                    contents=contents,
+                    config=config,
+                )
+
+            response = await _generate_with_backoff(
                 client=client,
                 model=current_model,
                 contents=prompt_parts,
@@ -150,7 +170,7 @@ async def generate_report_from_content(
                 prompt_parts = _get_prompt_parts(use_cache)
                 config = generation_service.build_generation_config(None)
 
-                response = await generation_service.generate_with_retry(
+                response = await _generate_with_backoff(
                     client=client,
                     model=current_model,
                     contents=prompt_parts,
@@ -181,7 +201,7 @@ async def generate_report_from_content(
                 prompt_parts = _get_prompt_parts(False)
                 config = generation_service.build_generation_config(None)
 
-                response = await generation_service.generate_with_retry(
+                response = await _generate_with_backoff(
                     client=client,
                     model=fallback_model,
                     contents=prompt_parts,

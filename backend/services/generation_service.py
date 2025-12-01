@@ -71,22 +71,25 @@ async def process_case_logic(case_id: str, organization_id: str, db: Session):
 
             # Fallback: Process now if not ready
             gcs_path = doc.gcs_path
-            # FIX: Force extraction of extension using pathlib
-            suffix = pathlib.Path(gcs_path).suffix
-            if not suffix:
-                suffix = ".tmp" # Fallback
+            suffix = pathlib.Path(gcs_path).suffix or ".tmp"
                 
-            local_filename = f"file_{doc.id}{suffix}"
-            local_path = os.path.join(tmp_dir, local_filename)
-            
-            logger.info(f"Downloading {gcs_path} to {local_path}...")
-            # Run blocking download in thread
-            await asyncio.to_thread(download_file_to_temp, gcs_path, local_path)
-            
-            # Run blocking extraction in thread
-            # Pass depth=0 explicitly
-            processed = await asyncio.to_thread(document_processor.process_uploaded_file, local_path, tmp_dir, 0)
-            processed_data_for_llm.extend(processed)
+            # Use NamedTemporaryFile to ensure cleanup after processing
+            # This prevents accumulating all source files in memory/disk
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=True) as tmp_file:
+                logger.info(f"Downloading {gcs_path} to {tmp_file.name}...")
+                
+                # Run blocking download in thread
+                await asyncio.to_thread(download_file_to_temp, gcs_path, tmp_file.name)
+                
+                # Run blocking extraction in thread
+                # Pass depth=0 explicitly
+                processed = await asyncio.to_thread(
+                    document_processor.process_uploaded_file, 
+                    tmp_file.name, 
+                    tmp_dir, 
+                    0
+                )
+                processed_data_for_llm.extend(processed)
             
             # Update Doc Status
             doc.ai_status = "processed"

@@ -1,4 +1,6 @@
-from fastapi import APIRouter, HTTPException, Depends, Header
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from pydantic import BaseModel
@@ -23,23 +25,43 @@ class DocumentTaskPayload(BaseModel):
 
 
 async def verify_cloud_tasks_auth(
-    x_cloudtasks_queuename: str = Header(None, alias="X-AppEngine-QueueName"),
-    oidc_token: str = Header(None, alias="Authorization")
+    request: Request,
+    authorization: str = Header(None)
 ):
     """
-    Security Guard: Ensures the request is from Google Cloud Tasks.
+    Validates that the request comes from a legitimate Cloud Task
+    by verifying the OIDC token in the Authorization header.
     """
-    # 1. Bypass check if running locally (for development speed)
     if settings.RUN_LOCALLY:
         return True
+
+    if not authorization:
+        logger.warning("⛔ Blocked task: Missing Authorization header")
+        raise HTTPException(status_code=403, detail="Missing Authorization header")
+
+    try:
+        # Bearer <token>
+        token = authorization.split(" ")[1]
         
-    # 2. Google strips this header from external requests. 
-    # If it is present, the request is trusted (internal Google traffic).
-    if not x_cloudtasks_queuename:
-        logger.warning("⛔ Security Alert: Blocked unauthorized access to /tasks/ endpoint.")
-        raise HTTPException(status_code=403, detail="Access denied: Not a Cloud Task")
-    
-    return True
+        # Verify the token against Google's public certs
+        # audience should match your Backend URL or the specific service account logic
+        # For Cloud Run, audience is usually the Service URL.
+        # Ensure settings.BACKEND_URL is the OIDC audience.
+        id_info = id_token.verify_oauth2_token(
+            token, 
+            google_requests.Request(), 
+            audience=settings.BACKEND_URL 
+        )
+        
+        # Optional: Check issuer
+        if id_info['iss'] != 'https://accounts.google.com':
+             raise ValueError('Wrong issuer.')
+             
+        return True
+
+    except Exception as e:
+        logger.error(f"⛔ Task Auth Failed: {e}")
+        raise HTTPException(status_code=403, detail="Invalid OIDC Token")
 
 @router.post("/process-case")
 async def process_case(

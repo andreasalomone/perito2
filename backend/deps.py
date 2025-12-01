@@ -38,7 +38,11 @@ def get_db(
     
     # 1. Set the User UID session variable FIRST
     # This allows the 'user_self_access' RLS policy to let us read our own record.
-    db.execute(text(f"SET app.current_user_uid = '{uid}'"))
+    # FIX: Use bind parameters (:uid) instead of f-strings to prevent SQL injection
+    db.execute(
+        text("SELECT set_config('app.current_user_uid', :uid, false)"), 
+        {"uid": uid}
+    )
     
     # 2. Now we can safely query the User table
     user_record = db.query(User).filter(User.id == uid).first()
@@ -48,10 +52,14 @@ def get_db(
         yield db 
         return
 
-    org_id = user_record.organization_id
+    org_id = str(user_record.organization_id)
     
     # THE SECURITY MAGIC:
     # Set the session variable. If RLS is on, Postgres now filters everything automatically.
-    db.execute(text(f"SET app.current_org_id = '{org_id}'"))
+    # FIX: Use bind parameters (:org_id)
+    db.execute(
+        text("SELECT set_config('app.current_org_id', :org_id, false)"), 
+        {"org_id": org_id}
+    )
     
     yield db

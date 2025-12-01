@@ -29,8 +29,8 @@ def getconn():
 engine = create_engine(
     "postgresql+pg8000://",
     creator=getconn,
-    pool_size=5,        # Start small for Cloud Run (db-f1-micro)
-    max_overflow=10,    # Allow bursts
+    pool_size=15,       # Start small for Cloud Run (db-f1-micro)
+    max_overflow=5,    # Allow bursts
     pool_timeout=30,
     pool_recycle=1800,  # Recycle connections every 30 mins
 )

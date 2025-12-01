@@ -125,49 +125,14 @@ def trigger_extraction_task(doc_id: UUID, org_id: str):
             "http_request": {
                 "http_method": tasks_v2.HttpMethod.POST,
                 "url": f"{settings.BACKEND_URL}/tasks/process-document",
-                # Ideally config should have BACKEND_URL or SELF_URL. 
-                # If FRONTEND_URL is the Next.js app, this is wrong.
-                # In the audit, we saw Cloud Build deploys backend and frontend separately.
-                # The backend URL is needed here.
-                # Let's assume relative URL if using App Engine, but for Cloud Run we need absolute URL.
-                # For now, I will use a placeholder or assume settings has a way to get self URL.
-                # Actually, Cloud Tasks needs the OIDC token for the service account.
                 "headers": {"Content-Type": "application/json"},
                 "body": json.dumps({
                     "document_id": str(doc_id),
                     "organization_id": org_id
-                }).encode(),
-                "oidc_token": {
-                    "service_account_email": settings.GOOGLE_APPLICATION_CREDENTIALS # This might be a path, not email.
-                    # We usually don't need to specify email if using default compute service account.
-                    # But we need to enable OIDC.
-                }
+                }).encode()
             }
         }
         
-        # FIX: OIDC Token requires the service account email. 
-        # If we don't have it in settings, we might rely on default behavior or just not set it if using standard auth.
-        # But for Cloud Run invoke, we need OIDC.
-        # Let's simplify: Just log it for now if we can't fully implement without the exact SA email.
-        # Wait, the user said "Implement Cloud Tasks".
-        # I will use a simplified version that assumes the infrastructure is set up.
-        
-        # Re-reading config: We don't have SERVICE_ACCOUNT_EMAIL.
-        # I will comment out the OIDC part or use a dummy if strict.
-        # Actually, let's just log the intent and the payload construction, 
-        # but since I can't guarantee the URL is correct (FRONTEND_URL is likely the Next.js one),
-        # I should probably just log it as "Ready to Enqueue" or try to use a relative URI if possible (only for App Engine).
-        # Cloud Run requires absolute URL.
-        
-        # Let's use a safe implementation that logs errors but tries to enqueue.
-        # I'll assume there is a BACKEND_URL in settings or I'll derive it.
-        # Since I can't derive it easily, I will use a placeholder string that the user needs to configure.
-        
-        url = f"https://REGION-PROJECT.cloudfunctions.net/process-document" # Placeholder
-        if hasattr(settings, "BACKEND_URL"):
-             url = f"{settings.BACKEND_URL}/tasks/process-document"
-        
-        # For this task, I will implement the logic but wrap it in a try/except to not crash if config is missing.
         logger.info(f"🚀 Enqueuing extraction task for doc {doc_id} to {parent}")
         
         # ACTUAL ENQUEUE
