@@ -104,3 +104,23 @@ class MLTrainingPair(Base):
     
     quality_score = Column(Float) # Optional rating
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class AuditLog(Base):
+    """Tracks critical user actions and system events for compliance and debugging."""
+    __tablename__ = "audit_logs"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    user_id = Column(String(128), ForeignKey("users.id"), nullable=True) # Nullable for system actions
+    
+    action = Column(String(50), nullable=False) # e.g. "LOGIN", "CREATE_CASE", "GENERATE_REPORT"
+    resource_type = Column(String(50)) # e.g. "CASE", "DOCUMENT"
+    resource_id = Column(UUID(as_uuid=True)) # ID of the affected resource
+    
+    details = Column(JSONB) # Flexible storage for metadata (e.g. tokens, cost, diffs)
+    ip_address = Column(String(45))
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    organization = relationship("Organization")
+    user = relationship("User")
