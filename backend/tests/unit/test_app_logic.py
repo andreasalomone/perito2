@@ -6,7 +6,7 @@ import pytest
 from werkzeug.datastructures import FileStorage
 
 from app import app as flask_app  # Your Flask app instance
-from core.config import settings  # To potentially mock settings
+from config import settings  # To potentially mock settings
 
 
 

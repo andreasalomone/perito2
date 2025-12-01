@@ -4,8 +4,16 @@ import pytest
 from unittest import mock
 
 # Patch settings before importing app
-with mock.patch.dict(os.environ, {"DATABASE_URL": "sqlite:///:memory:"}):
-    from core.config import settings
+with mock.patch.dict(os.environ, {
+    "DATABASE_URL": "sqlite:///:memory:",
+    "GOOGLE_CLOUD_PROJECT": "test-project",
+    "CLOUD_SQL_CONNECTION_NAME": "project:region:instance",
+    "DB_PASS": "testpass",
+    "STORAGE_BUCKET_NAME": "test-bucket",
+    "CLOUD_TASKS_QUEUE_PATH": "projects/test/locations/test/queues/test",
+    "GEMINI_API_KEY": "test-key"
+}):
+    from config import settings
     settings.DATABASE_URL = "sqlite:///:memory:"
     settings.REDIS_URL = "memory://"
     from app import app as flask_app
@@ -27,7 +35,7 @@ def app():
     
     # Initialize db for tests
     with flask_app.app_context():
-        from core.database import db
+        from database import db
         # Force engine disposal to ensure new config is picked up
         if db.engine:
             db.engine.dispose()
@@ -49,7 +57,7 @@ def app():
     
     # Cleanup
     with flask_app.app_context():
-        from core.database import db
+        from database import db
         db.session.remove()
         db.drop_all()
 

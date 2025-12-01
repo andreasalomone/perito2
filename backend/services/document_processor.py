@@ -163,6 +163,16 @@ def process_eml_file(eml_path: str, upload_folder: str) -> List[Dict[str, Any]]:
 
     for attachment in mail.attachments:
         original_filename = attachment.get("filename", "untitled_attachment")
+
+        # Check for excluded extensions
+        _, ext = os.path.splitext(original_filename)
+        ext = ext.lower()
+        if ext in [".gif", ".mp4", ".avi", ".mov", ".mkv", ".webm"]:
+            logger.info(
+                f"Skipping excluded attachment type '{ext}' for file '{original_filename}' in {eml_path}"
+            )
+            continue
+
         payload = attachment.get("payload", "")
 
         if not payload:

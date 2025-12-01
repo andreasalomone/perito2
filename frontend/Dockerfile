@@ -47,9 +47,14 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
+# Copy entrypoint script
+COPY entrypoint.sh ./
+RUN chmod +x entrypoint.sh
+
 # Expose port
 EXPOSE 3000
 ENV PORT=3000
 
-# Start the application
+# Start the application via entrypoint
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["node", "server.js"]

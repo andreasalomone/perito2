@@ -1,31 +1,32 @@
 # --- FastAPI Core ---
-fastapi>=0.115.0
-uvicorn[standard]>=0.32.0
-python-multipart>=0.0.12   # Required for file uploads
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+python-multipart==0.0.12   # Required for file uploads
 
 # --- Google Cloud Infrastructure ---
-google-cloud-storage>=2.14.0
-google-cloud-tasks>=2.16.0
-cloud-sql-python-connector[pg8000]>=1.12.0
-firebase-admin>=6.5.0
+google-cloud-storage==2.14.0
+google-cloud-tasks==2.16.0
+cloud-sql-python-connector[pg8000]==1.12.0
+firebase-admin==6.5.0
 
 # --- Database ---
-sqlalchemy>=2.0.36
-pg8000>=1.31.2
+sqlalchemy==2.0.36
+pg8000==1.31.2
 
 # --- AI & LLM ---
-google-genai>=0.3.0        # The AI SDK
-tenacity>=8.2.0            # Critical for retry logic in llm_handler.py
+google-genai==0.3.0        # The AI SDK
+tenacity==8.2.0            # Critical for retry logic in llm_handler.py
 
 # --- Configuration ---
-pydantic-settings>=2.6.1
-python-dotenv>=1.0.0       # Helps load .env locally
+pydantic-settings==2.6.1
+python-dotenv==1.0.0       # Helps load .env locally
+python-json-logger==2.0.7  # Structured logging
 
 # --- Legacy Logic Dependencies (Critical for Services) ---
-PyMuPDF>=1.26.0            # For document_processor.py (PDF handling)
-python-docx>=1.1.2         # For docx_generator.py
-openpyxl>=3.1.5            # For Excel extraction
-pillow>=11.2.1             # For Image processing
-mail-parser>=4.0.0         # For .eml file processing
-werkzeug>=3.0.0            # Required if you kept security.py (password hashing)
-requests>=2.32.0           # General utility
+PyMuPDF==1.26.0            # For document_processor.py (PDF handling)
+python-docx==1.1.2         # For docx_generator.py
+openpyxl==3.1.5            # For Excel extraction
+pillow==11.2.1             # For Image processing
+mail-parser==4.0.0         # For .eml file processing
+werkzeug==3.0.0            # Required if you kept security.py (password hashing)
+requests==2.32.0           # General utility

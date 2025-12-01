@@ -1,10 +1,13 @@
 import firebase_admin
-from firebase_admin import auth, credentials
+from firebase_admin import auth
 from fastapi import Depends, HTTPException, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+from database import get_db as get_raw_db
+from core.models import User
 
-# Initialize Firebase Admin once
-# On Cloud Run, it auto-discovers credentials from the environment.
+# Initialize Firebase (Keep existing code)
 try:
     firebase_admin.get_app()
 except ValueError:
@@ -12,42 +15,43 @@ except ValueError:
 
 security = HTTPBearer()
 
-from database import get_db
-from sqlalchemy.orm import Session
-from core.models import User
-
-def get_current_user(
-    creds: HTTPAuthorizationCredentials = Security(security),
-    db: Session = Depends(get_db)
-):
-    """
-    Validates the Bearer Token (JWT) sent by the frontend.
-    Returns the user dict if valid, or raises 401.
-    Also fetches the DB user to get the organization_id.
-    """
+def get_current_user_token(creds: HTTPAuthorizationCredentials = Security(security)):
+    """Validates Firebase Token"""
     token = creds.credentials
     try:
-        # Verify the ID token while checking if the token is revoked
-        decoded_token = auth.verify_id_token(token, check_revoked=True)
-        
-        # Fetch DB User
-        db_user = db.query(User).filter(User.id == decoded_token['uid']).first()
-        if db_user:
-            decoded_token['organization_id'] = db_user.organization_id
-            decoded_token['role'] = db_user.role
-        else:
-            # If user not in DB yet (e.g. first login before sync), 
-            # we might want to allow them to proceed to sync endpoint,
-            # but block other endpoints.
-            # For now, we just don't add org_id.
-            pass
+        return auth.verify_id_token(token, check_revoked=True)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
-        return decoded_token
-        # Returns dict like: {'uid': 'abc...', 'email': 'user@example.com', 'organization_id': '...', ...}
-    except auth.RevokedIdTokenError:
-        raise HTTPException(status_code=401, detail="Token revoked. Please login again.")
-    except auth.ExpiredIdTokenError:
-        raise HTTPException(status_code=401, detail="Token expired.")
-    except Exception as e:
-        print(f"Auth Error: {e}")
-        raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+def get_db(
+    current_user_token: dict = Depends(get_current_user_token),
+    db: Session = Depends(get_raw_db)
+):
+    """
+    Secure Database Session Dependency.
+    1. Gets the User's UID from Firebase Token.
+    2. Finds their Organization in Postgres.
+    3. SETS the 'app.current_org_id' session variable.
+    4. Returns the secured session.
+    """
+    uid = current_user_token['uid']
+    
+    # 1. Set the User UID session variable FIRST
+    # This allows the 'user_self_access' RLS policy to let us read our own record.
+    db.execute(text(f"SET app.current_user_uid = '{uid}'"))
+    
+    # 2. Now we can safely query the User table
+    user_record = db.query(User).filter(User.id == uid).first()
+    
+    if not user_record:
+        # User not synced yet? Allow logic to handle registration
+        yield db 
+        return
+
+    org_id = user_record.organization_id
+    
+    # THE SECURITY MAGIC:
+    # Set the session variable. If RLS is on, Postgres now filters everything automatically.
+    db.execute(text(f"SET app.current_org_id = '{org_id}'"))
+    
+    yield db

@@ -81,47 +81,42 @@ def process_file_from_path(
     result = ServiceResult(success=True)
 
     try:
+        # SIMPLIFIED: No more if/else for list/dict. It's always a list now.
         processed_parts = document_processor.process_uploaded_file(
             filepath, os.path.dirname(filepath)
         )
 
-        temp_processed_file_data_list_for_this_file: List[Dict[str, Any]] = []
         current_length_for_this_file_processing = current_total_extracted_text_length
 
         for part in processed_parts:
             part_type = part.get("type")
             part_filename = part.get("filename", original_filename)
 
-            if part_type in ["error", "unsupported"]:
-                processed_entries.append(part)
-            elif part_type == "text" and part.get("content"):
+            if part_type == "text" and part.get("content"):
                 source_desc = f"from {original_filename}"
-
                 (
-                    temp_processed_file_data_list_for_this_file,
+                    processed_entries_list,
                     current_length_for_this_file_processing,
                     svc_msg,
                 ) = _add_text_data_to_processed_list(
-                    temp_processed_file_data_list_for_this_file,
+                    [], # Temporary list
                     current_length_for_this_file_processing,
                     part["content"],
                     part_filename,
                     source_desc,
                 )
+                processed_entries.extend(processed_entries_list)
                 if svc_msg:
                     result.messages.append(svc_msg)
-
-            elif part_type == "vision":
+            
+            elif part_type in ["vision", "error", "unsupported"]:
                 processed_entries.append(part)
             
             # Handle attachment references if any (from our new storage logic)
             elif part_type == "attachment_reference":
                 # For now, just log or ignore, or add to processed entries if the frontend can handle it
-                # The frontend likely expects "text", "vision", "error", "unsupported".
-                # Let's treat it as "unsupported" or just skip for now to avoid breaking things.
                 pass
 
-        processed_entries.extend(temp_processed_file_data_list_for_this_file)
         text_length_added_by_this_file = (
             current_length_for_this_file_processing
             - current_total_extracted_text_length

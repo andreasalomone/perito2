@@ -1,13 +1,12 @@
 from fastapi import APIRouter, HTTPException, Depends, Header
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from pydantic import BaseModel
 from typing import List
 
 from database import get_db
-from services.report_service import generate_report_logic
-
+from core.models import Case
 from config import settings
-
 import logging
 
 logger = logging.getLogger(__name__)
@@ -15,9 +14,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 class TaskPayload(BaseModel):
-    report_id: str
-    user_id: str
-    file_paths: List[str]
+    case_id: str
+    organization_id: str
 
 async def verify_cloud_tasks_auth(
     x_cloudtasks_queuename: str = Header(None, alias="X-AppEngine-QueueName"),
@@ -38,29 +36,36 @@ async def verify_cloud_tasks_auth(
     
     return True
 
-@router.post("/process-report")
-async def process_report_task(
-    payload: TaskPayload,
+@router.post("/process-case")
+async def process_case(
+    payload: TaskPayload, 
     db: Session = Depends(get_db),
-    authorized: bool = Depends(verify_cloud_tasks_auth) # <--- The Guard
+    authorized: bool = Depends(verify_cloud_tasks_auth)
 ):
-    """
-    Cloud Tasks calls this endpoint to start generation.
-    It runs the heavy logic (OCR -> LLM -> DOCX).
-    """
-    logger.info(f"🚀 Starting task for report {payload.report_id}")
+    logger.info(f"🚀 Starting task for case {payload.case_id} in org {payload.organization_id}")
+
+    # 1. Manually set RLS context for the worker
+    # The worker is a "superuser" in terms of connection, but needs to assume the tenant identity
+    db.execute(text(f"SET app.current_org_id = '{payload.organization_id}'"))
     
-    try:
-        # We await the synchronous logic (or run it directly)
-        # This function contains your core business logic
-        await generate_report_logic(
-            report_id=payload.report_id, 
-            user_id=payload.user_id,
-            file_paths=payload.file_paths,
-            db=db
-        )
-        return {"status": "success"}
-    except Exception as e:
-        logger.error(f"❌ Task Failed: {e}", exc_info=True)
-        # Returning 500 tells Cloud Tasks to retry automatically
-        raise HTTPException(status_code=500, detail=str(e))
+    # 2. Now the worker can see the case
+    case = db.query(Case).filter(Case.id == payload.case_id).first()
+    if not case:
+        logger.error("❌ Worker cannot find case (RLS Blocked or Invalid ID)")
+        raise HTTPException(status_code=404, detail="Case not found")
+        
+    # 3. Run Logic...
+    # We await the synchronous logic (or run it directly if it's async)
+    from services import generation_service
+    
+    # Run the generation logic
+    # Note: process_case_logic is async, so we await it
+    await generation_service.process_case_logic(
+        case_id=payload.case_id,
+        organization_id=payload.organization_id,
+        db=db
+    )
+    
+    logger.info(f"✅ Case {case.reference_code} processed successfully.")
+    
+    return {"status": "success"}

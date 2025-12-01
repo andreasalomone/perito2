@@ -1,35 +1,33 @@
-from database import get_db, SessionLocal
-from sqlalchemy import text
-from google.cloud.sql.connector import Connector
-import database
+import os
+from dotenv import load_dotenv
 
-def migrate():
-    # Manually initialize the connector since we aren't running via FastAPI lifespan
+# Load env vars BEFORE importing config/database
+load_dotenv("backend/.env")
+
+# Fix GOOGLE_APPLICATION_CREDENTIALS path to be absolute or relative to backend
+if os.getenv("GOOGLE_APPLICATION_CREDENTIALS") == "service-account.json":
+    # If it's just the filename, assume it's in the same dir as this script
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.join(script_dir, "service-account.json")
+
+from database import engine, Base
+import database
+from google.cloud.sql.connector import Connector
+
+# Import all models to ensure they are registered
+from core.models import Organization, User, Client, Case, Document, ReportVersion, MLTrainingPair
+
+def reset_db():
+    print("Initializing connector...")
     database.connector = Connector()
     
-    db = SessionLocal()
     try:
-        print("Adding organization_id column to report_log table...")
-        # Check if column exists first to avoid error
-        check_sql = text("SELECT column_name FROM information_schema.columns WHERE table_name='report_log' AND column_name='organization_id'")
-        result = db.execute(check_sql).fetchone()
-        
-        if not result:
-            sql = text("ALTER TABLE report_log ADD COLUMN organization_id VARCHAR(36)")
-            db.execute(sql)
-            db.commit()
-            print("✅ Successfully added organization_id column.")
-        else:
-            print("ℹ️ Column organization_id already exists.")
-            
-    except Exception as e:
-        print(f"❌ Migration failed: {e}")
-        db.rollback()
+        print("Creating new tables...")
+        Base.metadata.create_all(bind=engine)
+        print("✅ Database schema initialized.")
     finally:
-        db.close()
-        # Cleanup
         if database.connector:
             database.connector.close()
 
 if __name__ == "__main__":
-    migrate()
+    reset_db()
