@@ -12,6 +12,7 @@ RUN npm ci
 
 # Copy source code
 COPY . .
+RUN rm -f .env.local
 
 # Build arguments for Next.js (passed from Cloud Build)
 ARG NEXT_PUBLIC_API_URL

@@ -60,6 +60,8 @@ steps:
       - '-c'
       - |
         gcloud run services describe robotperizia-backend --platform managed --region europe-west1 --format 'value(status.url)' > /workspace/backend_url.txt
+        # Force HTTPS: Replace http:// with https://, or prepend https:// if missing scheme
+        sed -i 's|^http://|https://|' /workspace/backend_url.txt
         echo "Backend URL: $(cat /workspace/backend_url.txt)"
 
   # 6. Pull Frontend Cache

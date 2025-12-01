@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
+import axios from "axios";
 
 export default function CreateCasePage() {
     const { getToken } = useAuth();
@@ -19,25 +20,21 @@ export default function CreateCasePage() {
         setLoading(true);
         try {
             const token = await getToken();
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/cases`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({
+            const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/cases`,
+                {
                     reference_code: refCode,
                     client_name: clientName
-                }),
-            });
+                },
+                {
+                    headers: { Authorization: `Bearer ${token}` }
+                }
+            );
 
-            if (res.ok) {
-                const newCase = await res.json();
-                // Redirect to the Case Workspace
-                router.push(`/dashboard/cases/${newCase.id}`);
-            }
+            // Redirect to the Case Workspace
+            router.push(`/dashboard/cases/${res.data.id}`);
         } catch (error) {
             console.error("Failed to create case", error);
+            alert("Errore creazione fascicolo");
         } finally {
             setLoading(false);
         }
