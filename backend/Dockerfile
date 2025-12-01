@@ -1,13 +1,14 @@
-# Use official Python image
-FROM python:3.10-slim
+# Use official Python image (Pin to Bookworm for stability)
+FROM python:3.10-slim-bookworm
 
 # Set working directory
 WORKDIR /app
 
 # Install system dependencies for PyMuPDF and Pillow
+# libgl1-mesa-glx is deprecated in Bookworm, use libgl1
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
