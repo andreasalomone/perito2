@@ -52,21 +52,29 @@ steps:
         gcloud run services describe robotperizia-backend --platform managed --region europe-west1 --format 'value(status.url)' > /workspace/backend_url.txt
         echo "Backend URL: $(cat /workspace/backend_url.txt)"
 
-  # 5. Build Frontend Container (Injecting Backend URL)
+  # 5. Build Frontend Container (Injecting Backend URL + Secrets)
   - name: 'gcr.io/cloud-builders/docker'
     entrypoint: /bin/bash
+    secretEnv:
+      - NEXT_PUBLIC_FIREBASE_API_KEY
+      - NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+      - NEXT_PUBLIC_FIREBASE_PROJECT_ID
+      - NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+      - NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+      - NEXT_PUBLIC_FIREBASE_APP_ID
+      - NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
     args:
       - '-c'
       - |
         docker build -t gcr.io/$PROJECT_ID/robotperizia-frontend \
         --build-arg NEXT_PUBLIC_API_URL=$(cat /workspace/backend_url.txt) \
-        --build-arg NEXT_PUBLIC_FIREBASE_API_KEY=$_NEXT_PUBLIC_FIREBASE_API_KEY \
-        --build-arg NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=$_NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN \
-        --build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID=$_NEXT_PUBLIC_FIREBASE_PROJECT_ID \
-        --build-arg NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=$_NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET \
-        --build-arg NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=$_NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID \
-        --build-arg NEXT_PUBLIC_FIREBASE_APP_ID=$_NEXT_PUBLIC_FIREBASE_APP_ID \
-        --build-arg NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=$_NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID \
+        --build-arg NEXT_PUBLIC_FIREBASE_API_KEY=$$NEXT_PUBLIC_FIREBASE_API_KEY \
+        --build-arg NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=$$NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN \
+        --build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID=$$NEXT_PUBLIC_FIREBASE_PROJECT_ID \
+        --build-arg NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=$$NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET \
+        --build-arg NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=$$NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID \
+        --build-arg NEXT_PUBLIC_FIREBASE_APP_ID=$$NEXT_PUBLIC_FIREBASE_APP_ID \
+        --build-arg NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=$$NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID \
         .
     dir: 'frontend'
 
@@ -86,20 +94,29 @@ steps:
       - '--region'
       - 'europe-west1'
       - '--allow-unauthenticated'
-      - '--set-env-vars'
-      - 'NEXT_PUBLIC_API_URL=REPLACE_ME_WITH_BUILD_ARG_IF_NEEDED_BUT_NEXTJS_NEEDS_BUILD_TIME' 
-      # Note: Next.js bakes env vars at build time, so the docker build step handles it.
-      # However, we can also set runtime env vars if using server-side rendering features.
+      # Note: Next.js env vars are baked in at build time via --build-arg.
+      # We don't need to set them as runtime env vars unless using SSR features that rely on them.
 
-substitutions:
-
-  _NEXT_PUBLIC_FIREBASE_API_KEY: "AIzaSyArgk92E56fnKcUmajrAdROu9BDxl7EQ2A"
-  _NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "perito-479708.firebaseapp.com"
-  _NEXT_PUBLIC_FIREBASE_PROJECT_ID: "perito-479708"
-  _NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: "perito-479708.firebasestorage.app"
-  _NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "738291935960"
-  _NEXT_PUBLIC_FIREBASE_APP_ID: "1:738291935960:web:2fa811b15b4717c5ef05ad"
-  _NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: "G-YVY6S4YY8K"
+availableSecrets:
+  secretManager:
+  - versionName: projects/$PROJECT_ID/secrets/next-public-firebase-api-key/versions/latest
+    env: 'NEXT_PUBLIC_FIREBASE_API_KEY'
+  - versionName: projects/$PROJECT_ID/secrets/next-public-firebase-auth-domain/versions/latest
+    env: 'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN'
+  - versionName: projects/$PROJECT_ID/secrets/next-public-firebase-project-id/versions/latest
+    env: 'NEXT_PUBLIC_FIREBASE_PROJECT_ID'
+  - versionName: projects/$PROJECT_ID/secrets/next-public-firebase-storage-bucket/versions/latest
+    env: 'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET'
+  - versionName: projects/$PROJECT_ID/secrets/next-public-firebase-messaging-sender-id/versions/latest
+    env: 'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID'
+  - versionName: projects/$PROJECT_ID/secrets/next-public-firebase-app-id/versions/latest
+    env: 'NEXT_PUBLIC_FIREBASE_APP_ID'
+  - versionName: projects/$PROJECT_ID/secrets/next-public-firebase-measurement-id/versions/latest
+    env: 'NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID'
+  - versionName: projects/$PROJECT_ID/secrets/database-password/versions/latest
+    env: 'DB_PASS'
+  - versionName: projects/$PROJECT_ID/secrets/gemini-api-key/versions/latest
+    env: 'GEMINI_API_KEY'
 
 options:
   logging: CLOUD_LOGGING_ONLY

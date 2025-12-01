@@ -142,3 +142,38 @@ def finalize_case_endpoint(
     )
     
     return {"status": "finalized", "version_id": final_version.id}
+
+# 8. DOWNLOAD GENERATED VARIANT
+@router.post("/{case_id}/versions/{version_id}/download-generated")
+async def download_generated_variant(
+    case_id: UUID,
+    version_id: UUID,
+    payload: schemas.DownloadVariantPayload,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_token)
+):
+    """
+    Generates and returns a signed URL for a specific template variant (BN or Salomone).
+    """
+    # Verify access (RLS)
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+        
+    # Verify version belongs to case
+    version = db.query(ReportVersion).filter(ReportVersion.id == version_id, ReportVersion.case_id == case_id).first()
+    if not version:
+        raise HTTPException(status_code=404, detail="Version not found")
+
+    from services import generation_service
+    try:
+        url = await generation_service.generate_docx_variant(
+            version_id=str(version_id),
+            template_type=payload.template_type,
+            db=db
+        )
+        return {"download_url": url}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

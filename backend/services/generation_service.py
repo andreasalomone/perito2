@@ -9,7 +9,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from uuid import UUID
 
-from core.models import Case, Document, ReportVersion, PricingConfig
+from core.models import Case, Document, ReportVersion
 from services.gcs_service import download_file_to_temp, get_storage_client
 from config import settings
 from services import document_processor, llm_handler, docx_generator, case_service
@@ -41,8 +41,6 @@ async def process_case_logic(case_id: str, organization_id: str, db: Session):
         logger.error(f"Case {case_id} not found in DB")
         return
 
-    # Fetch Pricing Config
-    pricing_config = db.query(PricingConfig).filter(PricingConfig.active == 1).first()
     
     # Update status
     case.status = "processing"
@@ -86,9 +84,9 @@ async def process_case_logic(case_id: str, organization_id: str, db: Session):
         logger.info("Generating text with Gemini...")
         
         # This is already async
-        report_text, cost, token_usage = await llm_handler.generate_report_from_content(
-            processed_files=processed_data_for_llm,
-            pricing_config=pricing_config
+        # This is already async
+        report_text, token_usage = await llm_handler.generate_report_from_content(
+            processed_files=processed_data_for_llm
         )
 
         # 5. Generate DOCX
@@ -144,3 +142,63 @@ async def process_case_logic(case_id: str, organization_id: str, db: Session):
         raise e 
     finally:
         shutil.rmtree(tmp_dir)
+
+async def generate_docx_variant(
+    version_id: str, 
+    template_type: str, 
+    db: Session
+) -> str:
+    """
+    Generates a DOCX variant (BN or Salomone) on the fly from an existing ReportVersion.
+    Returns the signed URL for the generated file.
+    """
+    # 1. Fetch Version
+    version = db.query(ReportVersion).filter(ReportVersion.id == version_id).first()
+    if not version:
+        raise ValueError("Report version not found")
+        
+    if not version.ai_raw_output:
+        raise ValueError("No AI content found for this version")
+
+    # 2. Select Generator
+    if template_type == "salomone":
+        from services import docx_generator_salomone as generator
+        suffix = "_Salomone.docx"
+    elif template_type == "bn":
+        from services import docx_generator as generator
+        suffix = "_BN.docx"
+    else:
+        raise ValueError("Invalid template type")
+
+    # 3. Generate DOCX
+    logger.info(f"Generating DOCX variant {template_type} for version {version_id}...")
+    docx_stream = await asyncio.to_thread(generator.create_styled_docx, version.ai_raw_output)
+
+    # 4. Upload to GCS
+    bucket_name = settings.STORAGE_BUCKET_NAME
+    # Use a specific path for variants to avoid overwriting the main one if desired, 
+    # or overwrite if we want to switch 'default'. 
+    # Let's use a variant path: reports/{org}/{case}/variants/{ver_id}_{type}.docx
+    blob_name = f"reports/{version.organization_id}/{version.case_id}/variants/{version.id}{suffix}"
+
+    def upload_blob():
+        storage_client = get_storage_client()
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        # Reset stream pointer just in case
+        if hasattr(docx_stream, 'seek'):
+            docx_stream.seek(0)
+        blob.upload_from_file(docx_stream, content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        return blob
+
+    blob = await asyncio.to_thread(upload_blob)
+    
+    # 5. Generate Signed URL (Read)
+    # We can use the blob object directly or the gcs_service helper
+    url = blob.generate_signed_url(
+        version="v4",
+        expiration=3600, # 1 hour
+        method="GET"
+    )
+    
+    return url

@@ -15,6 +15,7 @@ export default function CaseWorkspace() {
     const [caseData, setCaseData] = useState<Case | null>(null);
     const [uploading, setUploading] = useState(false);
     const [generating, setGenerating] = useState(false);
+    const [selectedTemplate, setSelectedTemplate] = useState<"bn" | "salomone">("bn");
 
     const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -183,9 +184,44 @@ export default function CaseWorkspace() {
                                         </p>
                                     </div>
                                 </div>
-                                <div className="flex gap-2">
+                                <div className="flex items-center gap-4">
+                                    {/* Template Selection (Only for AI Drafts) */}
+                                    {!v.is_final && (
+                                        <div className="flex items-center gap-2 text-xs border rounded p-1 bg-background">
+                                            <button
+                                                onClick={() => setSelectedTemplate("bn")}
+                                                className={`px-2 py-1 rounded ${selectedTemplate === "bn" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                                            >
+                                                BN
+                                            </button>
+                                            <button
+                                                onClick={() => setSelectedTemplate("salomone")}
+                                                className={`px-2 py-1 rounded ${selectedTemplate === "salomone" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                                            >
+                                                Salomone
+                                            </button>
+                                        </div>
+                                    )}
+
                                     {/* Download Button */}
-                                    <Button size="icon" variant="ghost" onClick={() => window.open(v.docx_storage_path || "#")}>
+                                    <Button size="icon" variant="ghost" onClick={async () => {
+                                        if (v.is_final) {
+                                            window.open(v.docx_storage_path || "#");
+                                        } else {
+                                            try {
+                                                const token = await getToken();
+                                                const res = await axios.post(
+                                                    `${API}/api/cases/${id}/versions/${v.id}/download-generated`,
+                                                    { template_type: selectedTemplate },
+                                                    { headers: { Authorization: `Bearer ${token}` } }
+                                                );
+                                                window.open(res.data.download_url, "_blank");
+                                            } catch (e) {
+                                                alert("Errore download");
+                                                console.error(e);
+                                            }
+                                        }
+                                    }}>
                                         <Download className="h-4 w-4" />
                                     </Button>
                                 </div>

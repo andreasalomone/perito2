@@ -13,7 +13,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
 
-from core.config import settings
+from config import settings
 
 # Colore per "Salomone & ASSOCIATI Srl" nel footer (campiona dal tuo PDF per precisione)
 FOOTER_BN_SURVEYS_COLOR = RGBColor(0x54, 0x8D, 0xD4)  # Esempio Blu (da affinare)

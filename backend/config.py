@@ -50,13 +50,6 @@ class Settings(BaseSettings):
     LLM_API_RETRY_WAIT_SECONDS: int = 2
     LLM_API_TIMEOUT_SECONDS: int = 600
 
-# Pricing (Gemini 2.5 Pro)
-    PRICE_INPUT_TIER_1: float = 1.25
-    PRICE_INPUT_TIER_2: float = 2.50
-    PRICE_OUTPUT_TIER_1: float = 10.00
-    PRICE_OUTPUT_TIER_2: float = 15.00
-    PRICE_CACHE_TIER_1: float = 0.125
-    PRICE_CACHE_TIER_2: float = 0.25
 
     # Cache Settings
     REPORT_PROMPT_CACHE_NAME: Optional[str] = None

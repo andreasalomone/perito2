@@ -21,9 +21,8 @@ logger = logging.getLogger(__name__)
 
 async def generate_report_from_content(
     processed_files: List[Dict[str, Any]], 
-    additional_text: str = "",
-    pricing_config: Any = None
-) -> Tuple[str, float, Dict[str, int]]:
+    additional_text: str = ""
+) -> Tuple[str, Dict[str, int]]:
     """Generate an insurance report using Google Gemini with multimodal content and context caching.
 
     Orchestrates the report generation by:
@@ -43,12 +42,11 @@ async def generate_report_from_content(
 
     Returns:
         The generated report content as a string, or an error message starting with "Error:".
-        The API cost in USD.
         A dictionary containing token usage details.
     """
     if not settings.GEMINI_API_KEY:
         logger.error("GEMINI_API_KEY not configured in settings.")
-        return "Error: LLM service is not configured (API key missing).", 0.0, {}
+        return "Error: LLM service is not configured (API key missing).", {}
 
     client: genai.Client = genai.Client(api_key=settings.GEMINI_API_KEY)
     uploaded_file_names: List[str] = []
@@ -203,9 +201,8 @@ async def generate_report_from_content(
         # Step 6: Parse and validate response
         report_content = response_parser_service.parse_llm_response(response)
 
-        # Calculate cost
+        # Calculate cost - REMOVED
         usage_metadata = getattr(response, "usage_metadata", None)
-        api_cost_usd = generation_service.calculate_cost(usage_metadata, pricing_config)
 
         # Extract token counts
         token_usage = {
@@ -228,7 +225,7 @@ async def generate_report_from_content(
                 usage_metadata, "cached_content_token_count", 0
             )
 
-        return report_content, api_cost_usd, token_usage
+        return report_content, token_usage
 
     except asyncio.CancelledError:
         # Important for async correctness: don't swallow cancellations.
@@ -236,7 +233,7 @@ async def generate_report_from_content(
         raise
     except google_exceptions.GoogleAPIError as e:
         logger.error("Gemini API error during report generation: %s", e, exc_info=True)
-        return f"Error generating report due to an LLM API issue: {str(e)}", 0.0, {}
+        return f"Error generating report due to an LLM API issue: {str(e)}", {}
     except Exception as e:  # noqa: BLE001 (we want a last-resort guardrail here)
         logger.error(
             "An unexpected error occurred with the Gemini service: %s",
@@ -245,7 +242,6 @@ async def generate_report_from_content(
         )
         return (
             f"Error generating report due to an unexpected LLM issue: {str(e)}",
-            0.0,
             {},
         )
     finally:
@@ -265,6 +261,6 @@ async def generate_report_from_content(
 
 def generate_report_from_content_sync(
     processed_files: List[Dict[str, Any]], additional_text: str = ""
-) -> Tuple[str, float, Dict[str, int]]:
+) -> Tuple[str, Dict[str, int]]:
     """Synchronous wrapper for generate_report_from_content."""
     return asyncio.run(generate_report_from_content(processed_files, additional_text))

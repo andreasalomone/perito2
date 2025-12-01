@@ -45,3 +45,6 @@ class CaseDetail(CaseRead):
 
 class FinalizePayload(BaseModel):
     final_docx_path: str
+
+class DownloadVariantPayload(BaseModel):
+    template_type: str # "bn" | "salomone"
