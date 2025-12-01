@@ -1,0 +1,17 @@
+.git
+.gitignore
+.dockerignore
+node_modules
+__pycache__
+venv
+.env
+.env.local
+.DS_Store
+dist
+build
+coverage
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
