@@ -1,7 +1,7 @@
 "use client";
-import { createContext, useContext, useEffect, useState } from "react";
-import { onAuthStateChanged, User, signInWithPopup, signOut } from "firebase/auth";
-import { auth, googleProvider } from "@/lib/firebase";
+import { createContext, useContext, useEffect, useState, useRef } from "react";
+import { onAuthStateChanged, User, signInWithPopup, signOut, Auth } from "firebase/auth";
+import { initFirebase, googleProvider, getFirebaseAuth } from "@/lib/firebase";
 import { DBUser } from "@/types";
 import axios from "axios";
 
@@ -16,16 +16,38 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+interface AuthProviderProps {
+    children: React.ReactNode;
+    firebaseConfig: Record<string, string | undefined>;
+}
+
+export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
     const [user, setUser] = useState<User | null>(null);
     const [dbUser, setDbUser] = useState<DBUser | null>(null);
     const [loading, setLoading] = useState(true);
+    const authRef = useRef<Auth | null>(null);
+
+    // Initialize Firebase once
+    if (!authRef.current) {
+        try {
+            const { auth } = initFirebase(firebaseConfig as any);
+            authRef.current = auth;
+        } catch (e) {
+            console.error("Firebase init failed", e);
+        }
+    }
 
     useEffect(() => {
+        const auth = authRef.current;
+        if (!auth) return;
+
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             setUser(firebaseUser);
 
             if (firebaseUser) {
+                // Set cookie for middleware
+                document.cookie = "auth_session=1; path=/; max-age=86400; SameSite=Lax";
+
                 try {
                     const token = await firebaseUser.getIdToken();
                     const response = await axios.post(
@@ -44,6 +66,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     setDbUser(null);
                 }
             } else {
+                // Remove cookie
+                document.cookie = "auth_session=; path=/; max-age=0; SameSite=Lax";
                 setDbUser(null);
             }
 
@@ -53,12 +77,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, []);
 
     const login = async () => {
-        await signInWithPopup(auth, googleProvider);
+        if (authRef.current) {
+            await signInWithPopup(authRef.current, googleProvider);
+        }
     };
 
     const logout = async () => {
-        await signOut(auth);
-        setDbUser(null);
+        if (authRef.current) {
+            await signOut(authRef.current);
+            document.cookie = "auth_session=; path=/; max-age=0; SameSite=Lax";
+            setDbUser(null);
+        }
     };
 
     const getToken = async () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -24,6 +24,30 @@ interface LogMessage {
     message: string;
     timestamp?: string;
 }
+
+const LogWindow = ({ logs }: { logs: string[] }) => {
+    const bottomRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [logs]);
+
+    return (
+        <div
+            className="bg-zinc-950 rounded-lg p-4 font-mono text-xs text-zinc-400 h-32 overflow-y-auto border border-zinc-800 shadow-inner"
+            role="log"
+            aria-live="polite"
+        >
+            {logs.slice(-50).map((log, i) => (
+                <div key={i} className="mb-1.5 flex gap-2">
+                    <span className="text-zinc-600" aria-hidden="true">{">"}</span>
+                    <span className="text-zinc-100">{log}</span>
+                </div>
+            ))}
+            <div ref={bottomRef} />
+        </div>
+    );
+};
 
 export default function ReportGenerator() {
     const { getToken } = useAuth();
@@ -229,14 +253,7 @@ export default function ReportGenerator() {
                         <Progress value={progress} className="h-2" />
 
                         {/* Terminal-like Logs */}
-                        <div className="bg-zinc-950 rounded-lg p-4 font-mono text-xs text-zinc-400 h-32 overflow-y-auto border border-zinc-800 shadow-inner">
-                            {logs.map((log, i) => (
-                                <div key={i} className="mb-1.5 flex gap-2">
-                                    <span className="text-zinc-600">{">"}</span>
-                                    <span className={i === logs.length - 1 ? "text-zinc-100" : ""}>{log}</span>
-                                </div>
-                            ))}
-                        </div>
+                        <LogWindow logs={logs} />
                     </div>
                 )}
 
