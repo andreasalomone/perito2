@@ -46,11 +46,8 @@ export default function DashboardPage() {
                 headers: { Authorization: `Bearer ${token}` }
             });
 
-            // Sort by created_at desc
-            const sorted = (res.data || []).sort((a: Case, b: Case) =>
-                new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-            );
-            setCases(sorted);
+            setCases(res.data || []);
+
         } catch (error) {
             if (!isPolling) {
                 console.error("Failed to fetch cases", error);

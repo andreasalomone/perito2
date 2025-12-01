@@ -153,15 +153,7 @@ export default function ReportGenerator() {
 
                 {/* Upload Area */}
                 {status === "idle" || status === "uploading" ? (
-                    <div
-                        onClick={() => status === "idle" && fileInputRef.current?.click()}
-                        className={cn(
-                            "border-2 border-dashed rounded-xl p-10 text-center transition-all duration-200 ease-in-out",
-                            status === "idle"
-                                ? "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50 cursor-pointer"
-                                : "border-muted-foreground/10 bg-muted/10 cursor-default"
-                        )}
-                    >
+                    <>
                         <input
                             type="file"
                             multiple
@@ -169,21 +161,39 @@ export default function ReportGenerator() {
                             className="hidden"
                             ref={fileInputRef}
                             disabled={status !== "idle"}
+                            tabIndex={-1}
                         />
-                        <div className="flex flex-col items-center gap-4">
-                            <div className="p-4 bg-primary/5 rounded-full">
-                                <UploadCloud className="h-10 w-10 text-primary" />
+                        <button
+                            type="button"
+                            onClick={() => status === "idle" && fileInputRef.current?.click()}
+                            onKeyDown={(e) => {
+                                if (status === "idle" && (e.key === "Enter" || e.key === " ")) {
+                                    e.preventDefault();
+                                    fileInputRef.current?.click();
+                                }
+                            }}
+                            className={cn(
+                                "w-full border-2 border-dashed rounded-xl p-10 text-center transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
+                                status === "idle"
+                                    ? "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50 cursor-pointer"
+                                    : "border-muted-foreground/10 bg-muted/10 cursor-default"
+                            )}
+                        >
+                            <div className="flex flex-col items-center gap-4">
+                                <div className="p-4 bg-primary/5 rounded-full">
+                                    <UploadCloud className="h-10 w-10 text-primary" />
+                                </div>
+                                <div className="space-y-1">
+                                    <h3 className="font-semibold text-lg">
+                                        {files.length > 0 ? `${files.length} file selezionati` : "Clicca per caricare i file"}
+                                    </h3>
+                                    <p className="text-sm text-muted-foreground">
+                                        Supporto per PDF, JPG, PNG, XLSX
+                                    </p>
+                                </div>
                             </div>
-                            <div className="space-y-1">
-                                <h3 className="font-semibold text-lg">
-                                    {files.length > 0 ? `${files.length} file selezionati` : "Clicca per caricare i file"}
-                                </h3>
-                                <p className="text-sm text-muted-foreground">
-                                    Supporto per PDF, JPG, PNG, XLSX
-                                </p>
-                            </div>
-                        </div>
-                    </div>
+                        </button>
+                    </>
                 ) : null}
 
                 {/* File List */}
