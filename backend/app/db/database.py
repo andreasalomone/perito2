@@ -35,12 +35,11 @@ engine = create_engine(
     # Connection Pool Optimization for Cloud Run Horizontal Scaling
     # Cloud Run scales horizontally (e.g., 50 concurrent users = ~3-5 containers)
     # CRITICAL: Keep pool_size small to prevent connection exhaustion:
-    #   - pool_size=1 + max_overflow=1 = 2 connections per container
-    #   - With 50 containers: 50 × 2 = 100 total connections (safe for most Cloud SQL instances)
-    #   - Previous settings (5+2=7): 50 × 7 = 350 connections (would crash db-f1-micro/small)
-    # Cloud Run handles scaling; each container needs minimal connections
-    pool_size=1,          # Minimal base pool per container
-    max_overflow=1,       # Allow 1 burst connection per container
+    #   - pool_size=5 + max_overflow=10 = 15 connections per container
+    #   - With 50 containers: 50 × 15 = 750 total connections (safe for standard Cloud SQL instances)
+    #   - Cloud Run handles scaling; each container needs minimal connections
+    pool_size=5,          # Increased base pool per container
+    max_overflow=10,      # Allow 10 burst connections per container
     pool_timeout=30,      # Fail fast if DB is overwhelmed
     pool_recycle=1800,    # Recycle connections every 30 mins to avoid stale connections
 )

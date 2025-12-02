@@ -60,6 +60,15 @@ async def verify_cloud_tasks_auth(
         # Optional: Check issuer
         if id_info['iss'] != 'https://accounts.google.com':
              raise ValueError('Wrong issuer.')
+
+        # Verify the email claim matches our Service Account
+        # This ensures ONLY our specific Cloud Task SA can invoke this endpoint
+        if settings.CLOUD_TASKS_SA_EMAIL:
+            if id_info.get('email') != settings.CLOUD_TASKS_SA_EMAIL:
+                logger.warning(f"⛔ Blocked task: Email mismatch. Expected {settings.CLOUD_TASKS_SA_EMAIL}, got {id_info.get('email')}")
+                raise ValueError('Wrong service account email.')
+        else:
+             logger.warning("⚠️ CLOUD_TASKS_SA_EMAIL not set. Skipping strict email check. (Secure this in production!)")
              
         return True
 

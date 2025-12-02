@@ -5,7 +5,11 @@ from app.models import Case, ReportVersion, MLTrainingPair, Document, Client
 from app.core.config import settings
 import logging
 import json
+import asyncio
 from google.cloud import tasks_v2
+
+# Limit concurrent extractions to prevent filling up memory/disk
+extraction_semaphore = asyncio.Semaphore(5)
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +22,7 @@ def get_or_create_client(db: Session, name: str) -> Client:
     if client:
         return client
 
-    # 2. Try to create (Handle Race Condition)
-    # 2. Try to create (Handle Race Condition)
+    # 2. Try to create (Handle Race Condition with SAVEPOINT)
     # Fetch current org_id from session variable first
     result = db.execute(text("SELECT current_setting('app.current_org_id', true)")).scalar()
     
@@ -27,16 +30,21 @@ def get_or_create_client(db: Session, name: str) -> Client:
         logger.error("Attempted to create client without app.current_org_id set.")
         raise ValueError("Missing Organization Context")
 
+    # Use begin_nested() to create a SAVEPOINT
     try:
-        client = Client(name=name, organization_id=result)
-        db.add(client)
-        db.commit()
+        with db.begin_nested():
+            client = Client(name=name, organization_id=result)
+            db.add(client)
+            db.flush()  # Flush within the savepoint
+        # If we get here, the savepoint was successful
+        # Note: we don't commit here because we're inside a larger transaction
+        db.flush()  # Make sure the client ID is available
         db.refresh(client)
         return client
         
     except IntegrityError:
-        # Race condition: Someone else created it just now.
-        db.rollback()
+        # Rollback happens automatically to the savepoint, not the whole transaction
+        # Another process created the client, so fetch it
         return db.query(Client).filter(Client.name == name, Client.organization_id == result).one()
 
 # --- THE CRITICAL WORKFLOWS ---
@@ -195,17 +203,18 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: Session):
 
     tmp_dir = tempfile.mkdtemp()
     try:
-        # 1. Download
-        local_filename = f"extract_{doc.id}_{doc.filename}"
-        local_path = os.path.join(tmp_dir, local_filename)
-        
-        logger.info(f"Downloading {doc.gcs_path} for extraction...")
-        await asyncio.to_thread(download_file_to_temp, doc.gcs_path, local_path)
-        
-        # 2. Extract
-        logger.info(f"Extracting text from {local_filename}...")
-        processed = await asyncio.to_thread(document_processor.process_uploaded_file, local_path, tmp_dir)
-        
+        async with extraction_semaphore:
+            # 1. Download
+            local_filename = f"extract_{doc.id}_{doc.filename}"
+            local_path = os.path.join(tmp_dir, local_filename)
+            
+            logger.info(f"Downloading {doc.gcs_path} for extraction...")
+            await asyncio.to_thread(download_file_to_temp, doc.gcs_path, local_path)
+            
+            # 2. Extract
+            logger.info(f"Extracting text from {local_filename}...")
+            processed = await asyncio.to_thread(document_processor.process_uploaded_file, local_path, tmp_dir)
+            
         # 3. Save to DB
         doc.ai_extracted_data = processed
         doc.ai_status = "processed"

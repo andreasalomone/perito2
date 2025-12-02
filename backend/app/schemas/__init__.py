@@ -1,5 +1,5 @@
-from pydantic import BaseModel, ConfigDict
-from typing import List, Optional
+from pydantic import BaseModel, ConfigDict, model_validator
+from typing import List, Optional, Any
 from datetime import datetime
 from uuid import UUID
 from enum import Enum
@@ -18,18 +18,42 @@ class CaseStatus(str, Enum):
 # --- BASE ---
 class CaseBase(BaseModel):
     reference_code: str
-    client_name: Optional[str] = None # Helper to find/create Client
 
 class CaseCreate(CaseBase):
-    pass
+    client_name: Optional[str] = None # Helper to find/create Client
 
 class CaseSummary(CaseBase):
     id: UUID
     organization_id: UUID
     status: CaseStatus
     created_at: datetime
+    client_name: Optional[str] = None  # Will be populated from ORM relationship
     
     model_config = ConfigDict(from_attributes=True)
+    
+    @model_validator(mode='before')
+    @classmethod
+    def extract_client_name(cls, data: Any) -> Any:
+        """Extract client_name from the ORM Case.client relationship."""
+        # Handle ORM object
+        if not isinstance(data, dict):
+            # This is an ORM object, check for client relationship
+            client_name = None
+            if hasattr(data, 'client') and data.client:
+                client_name = data.client.name
+            
+            # Create a dict with all ORM attributes plus the flattened client_name
+            # WARNING: If you add fields to CaseSummary, you MUST add them here too!
+            data_dict = {
+                'id': data.id,
+                'organization_id': data.organization_id,
+                'reference_code': data.reference_code,
+                'status': data.status,
+                'created_at': data.created_at,
+                'client_name': client_name
+            }
+            return data_dict
+        return data
 
 # --- DOCUMENTS ---
 class DocumentRead(BaseModel):

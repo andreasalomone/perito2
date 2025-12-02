@@ -52,6 +52,8 @@ steps:
       - 'DB_PASS=database-password:latest'
       - '--set-secrets'
       - 'GEMINI_API_KEY=gemini-api-key:latest'
+      - '--set-secrets'
+      - 'CLOUD_TASKS_SA_EMAIL=cloud-tasks-sa-email:latest'
 
   # 5. Get Backend URL
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'

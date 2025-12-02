@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     STORAGE_BUCKET_NAME: str
     # Format: "projects/{project}/locations/{location}/queues/{queue_name}"
     CLOUD_TASKS_QUEUE_PATH: str 
+    # Service Account Email for Cloud Tasks (to verify OIDC token)
+    CLOUD_TASKS_SA_EMAIL: Optional[str] = None
     
     # AI
     GEMINI_API_KEY: str

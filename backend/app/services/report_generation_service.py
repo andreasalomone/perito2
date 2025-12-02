@@ -12,7 +12,7 @@ from uuid import UUID
 from google.cloud import tasks_v2
 
 from app.models import Case, Document, ReportVersion
-from app.services.gcs_service import download_file_to_temp, get_storage_client
+from app.services.gcs_service import get_storage_client
 from app.core.config import settings
 from app.services import document_processor, llm_handler, docx_generator, case_service
 from app.db.database import SessionLocal
