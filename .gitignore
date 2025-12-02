@@ -14,3 +14,20 @@ venv/
 
 # Secrets/Config
 iam_policy.json
+
+# Legacy
+legacy/
+
+# Dependencies
+node_modules/
+
+# IDEs
+.idea/
+.vscode/
+
+# Misc
+.DS_Store
+*.log
+coverage/
+dist/
+build/

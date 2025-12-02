@@ -29,3 +29,13 @@ coverage.xml
 
 # OS
 .DS_Store
+
+# Legacy
+legacy/
+
+# Instance
+instance/
+
+# IDEs
+.idea/
+.vscode/
