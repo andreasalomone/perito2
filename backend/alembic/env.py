@@ -14,9 +14,9 @@ from google.cloud.sql.connector import Connector
 sys.path.append(os.getcwd())
 
 # Import your models and database config
-from core.models import Base
-from database import engine
-import database  # To access the global connector variable
+from app.models import Base
+from app.db.database import engine
+import app.db.database as database  # To access the global connector variable
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

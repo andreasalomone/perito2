@@ -15,3 +15,4 @@ pymupdf>=1.23.0
 mail-parser>=3.15.0
 tenacity==9.1.2
 google-auth>=2.20.0
+cloud-sql-python-connector[pg8000]>=1.4.0
