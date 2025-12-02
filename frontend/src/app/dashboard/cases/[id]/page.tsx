@@ -79,7 +79,7 @@ export default function CaseWorkspace() {
             const token = await getToken();
             // Lightweight Status Check
             const caseId = Array.isArray(id) ? id[0] : id;
-            if (!caseId) return;
+            if (!caseId || !token) return;
 
             const statusData = await api.cases.getStatus(token, caseId);
 
