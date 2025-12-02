@@ -7,31 +7,21 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Folder, Plus, Calendar, ArrowRight, AlertCircle, RefreshCw } from "lucide-react";
-import { Case } from "@/types";
+import { CaseSummary } from "@/types";
 import { toast } from "sonner";
 import axios from "axios";
+import { api, ApiError } from "@/lib/api";
 
 // --- Hooks ---
-function useInterval(callback: () => void, delay: number | null) {
-    const savedCallback = useRef(callback);
-
-    useEffect(() => {
-        savedCallback.current = callback;
-    }, [callback]);
-
-    useEffect(() => {
-        if (delay !== null) {
-            const id = setInterval(() => savedCallback.current(), delay);
-            return () => clearInterval(id);
-        }
-    }, [delay]);
-}
+import { useInterval } from "@/hooks/useInterval";
 
 export default function DashboardPage() {
     const { getToken } = useAuth();
-    const [cases, setCases] = useState<Case[]>([]);
+    const [cases, setCases] = useState<CaseSummary[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    // ...
 
     const fetchCases = useCallback(async (isPolling = false) => {
         if (!isPolling) {
@@ -42,19 +32,18 @@ export default function DashboardPage() {
             const token = await getToken();
             if (!token) return;
 
-            const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/cases/`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const data = await api.cases.list(token);
+            setCases(data);
 
-            setCases(res.data || []);
-
-        } catch (error) {
+        } catch (error: unknown) {
             if (!isPolling) {
                 console.error("Failed to fetch cases", error);
-                setError("Impossibile caricare i fascicoli.");
-                if (axios.isAxiosError(error)) {
-                    if (error.response?.status === 401) toast.error("Sessione scaduta.");
-                    else toast.error("Errore nel caricamento dei dati.");
+                if (error instanceof ApiError) {
+                    setError(error.message);
+                    if (error.status === 401) toast.error("Sessione scaduta.");
+                } else {
+                    setError("Impossibile caricare i fascicoli.");
+                    toast.error("Errore nel caricamento dei dati.");
                 }
             }
         } finally {

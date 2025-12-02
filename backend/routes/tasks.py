@@ -86,7 +86,7 @@ async def process_case(
         
     # 3. Run Logic...
     # We await the synchronous logic (or run it directly if it's async)
-    from services import generation_service
+    from services import report_generation_service as generation_service
     
     # Run the generation logic
     # Note: process_case_logic is async, so we await it

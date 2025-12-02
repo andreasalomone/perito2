@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
-from services.generation_service import generate_docx_variant
+from services.report_generation_service import generate_docx_variant
 from core.models import ReportVersion
 
 @pytest.mark.asyncio
@@ -25,7 +25,7 @@ async def test_generate_docx_variant_bn():
         mock_create_bn.return_value = MagicMock() # Stream
         
         # Mock GCS
-        with patch("services.generation_service.get_storage_client") as mock_gcs:
+        with patch("services.report_generation_service.get_storage_client") as mock_gcs:
             mock_bucket = MagicMock()
             mock_blob = MagicMock()
             mock_gcs.return_value.bucket.return_value = mock_bucket
@@ -64,7 +64,7 @@ async def test_generate_docx_variant_salomone():
         mock_create_salomone.return_value = MagicMock() # Stream
         
         # Mock GCS
-        with patch("services.generation_service.get_storage_client") as mock_gcs:
+        with patch("services.report_generation_service.get_storage_client") as mock_gcs:
             mock_bucket = MagicMock()
             mock_blob = MagicMock()
             mock_gcs.return_value.bucket.return_value = mock_bucket

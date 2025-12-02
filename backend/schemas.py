@@ -23,7 +23,7 @@ class CaseBase(BaseModel):
 class CaseCreate(CaseBase):
     pass
 
-class CaseRead(CaseBase):
+class CaseSummary(CaseBase):
     id: UUID
     organization_id: UUID
     status: CaseStatus
@@ -49,7 +49,7 @@ class VersionRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 # --- COMPOSITE (The "Full View") ---
-class CaseDetail(CaseRead):
+class CaseDetail(CaseSummary):
     documents: List[DocumentRead] = []
     report_versions: List[VersionRead] = []
 

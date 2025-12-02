@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Loader2 } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
+import { handleApiError } from "@/lib/error";
 
 export default function CreateCasePage() {
     const { getToken } = useAuth();
@@ -45,15 +46,7 @@ export default function CreateCasePage() {
             toast.success("Fascicolo creato con successo");
             router.push(`/dashboard/cases/${res.data.id}`);
         } catch (error) {
-            console.error("Failed to create case", error);
-            if (axios.isAxiosError(error)) {
-                const status = error.response?.status;
-                if (status === 401) toast.error("Sessione scaduta. Effettua il login.");
-                else if (status === 403) toast.error("Non hai i permessi necessari.");
-                else toast.error("Errore del server. Riprova più tardi.");
-            } else {
-                toast.error("Errore imprevisto durante la creazione.");
-            }
+            handleApiError(error, "Errore durante la creazione del fascicolo");
         } finally {
             setLoading(false);
         }

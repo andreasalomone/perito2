@@ -20,6 +20,18 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def nuke_db():
+    # SAFETY CHECK 1: Environment
+    if os.getenv("ENVIRONMENT") == "production":
+        logger.error("❌ CRITICAL: Attempting to nuke database in PRODUCTION environment. Operation aborted.")
+        return
+
+    # SAFETY CHECK 2: User Confirmation
+    print("⚠️  WARNING: This will DESTROY all data in the 'public' schema.")
+    confirmation = input("Type 'NUKE' to confirm: ")
+    if confirmation != "NUKE":
+        logger.info("Operation cancelled by user.")
+        return
+
     # Initialize the connector manually
     database.connector = Connector()
     logger.info("✅ Google Cloud SQL Connector initialized")

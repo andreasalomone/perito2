@@ -1,3 +1,30 @@
+# Database Architecture and Info
+
+## Cloud SQL Instance Details
+- **Name:** robotperizia-db
+- **Project:** perito-479708
+- **Region:** europe-west1-b
+- **Tier:** db-perf-optimized-N-8
+- **Version:** POSTGRES_17
+- **IP Address:** 34.52.182.99 (Primary)
+- **Status:** RUNNABLE
+
+## Databases
+- postgres
+- perizia_db
+
+
+## Dumped Artifacts
+The following files have been dumped from the live environment:
+
+- **Database Schema (Full Dump):** `database_schema.sql`
+- **IAM Policy:** `project_iam_policy.json`
+- **Instance Settings:** `cloudsql_instance_settings.json`
+
+## Application Schema (SQLAlchemy Models)
+Source: `backend/core/models.py`
+
+```python
 import uuid
 from datetime import datetime
 from sqlalchemy import Column, DateTime, String, Boolean, ForeignKey, Integer, Text, Float, UniqueConstraint
@@ -126,3 +153,4 @@ class AuditLog(Base):
     # Relationships
     organization = relationship("Organization")
     user = relationship("User")
+```

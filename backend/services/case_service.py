@@ -19,18 +19,15 @@ def get_or_create_client(db: Session, name: str) -> Client:
         return client
 
     # 2. Try to create (Handle Race Condition)
-    try:
-        # Fetch current org_id from session variable
-        # Note: This relies on the RLS context being set by the caller (middleware/dependency)
-        result = db.execute(text("SELECT current_setting('app.current_org_id', true)")).scalar()
-        
-        if not result:
-            # Critical Error: No Org ID context. Cannot create client safely.
-            # Log this? For now, we might fail or raise.
-            # But let's assume if we are here, we might be in a context where we can't create.
-            logger.error("Attempted to create client without app.current_org_id set.")
-            raise ValueError("Missing Organization Context")
+    # 2. Try to create (Handle Race Condition)
+    # Fetch current org_id from session variable first
+    result = db.execute(text("SELECT current_setting('app.current_org_id', true)")).scalar()
+    
+    if not result:
+        logger.error("Attempted to create client without app.current_org_id set.")
+        raise ValueError("Missing Organization Context")
 
+    try:
         client = Client(name=name, organization_id=result)
         db.add(client)
         db.commit()
@@ -40,7 +37,7 @@ def get_or_create_client(db: Session, name: str) -> Client:
     except IntegrityError:
         # Race condition: Someone else created it just now.
         db.rollback()
-        return db.query(Client).filter(Client.name == name).one()
+        return db.query(Client).filter(Client.name == name, Client.organization_id == result).one()
 
 # --- THE CRITICAL WORKFLOWS ---
 

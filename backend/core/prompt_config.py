@@ -83,7 +83,8 @@ def _load_prompt_from_file(file_path: str) -> str:
         with open(file_path, "r", encoding="utf-8") as f:
             return f.read()
     except Exception as e:
-        print(f"Error loading prompt from {file_path}: {e}")
+        import logging
+        logging.getLogger(__name__).error(f"Error loading prompt from {file_path}: {e}")
         return ""
 
 

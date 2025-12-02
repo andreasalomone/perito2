@@ -27,21 +27,29 @@ def sync_user(
     db_user = db.query(User).filter(User.id == uid).first()
     
     if not db_user:
-        # Create new Organization (Default to "My Organization")
-        new_org = Organization(name="My Organization")
-        db.add(new_org)
-        db.flush() # Flush to get the ID
+        try:
+            # Create new Organization (Default to "My Organization")
+            new_org = Organization(name="My Organization")
+            db.add(new_org)
+            db.flush() # Flush to get the ID
 
-        # Create new User
-        db_user = User(
-            id=uid,
-            email=email,
-            organization_id=new_org.id,
-            role="admin" # First user is Admin of their own Org
-        )
-        db.add(db_user)
-        db.commit()
-        db.refresh(db_user)
+            # Create new User
+            db_user = User(
+                id=uid,
+                email=email,
+                organization_id=new_org.id,
+                role="admin" # First user is Admin of their own Org
+            )
+            db.add(db_user)
+            db.commit()
+            db.refresh(db_user)
+        except Exception as e:
+            # Handle race condition: if user was created by another request in the meantime
+            db.rollback()
+            db_user = db.query(User).filter(User.id == uid).first()
+            if not db_user:
+                # If it still fails and user is not found, re-raise
+                raise HTTPException(status_code=500, detail=f"Failed to sync user: {str(e)}")
         
     return {
         "id": db_user.id,

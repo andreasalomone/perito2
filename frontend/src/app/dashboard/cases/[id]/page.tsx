@@ -1,132 +1,25 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, memo } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { Case, Document, ReportVersion, CaseStatus } from "@/types";
+import { CaseDetail, Document, ReportVersion, CaseStatus } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { UploadCloud, FileText, Play, CheckCircle, Download, Loader2, File as FileIcon, AlertCircle, RefreshCw, Clock } from "lucide-react";
+import { UploadCloud, FileText, Play, CheckCircle, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
-
-// --- Types ---
-type TemplateType = "bn" | "salomone";
-
-// --- Hooks ---
-function useInterval(callback: () => void, delay: number | null) {
-    const savedCallback = useRef(callback);
-
-    useEffect(() => {
-        savedCallback.current = callback;
-    }, [callback]);
-
-    useEffect(() => {
-        if (delay !== null) {
-            const id = setInterval(() => savedCallback.current(), delay);
-            return () => clearInterval(id);
-        }
-    }, [delay]);
-}
-
-// --- Components ---
-
-// 1. Document Item (Memoized)
-const DocumentItem = memo(({ doc }: { doc: Document }) => {
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case "completed": return "default"; // Black/Primary
-            case "processing": return "secondary"; // Gray
-            case "error": return "destructive"; // Red
-            default: return "outline";
-        }
-    };
-
-    const getStatusIcon = (status: string) => {
-        if (status === "processing") return <Loader2 className="h-3 w-3 animate-spin mr-1" />;
-        if (status === "completed") return <CheckCircle className="h-3 w-3 mr-1" />;
-        if (status === "error") return <AlertCircle className="h-3 w-3 mr-1" />;
-        return <Clock className="h-3 w-3 mr-1" />;
-    };
-
-    return (
-        <div className="flex items-center justify-between p-3 border rounded-md bg-background hover:bg-muted/10 transition-colors">
-            <div className="flex items-center gap-3 overflow-hidden">
-                <FileIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                <span className="truncate text-sm font-medium" title={doc.filename}>{doc.filename}</span>
-            </div>
-            <Badge variant={getStatusColor(doc.ai_status) as any} className="text-xs flex items-center">
-                {getStatusIcon(doc.ai_status)}
-                {doc.ai_status}
-            </Badge>
-        </div>
-    );
-});
-DocumentItem.displayName = "DocumentItem";
-
-// 2. Version Item (Encapsulates Local State)
-const VersionItem = memo(({
-    version,
-    onDownload
-}: {
-    version: ReportVersion;
-    onDownload: (v: ReportVersion, template: TemplateType) => void
-}) => {
-    const [template, setTemplate] = useState<TemplateType>("bn");
-
-    return (
-        <div className="flex items-center justify-between p-3 bg-muted/20 rounded border">
-            <div className="flex items-center gap-3">
-                <FileText className="h-5 w-5 text-blue-500" />
-                <div>
-                    <p className="font-medium text-sm">Versione {version.version_number}</p>
-                    <p className="text-xs text-muted-foreground">
-                        {version.is_final ? "Finale Approvata" : "Bozza IA"}
-                    </p>
-                </div>
-            </div>
-            <div className="flex items-center gap-4">
-                {/* Template Selection - Local State */}
-                {!version.is_final && (
-                    <div className="flex items-center gap-1 text-xs border rounded p-1 bg-background" role="group" aria-label="Seleziona modello report">
-                        <button
-                            onClick={() => setTemplate("bn")}
-                            className={`px-2 py-1 rounded transition-colors ${template === "bn" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}
-                            aria-pressed={template === "bn"}
-                        >
-                            BN
-                        </button>
-                        <button
-                            onClick={() => setTemplate("salomone")}
-                            className={`px-2 py-1 rounded transition-colors ${template === "salomone" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}
-                            aria-pressed={template === "salomone"}
-                        >
-                            Salomone
-                        </button>
-                    </div>
-                )}
-
-                <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => onDownload(version, template)}
-                    aria-label={`Scarica versione ${version.version_number}`}
-                >
-                    <Download className="h-4 w-4" />
-                </Button>
-            </div>
-        </div>
-    );
-});
-VersionItem.displayName = "VersionItem";
-
-// --- Main Page Component ---
+import { handleApiError } from "@/lib/error";
+import { useInterval } from "@/hooks/useInterval";
+import { DocumentItem } from "@/components/cases/DocumentItem";
+import { VersionItem, TemplateType } from "@/components/cases/VersionItem";
+import { api } from "@/lib/api";
 
 export default function CaseWorkspace() {
     const { id } = useParams();
     const { getToken } = useAuth();
-    const [caseData, setCaseData] = useState<Case | null>(null);
+    const [caseData, setCaseData] = useState<CaseDetail | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [uploading, setUploading] = useState(false);
@@ -138,18 +31,13 @@ export default function CaseWorkspace() {
 
     const API = process.env.NEXT_PUBLIC_API_URL;
 
-    // Helper: Robust Error Handling
-    const handleError = (e: unknown, defaultMsg: string) => {
-        console.error(e);
-        if (axios.isAxiosError(e)) {
-            const status = e.response?.status;
-            if (status === 401) return toast.error("Sessione scaduta. Effettua nuovamente il login.");
-            if (status === 403) return toast.error("Non hai i permessi per questa azione.");
-            if (status === 404) return toast.error("Risorsa non trovata.");
-            if (status && status >= 500) return toast.error("Errore del server. Riprova più tardi.");
-        }
-        toast.error(defaultMsg);
-    };
+
+    // ... inside component ...
+
+    // Helper: Robust Error Handling (Removed local definition)
+
+
+    // ...
 
     // Data Fetching
     const fetchCase = useCallback(async (isPolling = false) => {
@@ -163,19 +51,17 @@ export default function CaseWorkspace() {
                 if (!isPolling) setError("Autenticazione richiesta");
                 return;
             }
-            const res = await axios.get(`${API}/api/cases/${id}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            setCaseData(res.data);
+            const data = await api.cases.get(token, id as string);
+            setCaseData(data);
         } catch (e) {
             if (!isPolling) {
-                handleError(e, "Errore nel caricamento del fascicolo");
+                handleApiError(e, "Errore nel caricamento del fascicolo");
                 setError("Impossibile caricare i dati del fascicolo.");
             }
         } finally {
             if (!isPolling) setLoading(false);
         }
-    }, [getToken, id, API]);
+    }, [getToken, id]);
 
     // Initial Fetch
     useEffect(() => { fetchCase(); }, [fetchCase]);
@@ -192,22 +78,23 @@ export default function CaseWorkspace() {
         try {
             const token = await getToken();
             // Lightweight Status Check
-            const res = await axios.get<CaseStatus>(`${API}/api/cases/${id}/status`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const caseId = Array.isArray(id) ? id[0] : id;
+            if (!caseId) return;
+
+            const statusData = await api.cases.getStatus(token, caseId);
 
             // Merge updates
             setCaseData(prev => {
                 if (!prev) return null;
                 return {
                     ...prev,
-                    status: res.data.status,
-                    documents: res.data.documents
+                    status: statusData.status,
+                    documents: statusData.documents
                 };
             });
 
             // Update generating state based on backend hint
-            if (!res.data.is_generating && generating) {
+            if (!statusData.is_generating && generating) {
                 setGenerating(false);
                 // If we just finished generating, we should probably fetch the full case to get the new versions
                 fetchCase(false);
@@ -251,7 +138,7 @@ export default function CaseWorkspace() {
 
             toast.success("Documento caricato con successo");
         } catch (error) {
-            handleError(error, "Errore durante il caricamento");
+            handleApiError(error, "Errore durante il caricamento");
         } finally {
             setUploading(false);
             if (docInputRef.current) docInputRef.current.value = ""; // Reset input
@@ -268,7 +155,7 @@ export default function CaseWorkspace() {
             toast.success("Generazione avviata! Il sistema ti avviserà al termine.");
             // Polling will take over from here due to 'generating' state or 'processing' status
         } catch (error) {
-            handleError(error, "Errore durante l'avvio della generazione");
+            handleApiError(error, "Errore durante l'avvio della generazione");
             setGenerating(false); // Only reset on error, otherwise let polling handle completion
         }
     };
@@ -295,7 +182,7 @@ export default function CaseWorkspace() {
             );
             window.open(res.data.download_url, "_blank", "noopener,noreferrer");
         } catch (e) {
-            handleError(e, "Errore durante il download");
+            handleApiError(e, "Errore durante il download");
         }
     }, [API, id, getToken]);
 
@@ -325,7 +212,7 @@ export default function CaseWorkspace() {
 
             toast.success("Versione finale caricata", { id: toastId });
         } catch (error) {
-            handleError(error, "Errore caricamento finale");
+            handleApiError(error, "Errore caricamento finale");
             toast.dismiss(toastId);
         } finally {
             if (finalInputRef.current) finalInputRef.current.value = "";

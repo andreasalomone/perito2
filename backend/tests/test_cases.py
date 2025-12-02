@@ -12,7 +12,7 @@ from datetime import datetime
 from fastapi import FastAPI
 from routes import cases
 from deps import get_db, get_current_user_token
-from schemas import CaseRead, CaseCreate, CaseStatus
+from schemas import CaseSummary, CaseCreate, CaseStatus
 
 # Setup Test App
 app = FastAPI()

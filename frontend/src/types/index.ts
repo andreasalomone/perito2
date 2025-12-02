@@ -1,35 +1,51 @@
-export interface Document {
-    id: string;
-    filename: string;
-    ai_status: "pending" | "processing" | "completed" | "error";
-    created_at: string;
-}
+import { z } from "zod";
 
-export interface ReportVersion {
-    id: string;
-    version_number: number;
-    is_final: boolean;
-    // REMOVED: docx_storage_path (Security Risk)
-    created_at: string;
-}
+// --- Zod Schemas ---
 
-export interface Case {
-    id: string;
-    reference_code: string;
-    client_name?: string;
-    status: "open" | "closed";
-    created_at: string;
-    documents: Document[];
-    report_versions: ReportVersion[];
-}
+export const DocumentSchema = z.object({
+    id: z.string(),
+    filename: z.string(),
+    ai_status: z.enum(["pending", "processing", "completed", "error"]),
+    created_at: z.string()
+});
+export type Document = z.infer<typeof DocumentSchema>;
+
+export const ReportVersionSchema = z.object({
+    id: z.string(),
+    version_number: z.number(),
+    is_final: z.boolean(),
+    created_at: z.string()
+});
+export type ReportVersion = z.infer<typeof ReportVersionSchema>;
+
+// Base Case Schema
+export const CaseBaseSchema = z.object({
+    id: z.string(),
+    reference_code: z.string(),
+    client_name: z.string().optional().nullable(), // Handle Python None
+    status: z.enum(["open", "closed"]),
+    created_at: z.string(),
+});
+
+// 1. Summary (List View) - NO documents/versions
+export const CaseSummarySchema = CaseBaseSchema;
+export type CaseSummary = z.infer<typeof CaseSummarySchema>;
+
+// 2. Detail (Workspace View) - HAS documents/versions
+export const CaseDetailSchema = CaseBaseSchema.extend({
+    documents: z.array(DocumentSchema),
+    report_versions: z.array(ReportVersionSchema)
+});
+export type CaseDetail = z.infer<typeof CaseDetailSchema>;
 
 // Lightweight status for polling
-export interface CaseStatus {
-    id: string;
-    status: "open" | "closed";
-    documents: Document[];
-    is_generating: boolean;
-}
+export const CaseStatusSchema = z.object({
+    id: z.string(),
+    status: z.enum(["open", "closed"]),
+    documents: z.array(DocumentSchema),
+    is_generating: z.boolean()
+});
+export type CaseStatus = z.infer<typeof CaseStatusSchema>;
 
 export interface DBUser {
     id: string;

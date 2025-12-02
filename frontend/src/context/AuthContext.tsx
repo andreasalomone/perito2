@@ -26,18 +26,19 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
     const [dbUser, setDbUser] = useState<DBUser | null>(null);
     const [loading, setLoading] = useState(true);
     const authRef = useRef<Auth | null>(null);
+    const initialized = useRef(false);
 
-    // Initialize Firebase once
-    if (!authRef.current) {
+    useEffect(() => {
+        if (initialized.current) return;
+
         try {
             const { auth } = initFirebase(firebaseConfig as any);
             authRef.current = auth;
+            initialized.current = true;
         } catch (e) {
             console.error("Firebase init failed", e);
         }
-    }
 
-    useEffect(() => {
         const auth = authRef.current;
         if (!auth) return;
 
@@ -73,8 +74,9 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
 
             setLoading(false);
         });
+
         return () => unsubscribe();
-    }, []);
+    }, [firebaseConfig]);
 
     const login = async () => {
         if (authRef.current) {

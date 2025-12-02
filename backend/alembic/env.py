@@ -1,6 +1,9 @@
 import sys
 import os
+import logging
 from logging.config import fileConfig
+
+logger = logging.getLogger("alembic.env")
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
@@ -61,7 +64,7 @@ def run_migrations_online() -> None:
     """
     # Initialize the Cloud SQL Connector explicitly for migrations
     # This sets the global variable in database.py so getconn() works
-    print("Initializing Cloud SQL Connector for Alembic...")
+    logger.info("Initializing Cloud SQL Connector for Alembic...")
     database.connector = Connector()
 
     try:
@@ -78,7 +81,7 @@ def run_migrations_online() -> None:
                 context.run_migrations()
     finally:
         database.connector.close()
-        print("Cloud SQL Connector closed.")
+        logger.info("Cloud SQL Connector closed.")
 
 if context.is_offline_mode():
     run_migrations_offline()

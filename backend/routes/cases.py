@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 from typing import List
 from uuid import UUID
 
@@ -8,14 +8,22 @@ from core.models import Case, Document, ReportVersion, Client
 from deps import get_current_user_token, get_db # Import secure get_db
 import schemas
 from services import gcs_service, case_service
+import logging
+from config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 # 1. LIST CASES (RLS Protected automatically)
-@router.get("/", response_model=List[schemas.CaseRead])
-def list_cases(db: Session = Depends(get_db)):
+@router.get("/", response_model=List[schemas.CaseSummary])
+def list_cases(
+    skip: int = 0, 
+    limit: int = 50, 
+    db: Session = Depends(get_db)
+):
     # RLS magic: This only returns rows for the current tenant
-    return db.query(Case).order_by(Case.created_at.desc()).all()
+    return db.query(Case).options(joinedload(Case.client)).order_by(Case.created_at.desc()).offset(skip).limit(limit).all()
 
 # 1.5 GET CASE STATUS (Lightweight for Polling)
 @router.get("/{case_id}/status", response_model=schemas.CaseStatusRead)
@@ -25,9 +33,11 @@ def get_case_status(case_id: UUID, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Case not found")
     
     # Check if any doc is processing to infer "is_generating" hint
-    # In a real system, we might check a specific "Case Job" table.
-    # For now, if any doc is pending/processing, we say generating is active.
-    is_generating = any(d.ai_status in ["pending", "processing"] for d in case.documents)
+    # Optimized: Use SQL EXISTS instead of loading all docs
+    is_generating = db.query(Document).filter(
+        Document.case_id == case_id,
+        Document.ai_status.in_(["pending", "processing"])
+    ).first() is not None
     
     return {
         "id": case.id,
@@ -37,7 +47,7 @@ def get_case_status(case_id: UUID, db: Session = Depends(get_db)):
     }
 
 # 2. CREATE CASE
-@router.post("/", response_model=schemas.CaseRead)
+@router.post("/", response_model=schemas.CaseSummary)
 def create_case(
     case_in: schemas.CaseCreate, 
     current_user: dict = Depends(get_current_user_token), # From deps.py
@@ -63,7 +73,7 @@ def create_case(
 # 3. GET DETAILS (Docs + Versions)
 @router.get("/{case_id}", response_model=schemas.CaseDetail)
 def get_case(case_id: UUID, db: Session = Depends(get_db)):
-    case = db.query(Case).filter(Case.id == case_id).first()
+    case = db.query(Case).options(selectinload(Case.documents), selectinload(Case.report_versions)).filter(Case.id == case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
     return case
@@ -132,7 +142,7 @@ async def trigger_generation(
 
     # In production, this should enqueue a Cloud Task.
     # For now/local, we use FastAPI BackgroundTasks + generation_service
-    from services import generation_service
+    from services import report_generation_service as generation_service
     
     background_tasks.add_task(
         generation_service.run_generation_task,
@@ -152,6 +162,20 @@ def finalize_case_endpoint(
     case = db.query(Case).filter(Case.id == case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+
+    # SECURITY FIX: Validate final_docx_path to prevent IDOR
+    expected_prefix = f"reports/{case.organization_id}/{case.id}/"
+    
+    # Check both relative path and full gs:// path
+    valid_path = False
+    if payload.final_docx_path.startswith(expected_prefix):
+        valid_path = True
+    elif payload.final_docx_path.startswith(f"gs://{settings.STORAGE_BUCKET_NAME}/{expected_prefix}"):
+        valid_path = True
+        
+    if not valid_path:
+         logger.warning(f"Security Alert: Attempted IDOR in finalize_case. Path: {payload.final_docx_path}")
+         raise HTTPException(status_code=403, detail="Invalid file path. File must belong to this case.")
 
     # Call service
     final_version = case_service.finalize_case(
@@ -197,7 +221,7 @@ async def download_version(
         return {"download_url": url}
 
     # B. DRAFT VERSION -> Generate Variant
-    from services import generation_service
+    from services import report_generation_service as generation_service
     try:
         url = await generation_service.generate_docx_variant(
             version_id=str(version_id),

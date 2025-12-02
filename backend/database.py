@@ -1,4 +1,7 @@
 from google.cloud.sql.connector import Connector, IPTypes
+import logging
+
+logger = logging.getLogger(__name__)
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from contextlib import asynccontextmanager
@@ -29,10 +32,15 @@ def getconn():
 engine = create_engine(
     "postgresql+pg8000://",
     creator=getconn,
-    pool_size=15,       # Start small for Cloud Run (db-f1-micro)
-    max_overflow=5,    # Allow bursts
+    # Connection Pool Optimization for Cloud Run
+    # 'pool_size': 5 - Start small, Cloud Run scales instances
+    # 'max_overflow': 2 - Allow a few extra bursts
+    # 'pool_timeout': 30 - Fail fast if DB is overwhelmed
+    # 'pool_recycle': 1800 - Recycle connections every 30 mins to avoid stale connections
+    pool_size=5,
+    max_overflow=2,
     pool_timeout=30,
-    pool_recycle=1800,  # Recycle connections every 30 mins
+    pool_recycle=1800,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -45,6 +53,11 @@ def get_db():
         yield db
     finally:
         db.close()
+
+def close_db_connection():
+    if connector:
+        connector.close()
+        logger.info("🛑 Google Cloud SQL Connector closed")
 
 # 4. Lifespan Manager (Handles Startup/Shutdown)
 @asynccontextmanager
@@ -59,7 +72,7 @@ async def lifespan(app: FastAPI):
     
     # Create tables if they don't exist (Simple migration)
     # In a real SaaS, use Alembic, but this is fine for MVP
-    Base.metadata.create_all(bind=engine)
+    # Base.metadata.create_all(bind=engine)
     
     yield
     
