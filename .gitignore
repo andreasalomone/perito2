@@ -20,6 +20,8 @@ legacy/
 
 # Dependencies
 node_modules/
+.next/
+.swc/
 
 # IDEs
 .idea/

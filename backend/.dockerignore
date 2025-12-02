@@ -1,0 +1,16 @@
+# .dockerignore
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.git
+.gitignore
+Dockerfile
+cloudbuild.yaml
+README.md
+tests/
+service-account.json

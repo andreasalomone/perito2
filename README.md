@@ -76,7 +76,7 @@ Create a `.env` file in the `backend` directory with your local configuration (s
 
 Run the server:
 ```bash
-uvicorn main:app --reload
+uvicorn app.main:app --reload
 ```
 
 #### 2. Frontend Setup

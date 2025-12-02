@@ -2,6 +2,7 @@
 import { createContext, useContext, useEffect, useState, useRef } from "react";
 import { onAuthStateChanged, User, signInWithPopup, signOut, Auth } from "firebase/auth";
 import { initFirebase, googleProvider, getFirebaseAuth } from "@/lib/firebase";
+import { getEnv } from "@/lib/env";
 import { DBUser } from "@/types";
 import axios from "axios";
 
@@ -52,7 +53,7 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
                 try {
                     const token = await firebaseUser.getIdToken();
                     const response = await axios.post(
-                        `${process.env.NEXT_PUBLIC_API_URL}/api/auth/sync`,
+                        `${getEnv("NEXT_PUBLIC_API_URL")}/api/auth/sync`,
                         {},
                         {
                             headers: {

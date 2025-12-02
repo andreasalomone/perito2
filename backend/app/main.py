@@ -25,7 +25,7 @@ app = FastAPI(
 # In production, replace "*" with your actual Cloud Run Frontend URL
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL], 
+    allow_origins=settings.BACKEND_CORS_ORIGINS, 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
