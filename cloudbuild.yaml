@@ -65,6 +65,16 @@ steps:
         # Force HTTPS: Replace http:// with https://, or prepend https:// if missing scheme
         sed -i 's|^http://|https://|' /workspace/backend_url.txt
         echo "Backend URL: $(cat /workspace/backend_url.txt)"
+  
+  # 5.5 Update Backend with its own URL (Fix for Ouroboros Configuration Loop)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: /bin/bash
+    args:
+      - '-c'
+      - |
+        gcloud run services update robotperizia-backend \
+          --region europe-west1 \
+          --update-env-vars BACKEND_URL=$(cat /workspace/backend_url.txt)
 
   # 6. Pull Frontend Cache
   - name: 'gcr.io/cloud-builders/docker'

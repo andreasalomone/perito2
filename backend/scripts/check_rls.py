@@ -1,13 +1,23 @@
 import os
+import sys
 from dotenv import load_dotenv
 
 # Load env vars BEFORE importing config/database
 load_dotenv("backend/.env")
 
-# Fix GOOGLE_APPLICATION_CREDENTIALS path to be absolute or relative to backend
-if os.getenv("GOOGLE_APPLICATION_CREDENTIALS") == "service-account.json":
+# FIX: Hardcoded Secrets - Only set GOOGLE_APPLICATION_CREDENTIALS if needed
+# In Cloud environments (Cloud Run, Cloud Shell), Application Default Credentials work automatically
+if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS") and not os.getenv("K_SERVICE"):
+    # Local development: look for service account file
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.join(script_dir, "service-account.json")
+    sa_path = os.path.join(script_dir, "service-account.json")
+    
+    if not os.path.exists(sa_path):
+        print(f"ERROR: Service account file not found at {sa_path}")
+        print("Please set GOOGLE_APPLICATION_CREDENTIALS env var or run from Cloud environment")
+        sys.exit(1)
+    
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = sa_path
 
 from sqlalchemy import text
 from google.cloud.sql.connector import Connector

@@ -16,24 +16,20 @@ logger = logging.getLogger(__name__)
 
 from sqlalchemy.exc import IntegrityError
 
-def get_or_create_client(db: Session, name: str) -> Client:
-    # 1. Try to find existing
-    client = db.query(Client).filter(Client.name == name).first()
+def get_or_create_client(db: Session, name: str, organization_id: UUID) -> Client:
+    # 1. Try to find existing within this organization
+    client = db.query(Client).filter(
+        Client.name == name,
+        Client.organization_id == organization_id
+    ).first()
     if client:
         return client
 
     # 2. Try to create (Handle Race Condition with SAVEPOINT)
-    # Fetch current org_id from session variable first
-    result = db.execute(text("SELECT current_setting('app.current_org_id', true)")).scalar()
-    
-    if not result:
-        logger.error("Attempted to create client without app.current_org_id set.")
-        raise ValueError("Missing Organization Context")
-
     # Use begin_nested() to create a SAVEPOINT
     try:
         with db.begin_nested():
-            client = Client(name=name, organization_id=result)
+            client = Client(name=name, organization_id=organization_id)
             db.add(client)
             db.flush()  # Flush within the savepoint
         # If we get here, the savepoint was successful
@@ -45,7 +41,10 @@ def get_or_create_client(db: Session, name: str) -> Client:
     except IntegrityError:
         # Rollback happens automatically to the savepoint, not the whole transaction
         # Another process created the client, so fetch it
-        return db.query(Client).filter(Client.name == name, Client.organization_id == result).one()
+        return db.query(Client).filter(
+            Client.name == name, 
+            Client.organization_id == organization_id
+        ).one()
 
 # --- THE CRITICAL WORKFLOWS ---
 
@@ -132,7 +131,7 @@ def trigger_extraction_task(doc_id: UUID, org_id: str):
         task = {
             "http_request": {
                 "http_method": tasks_v2.HttpMethod.POST,
-                "url": f"{settings.BACKEND_URL}/tasks/process-document",
+                "url": f"{settings.RESOLVED_BACKEND_URL}/tasks/process-document",
                 "headers": {"Content-Type": "application/json"},
                 "body": json.dumps({
                     "document_id": str(doc_id),
@@ -168,7 +167,7 @@ def trigger_case_processing_task(case_id: str, org_id: str):
         task = {
             "http_request": {
                 "http_method": tasks_v2.HttpMethod.POST,
-                "url": f"{settings.BACKEND_URL}/tasks/process-case",
+                "url": f"{settings.RESOLVED_BACKEND_URL}/tasks/process-case",
                 "headers": {"Content-Type": "application/json"},
                 "body": json.dumps({
                     "case_id": str(case_id),

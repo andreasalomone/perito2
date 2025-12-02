@@ -1,0 +1,98 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.13.3, pytest-9.0.1, pluggy-1.6.0
+rootdir: /Users/andreasalomone/perito-wrap/robotperizia/report-ai-v2/perito
+plugins: anyio-4.12.0, asyncio-1.3.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1 item
+
+backend/tests/verify_report_generation_download.py DEBUG TEST: query called with <class 'app.models.Case'>
+F
+
+=================================== FAILURES ===================================
+____________________ test_report_generation_downloads_files ____________________
+
+    @pytest.mark.asyncio
+    async def test_report_generation_downloads_files():
+        # Mock DB Session
+        mock_db = MagicMock()
+    
+        # Mock Case
+        mock_case = Case(id="case-123", status="open")
+        mock_db.query.return_value.filter.return_value.with_for_update.return_value.first.return_value = mock_case
+    
+        # Mock Document with Vision data
+        mock_doc = Document(
+            id="doc-123",
+            case_id="case-123",
+            ai_status="processed",
+            gcs_path="gs://bucket/test.pdf",
+            filename="test.pdf",
+            ai_extracted_data=[{
+                "type": "vision",
+                "path": "/old/path/test.pdf",
+                "filename": "test.pdf",
+                "mime_type": "application/pdf"
+            }]
+        )
+    
+        # Setup query return values
+        # First query is for Case (lock)
+        # Second query is for Documents
+        # Third query is for Case (lock before version)
+        # Fourth query is for ReportVersion (check existing)
+    
+        def query_side_effect(model):
+            print(f"DEBUG TEST: query called with {model}")
+            query_mock = MagicMock()
+            if model == Case or (hasattr(model, '__name__') and model.__name__ == 'Case'):
+                query_mock.filter.return_value.with_for_update.return_value.first.return_value = mock_case
+            elif model == Document or (hasattr(model, '__name__') and model.__name__ == 'Document'):
+                print("DEBUG TEST: Returning mock documents")
+                query_mock.filter.return_value.all.return_value = [mock_doc]
+            elif model == ReportVersion or (hasattr(model, '__name__') and model.__name__ == 'ReportVersion'):
+                query_mock.filter.return_value.first.return_value = None
+            return query_mock
+    
+        mock_db.query.side_effect = query_side_effect
+    
+        # Mock External Services
+        with patch("app.services.report_generation_service.download_file_to_temp") as mock_download, \
+             patch("app.services.report_generation_service.llm_handler") as mock_llm, \
+             patch("app.services.report_generation_service.docx_generator") as mock_docx, \
+             patch("app.services.report_generation_service.get_storage_client") as mock_gcs, \
+             patch("app.services.report_generation_service.settings") as mock_settings:
+    
+            # Setup Mocks
+            mock_llm.generate_report_from_content = AsyncMock(return_value=("Report Text", {}))
+            mock_docx.create_styled_docx.return_value = MagicMock() # BytesIO
+            mock_settings.STORAGE_BUCKET_NAME = "test-bucket"
+    
+            # Run the function
+            await report_generation_service.generate_report_logic("case-123", "org-123", mock_db)
+    
+            # VERIFY: Check if download_file_to_temp was called
+>           assert mock_download.call_count == 1
+E           AssertionError: assert 0 == 1
+E            +  where 0 = <MagicMock name='download_file_to_temp' id='4964412320'>.call_count
+
+backend/tests/verify_report_generation_download.py:73: AssertionError
+=============================== warnings summary ===============================
+backend/app/core/config.py:5
+  /Users/andreasalomone/perito-wrap/robotperizia/report-ai-v2/perito/backend/app/core/config.py:5: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class Settings(BaseSettings):
+
+<frozen importlib._bootstrap>:488
+<frozen importlib._bootstrap>:488
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyPacked has no __module__ attribute
+
+<frozen importlib._bootstrap>:488
+<frozen importlib._bootstrap>:488
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyObject has no __module__ attribute
+
+<frozen importlib._bootstrap>:488
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED backend/tests/verify_report_generation_download.py::test_report_generation_downloads_files
+======================== 1 failed, 6 warnings in 2.05s =========================

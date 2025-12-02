@@ -54,9 +54,12 @@ def create_case(
     db: Session = Depends(get_db)
 ):
     # Optional: CRM Logic (Find or Create Client)
+    # Optional: CRM Logic (Find or Create Client)
     client_id = None
     if case_in.client_name:
-        client = case_service.get_or_create_client(db, case_in.client_name)
+        # FIX: Pass explicit organization_id from token
+        org_id = UUID(current_user['organization_id'])
+        client = case_service.get_or_create_client(db, case_in.client_name, org_id)
         client_id = client.id
 
     new_case = Case(
@@ -201,15 +204,29 @@ def finalize_case_endpoint(
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    # SECURITY FIX: Validate final_docx_path to prevent IDOR
+    # FIX: Path Traversal & IDOR Vulnerability
+    # The auditor found that startswith allows traversal like: reports/{org}/{case}/../../../other/file.pdf
+    
+    # 1. Normalize the path to resolve any .. or . components
+    normalized_path = os.path.normpath(payload.final_docx_path)
+    
+    # 2. Check for traversal attempts (.. in original path is suspicious)
+    if ".." in payload.final_docx_path or normalized_path != payload.final_docx_path.replace("\\", "/"):
+        logger.warning(f"Security Alert: Path traversal attempt detected. Path: {payload.final_docx_path}")
+        raise HTTPException(status_code=403, detail="Invalid file path.")
+    
+    # 3. Validate prefix after normalization
     expected_prefix = f"reports/{case.organization_id}/{case.id}/"
     
-    # Check both relative path and full gs:// path
     valid_path = False
-    if payload.final_docx_path.startswith(expected_prefix):
+    if normalized_path.startswith(expected_prefix):
         valid_path = True
-    elif payload.final_docx_path.startswith(f"gs://{settings.STORAGE_BUCKET_NAME}/{expected_prefix}"):
-        valid_path = True
+    elif normalized_path.startswith(f"gs://{settings.STORAGE_BUCKET_NAME}/{expected_prefix}"):
+        # Handle full GCS path
+        gs_prefix = f"gs://{settings.STORAGE_BUCKET_NAME}/"
+        path_without_prefix = normalized_path[len(gs_prefix):]
+        if path_without_prefix.startswith(expected_prefix):
+            valid_path = True
         
     if not valid_path:
          logger.warning(f"Security Alert: Attempted IDOR in finalize_case. Path: {payload.final_docx_path}")

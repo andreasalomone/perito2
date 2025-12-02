@@ -12,12 +12,15 @@ from uuid import UUID
 from google.cloud import tasks_v2
 
 from app.models import Case, Document, ReportVersion
-from app.services.gcs_service import get_storage_client
+from app.services.gcs_service import get_storage_client, download_file_to_temp
 from app.core.config import settings
 from app.services import document_processor, llm_handler, docx_generator, case_service
 from app.db.database import SessionLocal
 
 logger = logging.getLogger(__name__)
+
+# Limit concurrent downloads during generation to prevent filling up memory/disk
+download_semaphore = asyncio.Semaphore(5)
 
 async def run_generation_task(case_id: str, organization_id: str):
     """
@@ -139,6 +142,35 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
     case.status = "generating"
     db.commit()
 
+    # --- INVARIANT CHECK ---
+    # Re-fetch documents to get latest status
+    all_docs = db.query(Document).filter(Document.case_id == case_id).all()
+    
+    # 1. Check if all documents are in a terminal state (processed or error)
+    # We don't want to generate if some are still "pending" or "processing"
+    pending_docs = [d for d in all_docs if d.ai_status not in ["processed", "error"]]
+    if pending_docs:
+        logger.warning(f"Cannot generate report for case {case_id}: {len(pending_docs)} documents are still pending/processing.")
+        # Revert status to processing so it can be retried later
+        case.status = "processing"
+        db.commit()
+        return
+
+    # 2. Check if we have AT LEAST ONE successfully processed document
+    has_completed_docs = any(d.ai_status == "processed" for d in all_docs)
+    if not has_completed_docs:
+        logger.error(f"Cannot generate report for case {case_id}: No successfully processed documents found (all failed or empty).")
+        case.status = "error"
+        db.commit()
+        # We raise an error so the task might be retried or logged as failure in Cloud Tasks
+        raise ValueError("No valid documents to generate report from")
+
+    # Log the state
+    processed_count = sum(1 for d in all_docs if d.ai_status == "processed")
+    error_count = sum(1 for d in all_docs if d.ai_status == "error")
+    logger.info(f"Starting generation for case {case_id} with {processed_count} processed and {error_count} failed documents.")
+    # -----------------------
+
     tmp_dir = tempfile.mkdtemp()
     processed_data_for_llm = []
     failed_docs = []  # Track failed documents for user visibility
@@ -151,6 +183,35 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
                 data = doc.ai_extracted_data
                 if isinstance(data, dict):
                     data = [data]
+                
+                # Re-download files if needed (Vision API needs local files)
+                # We do this here to ensure the file exists in the temp dir of THIS worker
+                for item in data:
+                    if item.get("type") == "vision":
+                        # We need to re-download the file because the original temp file 
+                        # from extraction might be gone (different worker / time passed)
+                        # Construct local path in current tmp_dir
+                        original_filename = item.get("filename", "unknown_file")
+                        safe_filename = f"gen_{doc.id}_{original_filename}"
+                        local_path = os.path.join(tmp_dir, safe_filename)
+                        
+                        # Use the GCS path from the document record
+                        if doc.gcs_path:
+                            try:
+                                logger.info(f"Re-downloading {doc.gcs_path} for generation...")
+                                async with download_semaphore:
+                                    await asyncio.to_thread(download_file_to_temp, doc.gcs_path, local_path)
+                                # Update the path in the item to point to the new local file
+                                item["path"] = local_path
+                            except Exception as e:
+                                logger.error(f"Failed to re-download {doc.gcs_path}: {e}")
+                                # If download fails, we might want to skip this item or fail the doc
+                                # For now, let's mark as failed so we don't send bad path to Gemini
+                                item["type"] = "error" 
+                                item["error"] = f"Failed to download: {e}"
+                        else:
+                            logger.warning(f"Document {doc.id} has no GCS path, cannot re-download for vision.")
+                
                 processed_data_for_llm.extend(data)
             elif doc.ai_status == "error":
                 # Track failed docs with reason

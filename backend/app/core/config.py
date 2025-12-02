@@ -1,5 +1,6 @@
 from typing import Optional
 from pydantic_settings import BaseSettings
+import os
 
 class Settings(BaseSettings):
     # Google Cloud Project Info
@@ -79,6 +80,28 @@ class Settings(BaseSettings):
     def SUPERADMIN_EMAIL_LIST(self) -> list[str]:
         """Parse superadmin emails into a list"""
         return [email.strip() for email in self.SUPERADMIN_EMAILS.split(",")]
+    
+    @property
+    def RESOLVED_BACKEND_URL(self) -> str:
+        """
+        Returns the backend URL, constructing it dynamically if needed.
+        
+        This prevents the "Ouroboros" bug where Cloud Tasks receive localhost URLs
+        in production, causing 100% task failure.
+        """
+        # If explicitly set and not the default, use it
+        if self.BACKEND_URL and self.BACKEND_URL != "http://localhost:8000":
+            return self.BACKEND_URL
+        
+        # For Cloud Run: construct URL from K_SERVICE environment variable
+        # K_SERVICE is automatically set by Cloud Run to the service name
+        if not self.RUN_LOCALLY and os.getenv("K_SERVICE"):
+            service_name = os.getenv("K_SERVICE")
+            # Cloud Run URL format: https://{service}-{project}.{region}.run.app
+            return f"https://{service_name}-{self.GOOGLE_CLOUD_PROJECT}.{self.GOOGLE_CLOUD_REGION}.run.app"
+        
+        # Local development fallback
+        return "http://localhost:8000"
 
     @property
     def MAX_FILE_SIZE_BYTES(self) -> int:

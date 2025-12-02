@@ -48,9 +48,14 @@ def get_db(
     user_record = db.query(User).filter(User.id == uid).first()
     
     if not user_record:
-        # User not synced yet? Allow logic to handle registration
-        yield db 
-        return
+        # FIX: Phantom User Race Condition
+        # User not synced yet - this is a critical error for protected endpoints
+        # Don't yield a session without org context as it causes "Missing Organization Context" 500 errors
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=403,
+            detail="User account not initialized. Please complete registration first."
+        )
 
     org_id = str(user_record.organization_id)
     

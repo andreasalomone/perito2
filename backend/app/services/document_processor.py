@@ -39,6 +39,24 @@ def handle_extraction_errors(
         def wrapper(file_path: str, *args: Any, **kwargs: Any) -> Any:
             try:
                 return func(file_path, *args, **kwargs)
+            except MemoryError as e:
+                # CRITICAL: OOM should propagate to monitoring systems
+                logger.critical(f"CRITICAL: Out of memory processing {file_path}: {e}")
+                raise
+            except OSError as e:
+                # CRITICAL: Disk full or I/O errors should propagate
+                # ENOSPC (28) = No space left on device
+                # EDQUOT (122) = Disk quota exceeded
+                if hasattr(e, 'errno') and e.errno in [28, 122]:
+                    logger.critical(f"CRITICAL: Disk full processing {file_path}: {e}")
+                    raise
+                # Other OS errors might be recoverable (permissions, etc)
+                logger.error(f"OS error processing {file_path}: {e}", exc_info=True)
+                return [{
+                    "type": "error",
+                    "filename": os.path.basename(file_path),
+                    "message": str(e),
+                }]
             except Exception as e:
                 logger.error(f"Error processing {file_path}: {e}", exc_info=True)
                 # Always return a list with one error entry
