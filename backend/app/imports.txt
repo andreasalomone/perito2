@@ -1,0 +1,210 @@
+./core/config.py:from typing import Optional
+./core/config.py:from pydantic_settings import BaseSettings
+./core/config.py:import os
+./core/service_result.py:from typing import Any, Dict, List, Optional
+./core/prompt_config.py:import os
+./core/prompt_config.py:from typing import Dict, Optional, Tuple
+./core/logger.py:import logging
+./core/logger.py:import sys
+./core/logger.py:from pythonjsonlogger import jsonlogger
+./core/logger.py:from app.core.config import settings
+./core/storage.py:import os
+./core/storage.py:import shutil
+./core/storage.py:from abc import ABC, abstractmethod
+./core/storage.py:from google.cloud import storage
+./core/storage.py:from werkzeug.datastructures import FileStorage
+./models/__init__.py:import uuid
+./models/__init__.py:from datetime import datetime
+./models/__init__.py:from sqlalchemy import Column, DateTime, String, Boolean, ForeignKey, Integer, Text, Float, UniqueConstraint, JSON, Uuid
+./models/__init__.py:from sqlalchemy.orm import relationship
+./models/__init__.py:from app.db.database import Base
+./schemas/__init__.py:from pydantic import BaseModel, ConfigDict, model_validator
+./schemas/__init__.py:from typing import List, Optional, Any
+./schemas/__init__.py:from datetime import datetime
+./schemas/__init__.py:from uuid import UUID
+./schemas/__init__.py:from enum import Enum
+./db/database.py:from google.cloud.sql.connector import Connector, IPTypes
+./db/database.py:import logging
+./db/database.py:from sqlalchemy import create_engine
+./db/database.py:from sqlalchemy.orm import sessionmaker, declarative_base
+./db/database.py:from contextlib import asynccontextmanager
+./db/database.py:from fastapi import FastAPI
+./db/database.py:from app.core.config import settings
+./api/v1/auth.py:from fastapi import APIRouter, Depends, HTTPException
+./api/v1/auth.py:from sqlalchemy.orm import Session
+./api/v1/auth.py:from app.db.database import get_db
+./api/v1/auth.py:from app.api.dependencies import get_current_user_token
+./api/v1/auth.py:from app.models import User, Organization, AllowedEmail
+./api/v1/tasks.py:from google.oauth2 import id_token
+./api/v1/tasks.py:from google.auth.transport import requests as google_requests
+./api/v1/tasks.py:from fastapi import APIRouter, HTTPException, Depends, Header, Request
+./api/v1/tasks.py:from sqlalchemy.orm import Session
+./api/v1/tasks.py:from sqlalchemy import text
+./api/v1/tasks.py:from pydantic import BaseModel
+./api/v1/tasks.py:from typing import List
+./api/v1/tasks.py:from app.db.database import get_db
+./api/v1/tasks.py:from app.models import Case
+./api/v1/tasks.py:from app.core.config import settings
+./api/v1/tasks.py:import logging
+./api/v1/users.py:from fastapi import APIRouter, Depends, HTTPException
+./api/v1/users.py:from sqlalchemy.orm import Session
+./api/v1/users.py:from pydantic import BaseModel, EmailStr
+./api/v1/users.py:from app.db.database import get_db
+./api/v1/users.py:from app.api.dependencies import get_current_user_token
+./api/v1/users.py:from app.models import User, Organization, AllowedEmail
+./api/v1/cases.py:from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+./api/v1/cases.py:from sqlalchemy.orm import Session, joinedload, selectinload
+./api/v1/cases.py:from typing import List
+./api/v1/cases.py:from uuid import UUID
+./api/v1/cases.py:from app.db.database import get_db as get_raw_db # Keep if needed, but we need the secure one
+./api/v1/cases.py:from app.models import Case, Document, ReportVersion, Client
+./api/v1/cases.py:from app.api.dependencies import get_current_user_token, get_db # Import secure get_db
+./api/v1/cases.py:from app import schemas
+./api/v1/cases.py:from app.services import gcs_service, case_service
+./api/v1/cases.py:import logging
+./api/v1/cases.py:from app.core.config import settings
+./api/v1/admin.py:from fastapi import APIRouter, Depends, HTTPException
+./api/v1/admin.py:from sqlalchemy.orm import Session
+./api/v1/admin.py:from pydantic import BaseModel, EmailStr, Field
+./api/v1/admin.py:from typing import List, Optional
+./api/v1/admin.py:from enum import Enum
+./api/v1/admin.py:from app.db.database import get_db
+./api/v1/admin.py:from app.api.dependencies import get_superadmin_user
+./api/v1/admin.py:from app.models import User, Organization, AllowedEmail
+./api/v1/admin.py:import uuid
+./api/dependencies.py:import firebase_admin
+./api/dependencies.py:from firebase_admin import auth, credentials
+./api/dependencies.py:from fastapi import Depends, HTTPException, Security
+./api/dependencies.py:from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+./api/dependencies.py:from sqlalchemy.orm import Session
+./api/dependencies.py:from sqlalchemy import text
+./api/dependencies.py:from app.db.database import get_db as get_raw_db
+./api/dependencies.py:from app.models import User
+./api/dependencies.py:import os
+./main.py:import os
+./main.py:from dotenv import load_dotenv
+./main.py:from app.core.logger import setup_logging
+./main.py:from fastapi import FastAPI
+./main.py:from fastapi.middleware.cors import CORSMiddleware
+./main.py:from app.db.database import lifespan
+./main.py:from app.core.config import settings
+./main.py:from app.api.v1 import cases, tasks, auth, users, admin
+./services/docx_generator.py:import io
+./services/docx_generator.py:import logging
+./services/docx_generator.py:import os
+./services/docx_generator.py:import re
+./services/docx_generator.py:from typing import List
+./services/docx_generator.py:from docx import Document
+./services/docx_generator.py:from docx.enum.table import (  # Per l'allineamento verticale nelle celle
+./services/docx_generator.py:from docx.enum.text import WD_ALIGN_PARAGRAPH
+./services/docx_generator.py:from docx.oxml import OxmlElement
+./services/docx_generator.py:from docx.oxml.ns import qn
+./services/docx_generator.py:from docx.shared import Cm, Pt, RGBColor
+./services/docx_generator.py:from app.core.config import settings
+./services/file_service.py:import logging
+./services/file_service.py:import os
+./services/file_service.py:from typing import Any, Dict, List, Optional, Tuple, Union
+./services/file_service.py:from werkzeug.datastructures import FileStorage
+./services/file_service.py:from werkzeug.utils import secure_filename
+./services/file_service.py:from app.core.config import settings
+./services/file_service.py:from app.core.service_result import ServiceMessage, ServiceResult
+./services/file_service.py:from . import document_processor
+./services/llm/generation_service.py:import asyncio
+./services/llm/generation_service.py:import logging
+./services/llm/generation_service.py:from typing import Any, List, Optional, Union
+./services/llm/generation_service.py:import httpx
+./services/llm/generation_service.py:from google import genai
+./services/llm/generation_service.py:from google.api_core import exceptions as google_exceptions
+./services/llm/generation_service.py:from google.genai import types
+./services/llm/generation_service.py:from tenacity import (
+./services/llm/generation_service.py:from app.core.config import settings
+./services/llm/file_upload_service.py:import asyncio
+./services/llm/file_upload_service.py:import logging
+./services/llm/file_upload_service.py:import os
+./services/llm/file_upload_service.py:from typing import Any, Dict, List, Optional, Tuple
+./services/llm/file_upload_service.py:import httpx
+./services/llm/file_upload_service.py:from google import genai
+./services/llm/file_upload_service.py:from google.api_core import exceptions as google_exceptions
+./services/llm/file_upload_service.py:from google.genai import types
+./services/llm/file_upload_service.py:from tenacity import (
+./services/llm/file_upload_service.py:from app.core.config import settings
+./services/llm/cache_service.py:import logging
+./services/llm/cache_service.py:import os
+./services/llm/cache_service.py:from datetime import datetime, timezone
+./services/llm/cache_service.py:from typing import Optional
+./services/llm/cache_service.py:from google import genai
+./services/llm/cache_service.py:from google.api_core import exceptions as google_exceptions
+./services/llm/cache_service.py:from google.genai import types, errors
+./services/llm/cache_service.py:from tenacity import (
+./services/llm/cache_service.py:from app.core.config import settings
+./services/llm/cache_service.py:from app.core.prompt_config import (
+./services/llm/response_parser_service.py:import logging
+./services/llm/response_parser_service.py:from typing import Any, List, Optional
+./services/llm/response_parser_service.py:from google.genai import types
+./services/llm/prompt_builder_service.py:import logging
+./services/llm/prompt_builder_service.py:from typing import Any, Dict, List, Union
+./services/llm/prompt_builder_service.py:from google.genai import types
+./services/llm/prompt_builder_service.py:from app.core.prompt_config import (
+./services/document_processor.py:import base64
+./services/document_processor.py:import functools
+./services/document_processor.py:import logging
+./services/document_processor.py:import mimetypes
+./services/document_processor.py:import os
+./services/document_processor.py:import pathlib
+./services/document_processor.py:from typing import Any, Callable, Dict, List, TypeVar, Union, cast
+./services/document_processor.py:import fitz  # PyMuPDF
+./services/document_processor.py:import mailparser
+./services/document_processor.py:import openpyxl
+./services/document_processor.py:from docx import Document as DocxDocument
+./services/document_processor.py:from PIL import Image
+./services/document_processor.py:import re
+./services/case_service.py:from sqlalchemy.orm import Session
+./services/case_service.py:from sqlalchemy import text
+./services/case_service.py:from uuid import UUID
+./services/case_service.py:from app.models import Case, ReportVersion, MLTrainingPair, Document, Client
+./services/case_service.py:from app.core.config import settings
+./services/case_service.py:import logging
+./services/case_service.py:import json
+./services/case_service.py:import asyncio
+./services/case_service.py:from google.cloud import tasks_v2
+./services/case_service.py:from sqlalchemy.exc import IntegrityError
+./services/gcs_service.py:import datetime
+./services/gcs_service.py:from google.cloud import storage
+./services/gcs_service.py:from app.core.config import settings
+./services/docx_generator_salomone.py:import io
+./services/docx_generator_salomone.py:import logging
+./services/docx_generator_salomone.py:import os
+./services/docx_generator_salomone.py:import re
+./services/docx_generator_salomone.py:from typing import List
+./services/docx_generator_salomone.py:from docx import Document
+./services/docx_generator_salomone.py:from docx.enum.table import (  # Per l'allineamento verticale nelle celle
+./services/docx_generator_salomone.py:from docx.enum.text import WD_ALIGN_PARAGRAPH
+./services/docx_generator_salomone.py:from docx.oxml import OxmlElement
+./services/docx_generator_salomone.py:from docx.oxml.ns import qn
+./services/docx_generator_salomone.py:from docx.shared import Cm, Pt, RGBColor
+./services/docx_generator_salomone.py:from app.core.config import settings
+./services/llm_handler.py:import asyncio
+./services/llm_handler.py:import logging
+./services/llm_handler.py:from typing import Any, Dict, List, Tuple
+./services/llm_handler.py:from google import genai
+./services/llm_handler.py:from google.api_core import exceptions as google_exceptions
+./services/llm_handler.py:from app.core.config import settings
+./services/llm_handler.py:from app.services.llm import (
+./services/llm_handler.py:from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+./services/report_generation_service.py:import os
+./services/report_generation_service.py:import uuid
+./services/report_generation_service.py:import shutil
+./services/report_generation_service.py:import tempfile
+./services/report_generation_service.py:import pathlib
+./services/report_generation_service.py:import asyncio
+./services/report_generation_service.py:import logging
+./services/report_generation_service.py:import json
+./services/report_generation_service.py:from datetime import datetime
+./services/report_generation_service.py:from sqlalchemy.orm import Session
+./services/report_generation_service.py:from uuid import UUID
+./services/report_generation_service.py:from google.cloud import tasks_v2
+./services/report_generation_service.py:from app.models import Case, Document, ReportVersion
+./services/report_generation_service.py:from app.services.gcs_service import get_storage_client, download_file_to_temp
+./services/report_generation_service.py:from app.core.config import settings
+./services/report_generation_service.py:from app.services import document_processor, llm_handler, docx_generator, case_service
+./services/report_generation_service.py:from app.db.database import SessionLocal

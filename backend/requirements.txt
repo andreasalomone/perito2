@@ -18,3 +18,7 @@ google-auth>=2.20.0
 cloud-sql-python-connector[pg8000]>=1.4.0
 python-json-logger>=2.0.0
 email-validator>=2.0.0
+pydantic-settings>=2.0.0
+werkzeug>=3.0.0
+firebase-admin>=6.0.0
+httpx>=0.24.0
