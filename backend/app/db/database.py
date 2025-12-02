@@ -4,6 +4,7 @@ import logging
 logger = logging.getLogger(__name__)
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.pool import NullPool
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.core.config import settings
@@ -34,14 +35,11 @@ engine = create_engine(
     creator=getconn,
     # Connection Pool Optimization for Cloud Run Horizontal Scaling
     # Cloud Run scales horizontally (e.g., 50 concurrent users = ~3-5 containers)
-    # CRITICAL: Keep pool_size small to prevent connection exhaustion:
-    #   - pool_size=5 + max_overflow=10 = 15 connections per container
-    #   - With 50 containers: 50 × 15 = 750 total connections (safe for standard Cloud SQL instances)
-    #   - Cloud Run handles scaling; each container needs minimal connections
-    pool_size=5,          # Increased base pool per container
-    max_overflow=10,      # Allow 10 burst connections per container
-    pool_timeout=30,      # Fail fast if DB is overwhelmed
-    pool_recycle=1800,    # Recycle connections every 30 mins to avoid stale connections
+    # CRITICAL: Use NullPool to prevent connection exhaustion:
+    #   - Cloud Run containers are ephemeral and stateless.
+    #   - Keeping a pool of connections open per container (multiplier effect) is dangerous.
+    #   - NullPool ensures connections are closed immediately after use.
+    poolclass=NullPool,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

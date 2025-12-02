@@ -171,14 +171,7 @@ availableSecrets:
     env: 'NEXT_PUBLIC_FIREBASE_APP_ID'
   - versionName: projects/$PROJECT_ID/secrets/next-public-firebase-measurement-id/versions/latest
     env: 'NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID'
-  - versionName: projects/$PROJECT_ID/secrets/firebase-creds/versions/latest
-    env: 'firebase-creds'
-  - versionName: projects/$PROJECT_ID/secrets/database-password/versions/latest
-    env: 'database-password'
-  - versionName: projects/$PROJECT_ID/secrets/gemini-api-key/versions/latest
-    env: 'gemini-api-key'
-  - versionName: projects/$PROJECT_ID/secrets/cloud-tasks-sa-email/versions/latest
-    env: 'cloud-tasks-sa-email'
+
 
 options:
   logging: CLOUD_LOGGING_ONLY
