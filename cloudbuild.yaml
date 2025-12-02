@@ -59,10 +59,17 @@ steps:
     args:
       - '-c'
       - |
-        gcloud run services describe robotperizia-backend --platform managed --region europe-west1 --format 'value(status.url)' > /workspace/backend_url.txt
-        # Force HTTPS: Replace http:// with https://, or prepend https:// if missing scheme
-        sed -i 's|^http://|https://|' /workspace/backend_url.txt
-        echo "Backend URL: $(cat /workspace/backend_url.txt)"
+        BACKEND_RAW_URL=$(gcloud run services describe robotperizia-backend --platform managed --region europe-west1 --format 'value(status.url)')
+        # Ensure the URL always starts with https://
+        if [[ $BACKEND_RAW_URL == http://* ]]; then
+          BACKEND_HTTPS_URL="https://${BACKEND_RAW_URL#http://}"
+        elif [[ $BACKEND_RAW_URL == https://* ]]; then
+          BACKEND_HTTPS_URL="$BACKEND_RAW_URL"
+        else
+          BACKEND_HTTPS_URL="https://$BACKEND_RAW_URL"
+        fi
+        echo "$BACKEND_HTTPS_URL" > /workspace/backend_url.txt
+        echo "Backend URL: $BACKEND_HTTPS_URL"
   
   # 5.5 Update Backend with its own URL (Fix for Ouroboros Configuration Loop)
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
