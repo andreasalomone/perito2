@@ -8,6 +8,7 @@ import logging
 import json
 from datetime import datetime
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from uuid import UUID
 from google.cloud import tasks_v2
 
@@ -29,6 +30,13 @@ async def run_generation_task(case_id: str, organization_id: str):
     """
     db = SessionLocal()
     try:
+        # FIX: Manually set RLS context for the background session
+        # Without this, RLS policies will hide the rows from the worker
+        db.execute(
+            text("SELECT set_config('app.current_org_id', :org_id, false)"), 
+            {"org_id": organization_id}
+        )
+        
         await generate_report_logic(case_id, organization_id, db)
     finally:
         db.close()
