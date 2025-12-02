@@ -94,9 +94,11 @@ class Settings(BaseSettings):
         This prevents the "Ouroboros" bug where Cloud Tasks receive localhost URLs
         in production, causing 100% task failure.
         """
-        # If explicitly set and not the default, use it
-        if self.BACKEND_URL and self.BACKEND_URL != "http://localhost:8000":
-            return self.BACKEND_URL
+        # If explicitly set, use it. 
+        # We prioritize this over K_SERVICE to avoid "Ouroboros" (self-discovery) issues
+        # where Cloud Tasks cannot reach the internal K_SERVICE URL.
+        if self.BACKEND_URL:
+            return self.BACKEND_URL.rstrip("/")
         
         # For Cloud Run: construct URL from K_SERVICE environment variable
         # K_SERVICE is automatically set by Cloud Run to the service name

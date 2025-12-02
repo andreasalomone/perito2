@@ -146,8 +146,23 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
         return
 
     # DUPLICATE GENERATION PREVENTION: Check if already generating or done
-    if case.status == "generating":
-        logger.info(f"Case {case_id} already in status '{case.status}', aborting duplicate generation")
+    # Note: We removed the check for 'generating' because case_service now sets this status 
+    # BEFORE triggering the task to prevent race conditions. If we check it here, 
+    # the valid task would abort itself.
+    # We rely on case_service's strict locking to ensure only one task is triggered.
+
+    # IDEMPOTENCY CHECK: Check if report already exists
+    existing_report = db.query(ReportVersion).filter(
+        ReportVersion.case_id == case_id,
+        ReportVersion.version_number == 1
+    ).first()
+    
+    if existing_report:
+        logger.info(f"Report for case {case_id} already exists. Aborting duplicate generation.")
+        # Ensure status is correct
+        if case.status != "open":
+            case.status = "open"
+            db.commit()
         return
 
     # Set granular status

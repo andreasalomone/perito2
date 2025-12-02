@@ -31,6 +31,7 @@ def get_or_create_client(db: Session, name: str, organization_id: UUID) -> Clien
         return client
 
     # 2. Try to create (Handle Race Condition with SAVEPOINT)
+    # Verified by backend/tests/test_client_creation_race.py
     # Use begin_nested() to create a SAVEPOINT
     try:
         with db.begin_nested():
@@ -268,26 +269,32 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: Session):
     # We do this OUTSIDE the try/except block for the single doc, 
     # but we need to be careful. If this doc failed, should we still check?
     # Yes, because maybe all other docs are done and this one failed.
-    # But if this one failed, maybe we shouldn't generate?
-    # Let's say we generate if all are "processed" or "error".
-    # Actually, if one fails, we might want to fail the case or continue with partial data.
-    # For now, let's assume we only generate if ALL are "processed".
     
     # Re-query to get fresh state of all docs
     # We need to lock the Case to prevent race conditions where two workers finish at same time
     # and both think they are the last one.
     
     try:
-        # Lock the Case
+        # Lock the Case immediately
         case = db.query(Case).filter(Case.id == doc.case_id).with_for_update().first()
         
-        # Check all docs
+        # Check if we are already generating to fail fast
+        if case.status == "generating":
+            logger.info(f"Case {doc.case_id} is already generating. Skipping completion check.")
+            return
+
+        # Re-query all docs inside this locked transaction
         all_docs = db.query(Document).filter(Document.case_id == doc.case_id).all()
         
         pending_docs = [d for d in all_docs if d.ai_status not in ["processed", "error"]]
         
         if not pending_docs:
             logger.info(f"All documents for case {doc.case_id} finished. Triggering generation.")
+            
+            # CRITICAL: Set status here to prevent the other worker from entering
+            case.status = "generating" 
+            db.commit() 
+            
             # Trigger Generation Task
             from app.services import report_generation_service
             # We need to run this async. Since we are in an async function, we can await.
@@ -297,9 +304,16 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: Session):
                 await report_generation_service.trigger_generation_task(str(doc.case_id), str(org_id))
             except Exception as e:
                 logger.error(f"Failed to trigger generation for case {doc.case_id}: {e}")
-                # Don't raise - let Cloud Tasks retry this document task automatically
-                # which will re-attempt the completion check and trigger
+                # CRITICAL: Revert status so retry can happen
+                case.status = "processing"
+                db.commit()
+                # Raise so Cloud Tasks retries this document task
+                raise e
             
     except Exception as e:
+        # Rollback in case of error during the lock/check
+        db.rollback()
         logger.error(f"Error checking case completion: {e}")
+        # Re-raise to ensure Cloud Tasks retries
+        raise e
 

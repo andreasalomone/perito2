@@ -9,9 +9,8 @@ import {
     CaseStatus
 } from "@/types";
 
-import { getEnv } from "./env";
 
-const API_URL = getEnv("NEXT_PUBLIC_API_URL")?.replace(/^http:\/\//, "https://");
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || "").replace(/^http:\/\//, "https://");
 
 export class ApiError extends Error {
     constructor(message: string, public status?: number) {
