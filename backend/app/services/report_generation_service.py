@@ -100,8 +100,12 @@ async def trigger_generation_task(case_id: str, organization_id: str):
         task = {
             "http_request": {
                 "http_method": tasks_v2.HttpMethod.POST,
-                "url": f"{settings.BACKEND_URL}/tasks/generate-report",
+                "url": f"{settings.RESOLVED_BACKEND_URL}/tasks/generate-report",
                 "headers": {"Content-Type": "application/json"},
+                "oidc_token": {
+                    "service_account_email": settings.CLOUD_TASKS_SA_EMAIL,
+                    "audience": settings.RESOLVED_BACKEND_URL,
+                },
                 "body": json.dumps({
                     "case_id": str(case_id),
                     "organization_id": organization_id

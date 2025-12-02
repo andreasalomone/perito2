@@ -133,6 +133,10 @@ def trigger_extraction_task(doc_id: UUID, org_id: str):
                 "http_method": tasks_v2.HttpMethod.POST,
                 "url": f"{settings.RESOLVED_BACKEND_URL}/tasks/process-document",
                 "headers": {"Content-Type": "application/json"},
+                "oidc_token": {
+                    "service_account_email": settings.CLOUD_TASKS_SA_EMAIL,
+                    "audience": settings.RESOLVED_BACKEND_URL,
+                },
                 "body": json.dumps({
                     "document_id": str(doc_id),
                     "organization_id": org_id
@@ -169,6 +173,10 @@ def trigger_case_processing_task(case_id: str, org_id: str):
                 "http_method": tasks_v2.HttpMethod.POST,
                 "url": f"{settings.RESOLVED_BACKEND_URL}/tasks/process-case",
                 "headers": {"Content-Type": "application/json"},
+                "oidc_token": {
+                    "service_account_email": settings.CLOUD_TASKS_SA_EMAIL,
+                    "audience": settings.RESOLVED_BACKEND_URL,
+                },
                 "body": json.dumps({
                     "case_id": str(case_id),
                     "organization_id": org_id

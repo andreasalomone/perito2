@@ -34,7 +34,7 @@ def get_case_status(case_id: UUID, db: Session = Depends(get_db)):
     
     # Check if any doc is processing to infer "is_generating" hint
     # Optimized: Use SQL EXISTS instead of loading all docs
-    is_generating = db.query(Document).filter(
+    is_generating = case.status == "generating" or db.query(Document).filter(
         Document.case_id == case_id,
         Document.ai_status.in_(["pending", "processing"])
     ).first() is not None

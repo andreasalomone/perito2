@@ -57,7 +57,7 @@ def get_db(
     # This allows the 'user_self_access' RLS policy to let us read our own record.
     # FIX: Use bind parameters (:uid) instead of f-strings to prevent SQL injection
     db.execute(
-        text("SELECT set_config('app.current_user_uid', :uid, false)"), 
+        text("SELECT set_config('app.current_user_uid', :uid, true)"), 
         {"uid": uid}
     )
     
@@ -80,7 +80,7 @@ def get_db(
     # Set the session variable. If RLS is on, Postgres now filters everything automatically.
     # FIX: Use bind parameters (:org_id)
     db.execute(
-        text("SELECT set_config('app.current_org_id', :org_id, false)"), 
+        text("SELECT set_config('app.current_org_id', :org_id, true)"), 
         {"org_id": org_id}
     )
     
