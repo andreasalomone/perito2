@@ -1,17 +1,34 @@
 import firebase_admin
-from firebase_admin import auth
+from firebase_admin import auth, credentials
 from fastapi import Depends, HTTPException, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.db.database import get_db as get_raw_db
 from app.models import User
+import os
 
-# Initialize Firebase (Keep existing code)
+# Initialize Firebase
 try:
     firebase_admin.get_app()
 except ValueError:
-    firebase_admin.initialize_app()
+    # In Cloud Run, we mount the secret to /secrets/service-account.json
+    # We explicitly use this file for Firebase, so we don't have to set GOOGLE_APPLICATION_CREDENTIALS
+    # globally, which would break Cloud SQL Connector (which prefers ADC).
+    cred_path = "/secrets/service-account.json"
+    if os.path.exists(cred_path):
+        try:
+            cred = credentials.Certificate(cred_path)
+            firebase_admin.initialize_app(cred)
+        except Exception as e:
+            # If the file exists but is invalid (e.g. user put email instead of JSON key),
+            # log it and fall back to ADC.
+            print(f"WARNING: Failed to load Firebase credentials from {cred_path}: {e}")
+            print("Falling back to Application Default Credentials (ADC).")
+            firebase_admin.initialize_app()
+    else:
+        # Fallback to default (ADC or GOOGLE_APPLICATION_CREDENTIALS env var)
+        firebase_admin.initialize_app()
 
 security = HTTPBearer()
 

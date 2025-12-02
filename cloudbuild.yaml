@@ -44,8 +44,6 @@ steps:
       - 'STORAGE_BUCKET_NAME=robotperizia-uploads-roberto'
       - '--set-env-vars'
       - 'CLOUD_TASKS_QUEUE_PATH=projects/$PROJECT_ID/locations/europe-west1/queues/report-processing-queue'
-      - '--set-env-vars'
-      - 'GOOGLE_APPLICATION_CREDENTIALS=/secrets/service-account.json'
       - '--set-secrets'
       - '/secrets/service-account.json=firebase-creds:latest'
       - '--set-secrets'
