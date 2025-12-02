@@ -7,6 +7,11 @@ import logging
 import json
 import asyncio
 from google.cloud import tasks_v2
+import os
+import tempfile
+import shutil
+from app.services import document_processor
+from app.services.gcs_service import download_file_to_temp, get_storage_client
 
 # Limit concurrent extractions to prevent filling up memory/disk
 extraction_semaphore = asyncio.Semaphore(5)
@@ -197,12 +202,9 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: Session):
     """
     Actual logic to process the document (Download -> Extract -> Save).
     """
-    import os
-    import tempfile
-    import shutil
-    import asyncio
-    from app.services import document_processor
-    from app.services.gcs_service import download_file_to_temp
+    """
+    Actual logic to process the document (Download -> Extract -> Save).
+    """
     
     doc = db.query(Document).filter(Document.id == doc_id).first()
     if not doc:
@@ -221,6 +223,33 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: Session):
             # 2. Extract
             logger.info(f"Extracting text from {local_filename}...")
             processed = await asyncio.to_thread(document_processor.process_uploaded_file, local_path, tmp_dir)
+
+            # --- LOGIC FIX START: Persist extracted artifacts to GCS ---
+            storage_client = get_storage_client()
+            bucket_name = settings.STORAGE_BUCKET_NAME
+            bucket = storage_client.bucket(bucket_name)
+
+            for item in processed:
+                # If the item has a local path that is NOT the original file we downloaded,
+                # it is an artifact (attachment/split page) that must be persisted.
+                item_path = item.get("path")
+                if item_path and item_path != local_path and os.path.exists(item_path):
+                    # Generate a stable GCS path for this artifact
+                    # Structure: uploads/{org}/{case}/artifacts/{doc_id}_{filename}
+                    artifact_filename = os.path.basename(item_path)
+                    blob_name = f"uploads/{doc.organization_id}/{doc.case_id}/artifacts/{doc.id}_{artifact_filename}"
+                    
+                    logger.info(f"Uploading extracted artifact {artifact_filename} to GCS...")
+                    
+                    # Upload to GCS
+                    blob = bucket.blob(blob_name)
+                    await asyncio.to_thread(blob.upload_from_filename, item_path)
+                    
+                    # SAVE the specific GCS path in the metadata so Generation can find it
+                    item["item_gcs_path"] = f"gs://{bucket_name}/{blob_name}"
+                else:
+                    pass
+            # --- LOGIC FIX END ---
             
         # 3. Save to DB
         doc.ai_extracted_data = processed

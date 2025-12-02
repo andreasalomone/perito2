@@ -139,14 +139,14 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
     2. Generates AI Report.
     3. Creates Version 1.
     """
-    # Lock case early to prevent duplicate generation
+    # 1. Fetch case
     case = db.query(Case).filter(Case.id == case_id).with_for_update().first()
     if not case:
         logger.error(f"Case {case_id} not found")
         return
 
     # DUPLICATE GENERATION PREVENTION: Check if already generating or done
-    if case.status in ["generating", "open"]:
+    if case.status == "generating":
         logger.info(f"Case {case_id} already in status '{case.status}', aborting duplicate generation")
         return
 
@@ -158,17 +158,13 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
     # Re-fetch documents to get latest status
     all_docs = db.query(Document).filter(Document.case_id == case_id).all()
     
-    # 1. Check if all documents are in a terminal state (processed or error)
-    # We don't want to generate if some are still "pending" or "processing"
+    # Check if all documents are processed
     pending_docs = [d for d in all_docs if d.ai_status not in ["processed", "error"]]
     if pending_docs:
-        logger.warning(f"Cannot generate report for case {case_id}: {len(pending_docs)} documents are still pending/processing.")
-        # Revert status to processing so it can be retried later
-        case.status = "processing"
-        db.commit()
+        logger.info(f"Case {case_id} has pending documents: {[d.id for d in pending_docs]}. Skipping generation.")
         return
-
-    # 2. Check if we have AT LEAST ONE successfully processed document
+    
+    # Check if we have at least one processed document
     has_completed_docs = any(d.ai_status == "processed" for d in all_docs)
     if not has_completed_docs:
         logger.error(f"Cannot generate report for case {case_id}: No successfully processed documents found (all failed or empty).")
@@ -177,7 +173,6 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
         # We raise an error so the task might be retried or logged as failure in Cloud Tasks
         raise ValueError("No valid documents to generate report from")
 
-    # Log the state
     processed_count = sum(1 for d in all_docs if d.ai_status == "processed")
     error_count = sum(1 for d in all_docs if d.ai_status == "error")
     logger.info(f"Starting generation for case {case_id} with {processed_count} processed and {error_count} failed documents.")
@@ -190,6 +185,8 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
     try:
         # 1. Fetch Processed Data
         documents = db.query(Document).filter(Document.case_id == case_id).all()
+        if documents:
+             pass
         for doc in documents:
             if doc.ai_status == "processed" and doc.ai_extracted_data:
                 data = doc.ai_extracted_data
@@ -207,22 +204,25 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
                         safe_filename = f"gen_{doc.id}_{original_filename}"
                         local_path = os.path.join(tmp_dir, safe_filename)
                         
-                        # Use the GCS path from the document record
-                        if doc.gcs_path:
+                        # Check if this specific item has its own GCS path (Artifact)
+                        # Fallback to the Document's main GCS path (Original)
+                        target_gcs_path = item.get("item_gcs_path") or doc.gcs_path
+
+                        if target_gcs_path:
                             try:
-                                logger.info(f"Re-downloading {doc.gcs_path} for generation...")
+                                logger.info(f"Re-downloading {target_gcs_path} for generation...")
                                 async with download_semaphore:
-                                    await asyncio.to_thread(download_file_to_temp, doc.gcs_path, local_path)
-                                # Update the path in the item to point to the new local file
+                                    # Use the helper that handles gs:// parsing
+                                    await asyncio.to_thread(download_file_to_temp, target_gcs_path, local_path)
+                                
+                                # Update the path to point to the fresh local copy
                                 item["path"] = local_path
                             except Exception as e:
-                                logger.error(f"Failed to re-download {doc.gcs_path}: {e}")
-                                # If download fails, we might want to skip this item or fail the doc
-                                # For now, let's mark as failed so we don't send bad path to Gemini
-                                item["type"] = "error" 
-                                item["error"] = f"Failed to download: {e}"
+                                logger.error(f"Failed to re-download {target_gcs_path}: {e}")
+                                item["type"] = "error"
+                                item["error"] = f"Failed to download source: {e}"
                         else:
-                            logger.warning(f"Document {doc.id} has no GCS path, cannot re-download for vision.")
+                            logger.warning(f"Item {original_filename} has no GCS source.")
                 
                 processed_data_for_llm.extend(data)
             elif doc.ai_status == "error":
