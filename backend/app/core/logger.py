@@ -1,7 +1,7 @@
 import logging
 import sys
 from pythonjsonlogger import jsonlogger
-from config import settings
+from app.core.config import settings
 
 def setup_logging():
     """

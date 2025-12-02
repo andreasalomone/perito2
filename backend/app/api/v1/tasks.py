@@ -23,6 +23,10 @@ class DocumentTaskPayload(BaseModel):
     document_id: str
     organization_id: str
 
+class GenerateReportPayload(BaseModel):
+    case_id: str
+    organization_id: str
+
 
 async def verify_cloud_tasks_auth(
     request: Request,
@@ -130,4 +134,30 @@ async def process_document(
     await case_service.process_document_extraction(doc.id, payload.organization_id, db)
 
     logger.info(f"✅ Document {doc.filename} processed successfully.")
+    return {"status": "success"}
+
+@router.post("/generate-report")
+async def generate_report(
+    payload: GenerateReportPayload,
+    db: Session = Depends(get_db),
+    authorized: bool = Depends(verify_cloud_tasks_auth)
+):
+    logger.info(f"🚀 Starting report generation for case {payload.case_id} in org {payload.organization_id}")
+
+    # 1. Set RLS (Securely)
+    db.execute(
+        text("SELECT set_config('app.current_org_id', :org_id, false)"), 
+        {"org_id": payload.organization_id}
+    )
+
+    # 2. Run Generation Logic
+    from app.services import report_generation_service as generation_service
+    
+    await generation_service.generate_report_logic(
+        case_id=payload.case_id,
+        organization_id=payload.organization_id,
+        db=db
+    )
+    
+    logger.info(f"✅ Report generated for case {payload.case_id}")
     return {"status": "success"}

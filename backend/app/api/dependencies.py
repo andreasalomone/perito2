@@ -63,3 +63,32 @@ def get_db(
     )
     
     yield db
+
+def get_superadmin_user(
+    current_user_token: dict = Depends(get_current_user_token),
+    db: Session = Depends(get_raw_db)  # Use raw DB, skip RLS for superadmins
+):
+    """
+    Dependency for superadmin-only endpoints.
+    Checks if the current user's email is in the superadmin list.
+    
+    Note: Uses raw DB connection without RLS to allow superadmins
+    to operate without organization membership.
+    """
+    from app.core.config import settings
+    
+    email = current_user_token.get('email')
+    
+    if not email:
+        raise HTTPException(status_code=403, detail="Email not found in token")
+    
+    if email not in settings.SUPERADMIN_EMAIL_LIST:
+        raise HTTPException(status_code=403, detail="Superadmin access required")
+    
+    # Superadmins don't need to have a User record or belong to an organization
+    # They can operate independently
+    uid = current_user_token['uid']
+    user_record = db.query(User).filter(User.id == uid).first()
+    
+    # Return the user if exists, None if not (superadmin doesn't need User record)
+    return user_record

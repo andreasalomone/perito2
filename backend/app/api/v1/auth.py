@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.api.dependencies import get_current_user_token
-from app.models import User, Organization
+from app.models import User, Organization, AllowedEmail
 
 router = APIRouter()
 
@@ -27,29 +27,31 @@ def sync_user(
     db_user = db.query(User).filter(User.id == uid).first()
     
     if not db_user:
+        # Invite-Only: Check if email is whitelisted
+        allowed_email = db.query(AllowedEmail).filter(AllowedEmail.email == email).first()
+        
+        if not allowed_email:
+            raise HTTPException(status_code=403, detail="User not registered. Please contact your administrator.")
+            
+        # Create new User from Invite
         try:
-            # Create new Organization (Default to "My Organization")
-            new_org = Organization(name="My Organization")
-            db.add(new_org)
-            db.flush() # Flush to get the ID
-
-            # Create new User
             db_user = User(
                 id=uid,
                 email=email,
-                organization_id=new_org.id,
-                role="admin" # First user is Admin of their own Org
+                organization_id=allowed_email.organization_id,
+                role=allowed_email.role
             )
             db.add(db_user)
             db.commit()
             db.refresh(db_user)
+            
+            # Optional: Delete invite after use? 
+            # Or keep it as a record? Let's keep it for now or maybe delete to keep table clean.
+            # Let's keep it simple and just create the user.
+            
         except Exception as e:
-            # Handle race condition: if user was created by another request in the meantime
             db.rollback()
-            db_user = db.query(User).filter(User.id == uid).first()
-            if not db_user:
-                # If it still fails and user is not found, re-raise
-                raise HTTPException(status_code=500, detail=f"Failed to sync user: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to create user: {str(e)}")
         
     return {
         "id": db_user.id,

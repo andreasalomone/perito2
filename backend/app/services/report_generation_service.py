@@ -5,9 +5,11 @@ import tempfile
 import pathlib
 import asyncio
 import logging
+import json
 from datetime import datetime
 from sqlalchemy.orm import Session
 from uuid import UUID
+from google.cloud import tasks_v2
 
 from app.models import Case, Document, ReportVersion
 from app.services.gcs_service import download_file_to_temp, get_storage_client
@@ -20,101 +22,177 @@ logger = logging.getLogger(__name__)
 async def run_generation_task(case_id: str, organization_id: str):
     """
     Wrapper for background execution that manages its own DB session.
+    Now calls generate_report_logic instead of process_case_logic.
     """
     db = SessionLocal()
     try:
-        await process_case_logic(case_id, organization_id, db)
+        await generate_report_logic(case_id, organization_id, db)
     finally:
         db.close()
 
 async def process_case_logic(case_id: str, organization_id: str, db: Session):
     """
-    Core logic to process a Case:
-    1. Fetch all Documents.
-    2. Download & OCR.
-    3. Generate AI Report.
-    4. Create ReportVersion (v1).
+    Phase 1: Dispatch Tasks
+    Iterates all documents and dispatches a 'process-document' Cloud Task for each.
     """
-    # 1. Setup - Get Case
-    case = db.query(Case).filter(Case.id == case_id).first()
+    # 1. Setup - Get Case with locking to prevent race conditions
+    case = db.query(Case).filter(Case.id == case_id).with_for_update().first()
     if not case:
         logger.error(f"Case {case_id} not found in DB")
         return
 
-    
-    # Update status
+    # DUPLICATE PREVENTION: Check if already processing (now atomic with lock)
+    if case.status == "processing":
+        logger.warning(f"Case {case_id} already processing, skipping duplicate dispatch")
+        return
+
+    # Update status to processing
     case.status = "processing"
+    db.commit()
+
+    # 2. Fetch Documents
+    documents = db.query(Document).filter(Document.case_id == case_id).all()
+    if not documents:
+        logger.warning(f"No documents found for case {case_id}")
+        return
+
+    # 3. Dispatch Tasks
+    all_processed = True
+    for doc in documents:
+        if doc.ai_status == "processed":
+            continue
+            
+        all_processed = False
+        
+        # For local dev, process inline instead of dispatching tasks
+        if settings.RUN_LOCALLY:
+            logger.info(f"Local mode: Processing document {doc.id} inline")
+            await case_service.process_document_extraction(doc.id, organization_id, db)
+        else:
+            # Dispatch Cloud Task
+            case_service.trigger_extraction_task(doc.id, organization_id)
+        
+    # 4. Optimization: If all were already processed (e.g. retry), trigger generation immediately
+    if all_processed:
+        logger.info(f"All documents for case {case_id} already processed. Triggering generation immediately.")
+        await trigger_generation_task(case_id, organization_id)
+
+
+async def trigger_generation_task(case_id: str, organization_id: str):
+    """
+    Enqueues the 'generate-report' task.
+    """
+    if settings.RUN_LOCALLY:
+        logger.info(f"Running generation locally for case {case_id}")
+        # Run in background (fire and forget) or await if we want to block
+        # Since this is usually called from a task or API, we can just run it.
+        # But we need a fresh DB session if we run it directly.
+        await run_generation_task(case_id, organization_id)
+        return
+
+    try:
+        client = tasks_v2.CloudTasksClient()
+        parent = settings.CLOUD_TASKS_QUEUE_PATH
+        
+        task = {
+            "http_request": {
+                "http_method": tasks_v2.HttpMethod.POST,
+                "url": f"{settings.BACKEND_URL}/tasks/generate-report",
+                "headers": {"Content-Type": "application/json"},
+                "body": json.dumps({
+                    "case_id": str(case_id),
+                    "organization_id": organization_id
+                }).encode()
+            }
+        }
+        
+        logger.info(f"🚀 Enqueuing generation task for case {case_id}")
+        client.create_task(request={"parent": parent, "task": task})
+        
+    except Exception as e:
+        logger.error(f"Failed to enqueue generation task for case {case_id}: {e}")
+        # Re-raise to propagate error
+        # This allows document workers to retry completion check
+        raise
+
+
+async def generate_report_logic(case_id: str, organization_id: str, db: Session):
+    """
+    Phase 2: Generation
+    Called when all documents are processed.
+    1. Aggregates data.
+    2. Generates AI Report.
+    3. Creates Version 1.
+    """
+    # Lock case early to prevent duplicate generation
+    case = db.query(Case).filter(Case.id == case_id).with_for_update().first()
+    if not case:
+        logger.error(f"Case {case_id} not found")
+        return
+
+    # DUPLICATE GENERATION PREVENTION: Check if already generating or done
+    if case.status in ["generating", "open"]:
+        logger.info(f"Case {case_id} already in status '{case.status}', aborting duplicate generation")
+        return
+
+    # Set granular status
+    case.status = "generating"
     db.commit()
 
     tmp_dir = tempfile.mkdtemp()
     processed_data_for_llm = []
+    failed_docs = []  # Track failed documents for user visibility
     
     try:
-        # 2. Fetch Documents
+        # 1. Fetch Processed Data
         documents = db.query(Document).filter(Document.case_id == case_id).all()
-        if not documents:
-            logger.warning(f"No documents found for case {case_id}")
-            return
-
-        # 3. Process Each File
-        # 3. Process Each File
         for doc in documents:
-            # OPTIMIZATION: Check if already processed by async worker
             if doc.ai_status == "processed" and doc.ai_extracted_data:
-                logger.info(f"Using pre-extracted data for {doc.filename}")
-                # Ensure it's a list
                 data = doc.ai_extracted_data
                 if isinstance(data, dict):
                     data = [data]
                 processed_data_for_llm.extend(data)
-                continue
+            elif doc.ai_status == "error":
+                # Track failed docs with reason
+                failed_docs.append({
+                    "id": str(doc.id),
+                    "filename": doc.filename,
+                    "reason": "Processing failed"
+                })
+                logger.warning(f"Document {doc.id} ({doc.filename}) failed processing - skipping")
+            else:
+                # Document still pending or other status
+                failed_docs.append({
+                    "id": str(doc.id),
+                    "filename": doc.filename,
+                    "reason": f"Status: {doc.ai_status}"
+                })
+                logger.warning(f"Document {doc.id} ({doc.filename}) is not processed (Status: {doc.ai_status}). Skipping.")
 
-            # Fallback: Process now if not ready
-            gcs_path = doc.gcs_path
-            suffix = pathlib.Path(gcs_path).suffix or ".tmp"
-                
-            # Use NamedTemporaryFile to ensure cleanup after processing
-            # This prevents accumulating all source files in memory/disk
-            with tempfile.NamedTemporaryFile(suffix=suffix, delete=True) as tmp_file:
-                logger.info(f"Downloading {gcs_path} to {tmp_file.name}...")
-                
-                # Run blocking download in thread
-                await asyncio.to_thread(download_file_to_temp, gcs_path, tmp_file.name)
-                
-                # Run blocking extraction in thread
-                # Pass depth=0 explicitly
-                processed = await asyncio.to_thread(
-                    document_processor.process_uploaded_file, 
-                    tmp_file.name, 
-                    tmp_dir, 
-                    0
-                )
-                processed_data_for_llm.extend(processed)
-            
-            # Update Doc Status
-            doc.ai_status = "processed"
-            doc.ai_extracted_data = processed # Save for future
-            
-        # Batch commit after all documents are processed
-        db.commit()
-
-        # 4. Generate with Gemini
-        logger.info("Generating text with Gemini...")
+        if not processed_data_for_llm:
+            logger.error("No processed data available for generation.")
+            raise ValueError("No processed data found")
         
-        # This is already async
+        # Log summary of what we're generating with
+        total_docs = len(documents)
+        processed_docs = len(processed_data_for_llm)
+        failed_count = len(failed_docs)
+        logger.info(f"Generating report from {processed_docs}/{total_docs} documents ({failed_count} failed/skipped)")
+        if failed_docs:
+            logger.warning(f"Failed documents: {[d['filename'] for d in failed_docs]}")
+
+        # 2. Generate with Gemini
+        logger.info("Generating text with Gemini...")
         report_text, token_usage = await llm_handler.generate_report_from_content(
             processed_files=processed_data_for_llm
         )
 
-        # 5. Generate DOCX
+        # 3. Generate DOCX
         logger.info("Generating DOCX...")
-        # Run blocking DOCX generation in thread
         docx_stream = await asyncio.to_thread(docx_generator.create_styled_docx, report_text)
         
-        # 6. Upload Result
+        # 4. Upload Result
         bucket_name = settings.STORAGE_BUCKET_NAME
-        
-        # Use organization_id for storage path
         blob_name = f"reports/{organization_id}/{case_id}/v1_AI_Draft.docx"
         
         def upload_blob():
@@ -124,19 +202,12 @@ async def process_case_logic(case_id: str, organization_id: str, db: Session):
             blob.upload_from_file(docx_stream, content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
             return f"gs://{bucket_name}/{blob_name}"
 
-        # Run blocking upload in thread
         final_docx_path = await asyncio.to_thread(upload_blob)
 
-        # 7. Save Version 1
-        # We use the case_service helper, but we need to adapt it since we are inside a transaction/session
-        # Or just create it directly here.
-        
-        # 7. Save Version 1
-        # CRITICAL FIX: Lock the PARENT Case row to serialize version creation.
-        # Locking the version row itself fails if it doesn't exist yet (insert race).
+        # 5. Save Version 1
+        # Lock Case to serialize
         db.query(Case).filter(Case.id == case_id).with_for_update().first()
         
-        # Check if v1 exists (idempotency)
         v1 = db.query(ReportVersion).filter(
             ReportVersion.case_id == case_id, 
             ReportVersion.version_number == 1
@@ -153,11 +224,10 @@ async def process_case_logic(case_id: str, organization_id: str, db: Session):
             )
             db.add(v1)
         else:
-            # Update existing v1
             v1.docx_storage_path = final_docx_path
             v1.ai_raw_output = report_text
             
-        case.status = "open" # Back to open, ready for review
+        case.status = "open"
         db.commit()
         logger.info("✅ Case processing completed successfully. Version 1 created.")
 
@@ -165,6 +235,10 @@ async def process_case_logic(case_id: str, organization_id: str, db: Session):
         logger.error(f"❌ Error during generation: {e}", exc_info=True)
         case.status = "error"
         db.commit()
+        # Don't raise if we want to swallow the error in the task worker, 
+        # but usually we want to raise so Cloud Tasks might retry (if transient)
+        # For logic errors, maybe don't retry.
+        # Let's raise for now.
         raise e 
     finally:
         shutil.rmtree(tmp_dir)

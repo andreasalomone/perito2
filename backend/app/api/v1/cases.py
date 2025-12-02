@@ -91,6 +91,37 @@ def get_doc_upload_url(
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
+    # ALLOWED MIME TYPES
+    ALLOWED_MIME_TYPES = {
+        ".pdf": "application/pdf",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".txt": "text/plain",
+        ".eml": "message/rfc822",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+    }
+
+    # Validate Extension & MIME Type
+    import os
+    _, ext = os.path.splitext(filename)
+    ext = ext.lower()
+
+    if ext not in ALLOWED_MIME_TYPES:
+        raise HTTPException(status_code=400, detail=f"Unsupported file extension: {ext}")
+
+    expected_mime = ALLOWED_MIME_TYPES[ext]
+    # Simple check: content_type must match expected_mime
+    # For images, we might want to be more flexible (e.g. image/jpg vs image/jpeg), but strict is safer.
+    if content_type != expected_mime:
+         raise HTTPException(
+            status_code=400, 
+            detail=f"MIME type mismatch. Expected {expected_mime} for extension {ext}, got {content_type}"
+        )
+
     # Generate path: uploads/{org_id}/{case_id}/{filename}
     # We use case.organization_id to ensure clean bucket structure
     return gcs_service.generate_upload_signed_url(
@@ -140,15 +171,22 @@ async def trigger_generation(
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    # In production, this should enqueue a Cloud Task.
-    # For now/local, we use FastAPI BackgroundTasks + generation_service
-    from app.services import report_generation_service as generation_service
+    # Use Cloud Tasks in production, BackgroundTasks for local dev
+    from app.services import case_service
+    from app.core.config import settings
     
-    background_tasks.add_task(
-        generation_service.run_generation_task,
-        case_id=str(case.id),
-        organization_id=str(case.organization_id)
-    )
+    if settings.RUN_LOCALLY:
+        # For local dev, use background tasks with the full pipeline
+        from app.services import report_generation_service as generation_service
+        background_tasks.add_task(
+            generation_service.process_case_logic,
+            case_id=str(case.id),
+            organization_id=str(case.organization_id),
+            db=db  # Pass the current session for background task
+        )
+    else:
+        # For production, enqueue a Cloud Task that will call /tasks/process-case
+        case_service.trigger_case_processing_task(str(case.id), str(case.organization_id))
     
     return {"status": "generation_started"}
 

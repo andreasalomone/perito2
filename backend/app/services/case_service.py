@@ -75,6 +75,9 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
     3. Create ML Training Pair.
     """
     # 1. Create Final Version
+    # LOCK the Case to prevent version race conditions
+    db.query(Case).filter(Case.id == case_id).with_for_update().first()
+
     count = db.query(ReportVersion).filter(ReportVersion.case_id == case_id).count()
     final_version = ReportVersion(
         case_id=case_id,
@@ -137,7 +140,43 @@ def trigger_extraction_task(doc_id: UUID, org_id: str):
         logger.info(f"Task created: {response.name}")
         
     except Exception as e:
-        logger.error(f"Failed to enqueue task: {e}")
+        logger.error(f"Failed to enqueue extraction task for doc {doc_id}: {e}")
+        # Re-raise to propagate error to caller
+        # Cloud Tasks workers will retry; API endpoints will return error to user
+        raise
+
+def trigger_case_processing_task(case_id: str, org_id: str):
+    """
+    Enqueues a task to Cloud Tasks to process the full case (dispatch documents).
+    """
+    if settings.RUN_LOCALLY:
+        logger.info(f"Skipping Cloud Task for case {case_id} (Running Locally)")
+        return
+
+    try:
+        client = tasks_v2.CloudTasksClient()
+        parent = settings.CLOUD_TASKS_QUEUE_PATH
+        
+        task = {
+            "http_request": {
+                "http_method": tasks_v2.HttpMethod.POST,
+                "url": f"{settings.BACKEND_URL}/tasks/process-case",
+                "headers": {"Content-Type": "application/json"},
+                "body": json.dumps({
+                    "case_id": str(case_id),
+                    "organization_id": org_id
+                }).encode()
+            }
+        }
+        
+        logger.info(f"🚀 Enqueuing case processing task for case {case_id}")
+        response = client.create_task(request={"parent": parent, "task": task})
+        logger.info(f"Task created: {response.name}")
+        
+    except Exception as e:
+        logger.error(f"Failed to enqueue case processing task for case {case_id}: {e}")
+        # Re-raise to propagate error to caller (API endpoint returns HTTP error)
+        raise
 
 async def process_document_extraction(doc_id: UUID, org_id: str, db: Session):
     """
@@ -179,4 +218,43 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: Session):
         db.commit()
     finally:
         shutil.rmtree(tmp_dir)
+
+    # 4. Check for Case Completion (Fan-in)
+    # We do this OUTSIDE the try/except block for the single doc, 
+    # but we need to be careful. If this doc failed, should we still check?
+    # Yes, because maybe all other docs are done and this one failed.
+    # But if this one failed, maybe we shouldn't generate?
+    # Let's say we generate if all are "processed" or "error".
+    # Actually, if one fails, we might want to fail the case or continue with partial data.
+    # For now, let's assume we only generate if ALL are "processed".
+    
+    # Re-query to get fresh state of all docs
+    # We need to lock the Case to prevent race conditions where two workers finish at same time
+    # and both think they are the last one.
+    
+    try:
+        # Lock the Case
+        case = db.query(Case).filter(Case.id == doc.case_id).with_for_update().first()
+        
+        # Check all docs
+        all_docs = db.query(Document).filter(Document.case_id == doc.case_id).all()
+        
+        pending_docs = [d for d in all_docs if d.ai_status not in ["processed", "error"]]
+        
+        if not pending_docs:
+            logger.info(f"All documents for case {doc.case_id} finished. Triggering generation.")
+            # Trigger Generation Task
+            from app.services import report_generation_service
+            # We need to run this async. Since we are in an async function, we can await.
+            # Wrap in try/except for automatic retry: if this fails, Cloud Tasks will
+            # retry this document task, which will re-trigger the completion check.
+            try:
+                await report_generation_service.trigger_generation_task(str(doc.case_id), str(org_id))
+            except Exception as e:
+                logger.error(f"Failed to trigger generation for case {doc.case_id}: {e}")
+                # Don't raise - let Cloud Tasks retry this document task automatically
+                # which will re-attempt the completion check and trigger
+            
+    except Exception as e:
+        logger.error(f"Error checking case completion: {e}")
 

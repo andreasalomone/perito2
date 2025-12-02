@@ -1,7 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, DateTime, String, Boolean, ForeignKey, Integer, Text, Float, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import Column, DateTime, String, Boolean, ForeignKey, Integer, Text, Float, UniqueConstraint, JSON, Uuid
 from sqlalchemy.orm import relationship
 from app.db.database import Base
 
@@ -9,7 +8,7 @@ from app.db.database import Base
 
 class Organization(Base):
     __tablename__ = "organizations"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     
@@ -21,7 +20,7 @@ class Organization(Base):
 class User(Base):
     __tablename__ = "users"
     id = Column(String(128), primary_key=True) # Firebase UID
-    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    organization_id = Column(Uuid, ForeignKey("organizations.id"), nullable=False)
     email = Column(String(255), nullable=False)
     role = Column(String(50), default="member")
     
@@ -30,8 +29,8 @@ class User(Base):
 class Client(Base):
     """CRM: The Insurance Companies"""
     __tablename__ = "clients"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    organization_id = Column(Uuid, ForeignKey("organizations.id"), nullable=False)
     name = Column(String(255), nullable=False) # e.g. "Generali"
     vat_number = Column(String(50))
     
@@ -46,9 +45,9 @@ class Client(Base):
 class Case(Base):
     """The Container for a Claim (Sinistro)"""
     __tablename__ = "cases"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
-    client_id = Column(UUID(as_uuid=True), ForeignKey("clients.id"), nullable=True)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    organization_id = Column(Uuid, ForeignKey("organizations.id"), nullable=False)
+    client_id = Column(Uuid, ForeignKey("clients.id"), nullable=True)
     
     reference_code = Column(String(100)) # e.g. "Sinistro 2024/005"
     status = Column(String(50), default="open") # open, closed, archived
@@ -63,9 +62,9 @@ class Case(Base):
 
 class Document(Base):
     __tablename__ = "documents"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    case_id = Column(UUID(as_uuid=True), ForeignKey("cases.id", ondelete="CASCADE"), nullable=False)
-    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    case_id = Column(Uuid, ForeignKey("cases.id", ondelete="CASCADE"), nullable=False)
+    organization_id = Column(Uuid, ForeignKey("organizations.id"), nullable=False)
     
     filename = Column(String(255), nullable=False)
     gcs_path = Column(String(1024), nullable=False)
@@ -73,7 +72,7 @@ class Document(Base):
     
     # AI Data (The "Brain")
     ai_status = Column(String(50), default="pending")
-    ai_extracted_data = Column(JSONB, nullable=True) 
+    ai_extracted_data = Column(JSON, nullable=True) 
     
     created_at = Column(DateTime, default=datetime.utcnow)
     case = relationship("Case", back_populates="documents")
@@ -81,9 +80,9 @@ class Document(Base):
 class ReportVersion(Base):
     """Stores history: v1 (AI), v2 (Human Edit), v3 (Final)"""
     __tablename__ = "report_versions"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    case_id = Column(UUID(as_uuid=True), ForeignKey("cases.id", ondelete="CASCADE"), nullable=False)
-    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    case_id = Column(Uuid, ForeignKey("cases.id", ondelete="CASCADE"), nullable=False)
+    organization_id = Column(Uuid, ForeignKey("organizations.id"), nullable=False)
     
     version_number = Column(Integer, nullable=False)
     docx_storage_path = Column(String(1024))
@@ -98,11 +97,11 @@ class ReportVersion(Base):
 class MLTrainingPair(Base):
     """The Gold Mine: Maps Inputs -> AI Draft -> Human Final"""
     __tablename__ = "ml_training_pairs"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    case_id = Column(UUID(as_uuid=True), ForeignKey("cases.id"))
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    case_id = Column(Uuid, ForeignKey("cases.id"))
     
-    ai_version_id = Column(UUID(as_uuid=True), ForeignKey("report_versions.id"))
-    final_version_id = Column(UUID(as_uuid=True), ForeignKey("report_versions.id"))
+    ai_version_id = Column(Uuid, ForeignKey("report_versions.id"))
+    final_version_id = Column(Uuid, ForeignKey("report_versions.id"))
     
     quality_score = Column(Float) # Optional rating
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -110,15 +109,15 @@ class MLTrainingPair(Base):
 class AuditLog(Base):
     """Tracks critical user actions and system events for compliance and debugging."""
     __tablename__ = "audit_logs"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    organization_id = Column(Uuid, ForeignKey("organizations.id"), nullable=False)
     user_id = Column(String(128), ForeignKey("users.id"), nullable=True) # Nullable for system actions
     
     action = Column(String(50), nullable=False) # e.g. "LOGIN", "CREATE_CASE", "GENERATE_REPORT"
     resource_type = Column(String(50)) # e.g. "CASE", "DOCUMENT"
-    resource_id = Column(UUID(as_uuid=True)) # ID of the affected resource
+    resource_id = Column(Uuid) # ID of the affected resource
     
-    details = Column(JSONB) # Flexible storage for metadata (e.g. tokens, cost, diffs)
+    details = Column(JSON) # Flexible storage for metadata (e.g. tokens, cost, diffs)
     ip_address = Column(String(45))
     
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -126,3 +125,15 @@ class AuditLog(Base):
     # Relationships
     organization = relationship("Organization")
     user = relationship("User")
+
+class AllowedEmail(Base):
+    """Whitelist for Invite-Only Auth"""
+    __tablename__ = "allowed_emails"
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    organization_id = Column(Uuid, ForeignKey("organizations.id"), nullable=False)
+    email = Column(String(255), nullable=False, unique=True)
+    role = Column(String(50), default="member")
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    organization = relationship("Organization")

@@ -69,6 +69,14 @@ class Settings(BaseSettings):
 
     # Logging
     LOG_LEVEL: str = "INFO"
+    
+    # Superadmin Access
+    SUPERADMIN_EMAILS: str = "cuentos.eth@gmail.com"  # Comma-separated list
+    
+    @property
+    def SUPERADMIN_EMAIL_LIST(self) -> list[str]:
+        """Parse superadmin emails into a list"""
+        return [email.strip() for email in self.SUPERADMIN_EMAILS.split(",")]
 
     @property
     def MAX_FILE_SIZE_BYTES(self) -> int:

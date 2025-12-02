@@ -32,15 +32,17 @@ def getconn():
 engine = create_engine(
     "postgresql+pg8000://",
     creator=getconn,
-    # Connection Pool Optimization for Cloud Run
-    # 'pool_size': 5 - Start small, Cloud Run scales instances
-    # 'max_overflow': 2 - Allow a few extra bursts
-    # 'pool_timeout': 30 - Fail fast if DB is overwhelmed
-    # 'pool_recycle': 1800 - Recycle connections every 30 mins to avoid stale connections
-    pool_size=5,
-    max_overflow=2,
-    pool_timeout=30,
-    pool_recycle=1800,
+    # Connection Pool Optimization for Cloud Run Horizontal Scaling
+    # Cloud Run scales horizontally (e.g., 50 concurrent users = ~3-5 containers)
+    # CRITICAL: Keep pool_size small to prevent connection exhaustion:
+    #   - pool_size=1 + max_overflow=1 = 2 connections per container
+    #   - With 50 containers: 50 × 2 = 100 total connections (safe for most Cloud SQL instances)
+    #   - Previous settings (5+2=7): 50 × 7 = 350 connections (would crash db-f1-micro/small)
+    # Cloud Run handles scaling; each container needs minimal connections
+    pool_size=1,          # Minimal base pool per container
+    max_overflow=1,       # Allow 1 burst connection per container
+    pool_timeout=30,      # Fail fast if DB is overwhelmed
+    pool_recycle=1800,    # Recycle connections every 30 mins to avoid stale connections
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
