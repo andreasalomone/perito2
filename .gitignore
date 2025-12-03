@@ -52,3 +52,4 @@ backend/tests/
 tests/
 deploy.sh
 backend/sql/database_schema.sql
+perizia_db_schema.sql
