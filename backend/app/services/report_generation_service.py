@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from uuid import UUID
 from google.cloud import tasks_v2
+from sqlalchemy.exc import IntegrityError
 
 from app.models import Case, Document, ReportVersion
 from app.services.gcs_service import get_storage_client, download_file_to_temp
@@ -323,8 +324,13 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
             v1.ai_raw_output = report_text
             
         case.status = "open"
-        db.commit()
-        logger.info("✅ Case processing completed successfully. Version 1 created.")
+        try:
+            db.commit()
+            logger.info("✅ Case processing completed successfully. Version 1 created.")
+        except IntegrityError:
+            db.rollback()
+            logger.error(f"IntegrityError saving Version 1 for case {case_id}. Likely race condition.")
+            raise
 
     except Exception as e:
         logger.error(f"❌ Error during generation: {e}", exc_info=True)

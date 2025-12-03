@@ -71,39 +71,24 @@ def run_migrations_online() -> None:
     CRITICAL CHANGE:
     We verify if we are running locally (Development) or in Cloud Run (Production).
     If Production, we use the Google Cloud SQL Connector.
+    If Local, we connect via TCP (localhost:5432), assuming Cloud SQL Proxy is running.
     """
     
-    # Define the connector helper internal to this scope
-    # We don't rely on the app's global state because the app isn't running here.
-    
-    def getconn():
-        """
-        Standalone connector function specifically for migrations.
-        Uses a fresh Connector instance.
-        """
-        # Note: We must access the connector instance from the outer scope's context manager
-        conn = global_connector.connect(
-            instance_connection_string=settings.CLOUD_SQL_CONNECTION_NAME,
-            driver="pg8000",
-            user=settings.DB_USER,
-            password=settings.DB_PASS,
-            db=settings.DB_NAME,
-            ip_type=IPTypes.PUBLIC,
-        )
-        return conn
-
-    # -------------------------------------------------------------
-    # Scenario A: Using Cloud SQL Connector (Production / Staging)
-    # -------------------------------------------------------------
-    # We use a Context Manager to ensure the Connector is closed after migration
-    with Connector() as global_connector:
+    if settings.RUN_LOCALLY:
+        # Local Development: Connect via TCP (Cloud SQL Proxy or Local DB)
+        # We construct the URL manually to handle special chars in password safely
+        from sqlalchemy.engine.url import URL
         
-        # Create the engine dynamically
-        connectable = create_engine(
-            "postgresql+pg8000://",
-            creator=getconn,
-            poolclass=pool.NullPool, # No need for pooling during migrations
+        url = URL.create(
+            drivername="postgresql+pg8000",
+            username=settings.DB_USER,
+            password=settings.DB_PASS,
+            host="localhost",
+            port=5432,
+            database=settings.DB_NAME,
         )
+        
+        connectable = create_engine(url)
 
         with connectable.connect() as connection:
             context.configure(
@@ -113,6 +98,50 @@ def run_migrations_online() -> None:
 
             with context.begin_transaction():
                 context.run_migrations()
+                
+    else:
+        # Production: Use Cloud SQL Connector
+        
+        # Define the connector helper internal to this scope
+        # We don't rely on the app's global state because the app isn't running here.
+        
+        def getconn():
+            """
+            Standalone connector function specifically for migrations.
+            Uses a fresh Connector instance.
+            """
+            # Note: We must access the connector instance from the outer scope's context manager
+            conn = global_connector.connect(
+                instance_connection_string=settings.CLOUD_SQL_CONNECTION_NAME,
+                driver="pg8000",
+                user=settings.DB_USER,
+                password=settings.DB_PASS,
+                db=settings.DB_NAME,
+                ip_type=IPTypes.PUBLIC,
+            )
+            return conn
+
+        # -------------------------------------------------------------
+        # Scenario A: Using Cloud SQL Connector (Production / Staging)
+        # -------------------------------------------------------------
+        # We use a Context Manager to ensure the Connector is closed after migration
+        with Connector() as global_connector:
+            
+            # Create the engine dynamically
+            connectable = create_engine(
+                "postgresql+pg8000://",
+                creator=getconn,
+                poolclass=pool.NullPool, # No need for pooling during migrations
+            )
+
+            with connectable.connect() as connection:
+                context.configure(
+                    connection=connection, 
+                    target_metadata=target_metadata
+                )
+
+                with context.begin_transaction():
+                    context.run_migrations()
 
 if context.is_offline_mode():
     run_migrations_offline()

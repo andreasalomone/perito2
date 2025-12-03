@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import "@testing-library/jest-dom";
 import CaseWorkspace from "./page";
 import axios from "axios";
 import { useAuth } from "@/context/AuthContext";

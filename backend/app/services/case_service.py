@@ -63,9 +63,10 @@ def create_ai_version(db: Session, case_id: UUID, org_id: UUID, ai_text: str, do
     # This ensures only one transaction can add a version at a time for this case.
     db.query(Case).filter(Case.id == case_id).with_for_update().first()
 
-    # 1. Determine version number
-    count = db.query(ReportVersion).filter(ReportVersion.case_id == case_id).count()
-    next_version = count + 1
+    # 1. Determine version number (Robust: Use MAX + 1, not COUNT)
+    from sqlalchemy import func
+    max_ver = db.query(func.max(ReportVersion.version_number)).filter(ReportVersion.case_id == case_id).scalar()
+    next_version = (max_ver or 0) + 1
     
     # 2. Save Version
     version = ReportVersion(
@@ -77,8 +78,16 @@ def create_ai_version(db: Session, case_id: UUID, org_id: UUID, ai_text: str, do
         is_final=False
     )
     db.add(version)
-    db.commit()
-    return version
+    
+    try:
+        db.commit()
+        return version
+    except IntegrityError:
+        db.rollback()
+        # Retry logic or fail gracefully
+        # Since we locked the case, this should rarely happen unless manual DB intervention
+        logger.error(f"IntegrityError creating version {next_version} for case {case_id}")
+        raise
 
 def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str):
     """
@@ -91,16 +100,24 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
     # LOCK the Case to prevent version race conditions
     db.query(Case).filter(Case.id == case_id).with_for_update().first()
 
-    count = db.query(ReportVersion).filter(ReportVersion.case_id == case_id).count()
+    from sqlalchemy import func
+    max_ver = db.query(func.max(ReportVersion.version_number)).filter(ReportVersion.case_id == case_id).scalar()
+    next_version = (max_ver or 0) + 1
+
     final_version = ReportVersion(
         case_id=case_id,
         organization_id=org_id,
-        version_number=count + 1,
+        version_number=next_version,
         docx_storage_path=final_docx_path,
         is_final=True
     )
     db.add(final_version)
-    db.flush() # Get ID
+    try:
+        db.flush() # Get ID
+    except IntegrityError:
+        db.rollback()
+        logger.error(f"IntegrityError creating final version {next_version} for case {case_id}")
+        raise
     
     # 2. Find the original AI Draft (Version 1 usually, or last AI version)
     # Simple logic: First version is AI.

@@ -11,6 +11,7 @@ import { CaseSummary } from "@/types";
 import { toast } from "sonner";
 import axios from "axios";
 import { api, ApiError } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 // --- Hooks ---
 import { useInterval } from "@/hooks/useInterval";
