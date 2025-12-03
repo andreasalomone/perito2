@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 from app import schemas
 from app.api.dependencies import get_current_user_token, get_db
 from app.core.config import settings
-from app.models import Case, Client, Document, ReportVersion
+from app.models import Case, Client, Document, ReportVersion, User
 from app.services import case_service, gcs_service
 # In a real scenario, we assume report_generation_service is refactored 
 # to create its own DB session, not accept one as an arg.
@@ -123,10 +123,15 @@ def create_case(
     Creates a new case. Handles optional client creation via CRM service.
     """
     # Strict Type Parsing
-    try:
-        org_id = UUID(current_user["organization_id"])
-    except (KeyError, ValueError):
-        raise HTTPException(status_code=400, detail="Invalid Organization ID in token")
+    # Fetch User from DB to get Organization ID (Reliable Source of Truth)
+    # Note: get_db dependency already ensures the user exists via RLS/Session setup,
+    # but we need the actual ORM object here to access the relationship/field.
+    user = db.get(User, current_user["uid"])
+    if not user:
+        # Should be caught by get_db, but safe guard
+        raise HTTPException(status_code=403, detail="User account not found.")
+        
+    org_id = user.organization_id
 
     # CRM Logic
     client_id: Optional[UUID] = None
