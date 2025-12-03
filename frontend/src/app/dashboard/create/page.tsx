@@ -33,6 +33,11 @@ export default function CreateCasePage() {
         setLoading(true);
         try {
             const token = await getToken();
+
+            if (!token) {
+                throw new Error("Utente non autenticato");
+            }
+
             const newCase = await api.cases.create(token, {
                 reference_code: cleanRefCode,
                 client_name: cleanClientName
