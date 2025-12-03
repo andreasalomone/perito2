@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useContext, useEffect, useState, useRef } from "react";
-import { onAuthStateChanged, User, signInWithPopup, signOut, Auth } from "firebase/auth";
+import { onAuthStateChanged, User, signInWithPopup, signOut, Auth, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { initFirebase, googleProvider, getFirebaseAuth } from "@/lib/firebase";
 import { DBUser } from "@/types";
 import axios from "axios";
@@ -10,6 +10,9 @@ interface AuthContextType {
     dbUser: DBUser | null;
     loading: boolean;
     login: () => Promise<void>;
+    signupWithEmail: (email: string, password: string) => Promise<void>;
+    loginWithEmail: (email: string, password: string) => Promise<void>;
+    resetPassword: (email: string) => Promise<void>;
     logout: () => Promise<void>;
     getToken: () => Promise<string | undefined>;
 }
@@ -84,6 +87,24 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
         }
     };
 
+    const signupWithEmail = async (email: string, password: string) => {
+        if (authRef.current) {
+            await createUserWithEmailAndPassword(authRef.current, email, password);
+        }
+    };
+
+    const loginWithEmail = async (email: string, password: string) => {
+        if (authRef.current) {
+            await signInWithEmailAndPassword(authRef.current, email, password);
+        }
+    };
+
+    const resetPassword = async (email: string) => {
+        if (authRef.current) {
+            await sendPasswordResetEmail(authRef.current, email);
+        }
+    };
+
     const logout = async () => {
         if (authRef.current) {
             await signOut(authRef.current);
@@ -97,7 +118,7 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
     };
 
     return (
-        <AuthContext.Provider value={{ user, dbUser, loading, login, logout, getToken }}>
+        <AuthContext.Provider value={{ user, dbUser, loading, login, signupWithEmail, loginWithEmail, resetPassword, logout, getToken }}>
             {!loading && children}
         </AuthContext.Provider>
     );

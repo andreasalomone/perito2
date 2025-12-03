@@ -2,6 +2,7 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Loader2, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -9,9 +10,12 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 function LandingPage() {
-  const { user, login, loading } = useAuth();
+  const { user, login, signupWithEmail, loginWithEmail, resetPassword, loading } = useAuth();
   const router = useRouter();
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
 
   useEffect(() => {
     if (user) {
@@ -19,14 +23,47 @@ function LandingPage() {
     }
   }, [user, router]);
 
-  const handleLogin = async () => {
+  const handleGoogleLogin = async () => {
     setIsLoggingIn(true);
     try {
       await login();
-      // Redirect handled by useEffect
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login failed", error);
-      toast.error("Accesso fallito. Riprova.");
+      toast.error("Accesso Google fallito. Riprova.");
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || (!password && mode !== "forgot")) {
+      toast.error("Compila tutti i campi");
+      return;
+    }
+
+    setIsLoggingIn(true);
+    try {
+      if (mode === "login") {
+        await loginWithEmail(email, password);
+      } else if (mode === "signup") {
+        await signupWithEmail(email, password);
+        toast.success("Account creato con successo!");
+      } else if (mode === "forgot") {
+        await resetPassword(email);
+        toast.success("Email di recupero inviata!");
+        setMode("login");
+        setIsLoggingIn(false);
+        return;
+      }
+    } catch (error: any) {
+      console.error("Auth failed", error);
+      let msg = "Operazione fallita.";
+      if (error.code === "auth/invalid-credential") msg = "Credenziali non valide.";
+      if (error.code === "auth/user-not-found") msg = "Utente non trovato.";
+      if (error.code === "auth/wrong-password") msg = "Password errata.";
+      if (error.code === "auth/email-already-in-use") msg = "Email già registrata.";
+      if (error.code === "auth/weak-password") msg = "Password troppo debole.";
+      toast.error(msg);
       setIsLoggingIn(false);
     }
   };
@@ -59,19 +96,105 @@ function LandingPage() {
 
         <Card className="border-border/50 shadow-xl bg-card/50 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle>Benvenuto</CardTitle>
-            <CardDescription>Accedi per iniziare</CardDescription>
+            <CardTitle>
+              {mode === "login" && "Bentornato"}
+              {mode === "signup" && "Crea Account"}
+              {mode === "forgot" && "Recupera Password"}
+            </CardTitle>
+            <CardDescription>
+              {mode === "login" && "Accedi per continuare"}
+              {mode === "signup" && "Inserisci i tuoi dati per iniziare"}
+              {mode === "forgot" && "Inserisci la tua email"}
+            </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+
+            <form onSubmit={handleEmailAuth} className="space-y-4 text-left">
+              <div className="space-y-2">
+                <Input
+                  type="email"
+                  placeholder="Email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="bg-background/50"
+                />
+                {mode !== "forgot" && (
+                  <Input
+                    type="password"
+                    placeholder="Password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    className="bg-background/50"
+                  />
+                )}
+              </div>
+
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={isLoggingIn}
+              >
+                {isLoggingIn && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {mode === "login" && "Accedi"}
+                {mode === "signup" && "Registrati"}
+                {mode === "forgot" && "Invia Link"}
+              </Button>
+            </form>
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">
+                  Oppure
+                </span>
+              </div>
+            </div>
+
             <Button
-              onClick={handleLogin}
-              size="lg"
-              className="w-full text-base font-semibold h-12"
+              variant="outline"
+              onClick={handleGoogleLogin}
+              className="w-full"
               disabled={isLoggingIn}
             >
-              {isLoggingIn ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              <svg className="mr-2 h-4 w-4" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512"><path fill="currentColor" d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 123 24.5 166.3 64.9l-67.5 64.9C258.5 52.6 94.3 116.6 94.3 256c0 86.5 69.1 156.6 153.7 156.6 98.2 0 135-70.4 140.8-106.9H248v-85.3h236.1c2.3 12.7 3.9 24.9 3.9 41.4z"></path></svg>
               Accedi con Google
             </Button>
+
+            <div className="text-sm text-center space-y-2 mt-4">
+              {mode === "login" && (
+                <>
+                  <p>
+                    Non hai un account?{" "}
+                    <button onClick={() => setMode("signup")} className="text-primary hover:underline font-medium">
+                      Registrati
+                    </button>
+                  </p>
+                  <button onClick={() => setMode("forgot")} className="text-xs text-muted-foreground hover:underline">
+                    Password dimenticata?
+                  </button>
+                </>
+              )}
+
+              {mode === "signup" && (
+                <p>
+                  Hai già un account?{" "}
+                  <button onClick={() => setMode("login")} className="text-primary hover:underline font-medium">
+                    Accedi
+                  </button>
+                </p>
+              )}
+
+              {mode === "forgot" && (
+                <button onClick={() => setMode("login")} className="text-primary hover:underline font-medium">
+                  Torna al login
+                </button>
+              )}
+            </div>
+
           </CardContent>
         </Card>
 
