@@ -39,6 +39,14 @@ def handle_extraction_errors(
         def wrapper(file_path: str, *args: Any, **kwargs: Any) -> Any:
             try:
                 return func(file_path, *args, **kwargs)
+            except (ValueError, fitz.FileDataError, openpyxl.utils.exceptions.InvalidFileException) as e:
+                # Domain errors: Return error dict for user visibility
+                logger.warning(f"Domain error processing {file_path}: {e}")
+                return [{
+                    "type": "error",
+                    "filename": os.path.basename(file_path),
+                    "message": str(e),
+                }]
             except MemoryError as e:
                 # CRITICAL: OOM should propagate to monitoring systems
                 logger.critical(f"CRITICAL: Out of memory processing {file_path}: {e}")
@@ -50,21 +58,15 @@ def handle_extraction_errors(
                 if hasattr(e, 'errno') and e.errno in [28, 122]:
                     logger.critical(f"CRITICAL: Disk full processing {file_path}: {e}")
                     raise
-                # Other OS errors might be recoverable (permissions, etc)
+                # Other OS errors might be recoverable (permissions, etc) but often indicate system issues.
+                # For safety in this refactor, we will RAISE them to be caught by the caller
+                # unless we are sure they are user errors.
                 logger.error(f"OS error processing {file_path}: {e}", exc_info=True)
-                return [{
-                    "type": "error",
-                    "filename": os.path.basename(file_path),
-                    "message": str(e),
-                }]
+                raise
             except Exception as e:
-                logger.error(f"Error processing {file_path}: {e}", exc_info=True)
-                # Always return a list with one error entry
-                return [{
-                    "type": "error",
-                    "filename": os.path.basename(file_path),
-                    "message": str(e),
-                }]
+                # Unexpected system errors (Bug, etc): RAISE them.
+                logger.error(f"Critical failure processing {file_path}: {e}", exc_info=True)
+                raise
         return wrapper # type: ignore
     return decorator
 

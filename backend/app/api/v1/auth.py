@@ -1,6 +1,8 @@
 import logging
 from typing import Any, Dict, Optional
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
@@ -26,7 +28,7 @@ class UserRead(BaseModel):
     """
     id: str
     email: EmailStr
-    organization_id: str  # Changed to str because UUIDs are often serialized as strings
+    organization_id: UUID  # Changed to UUID to match ORM model
     role: str
 
     class Config:

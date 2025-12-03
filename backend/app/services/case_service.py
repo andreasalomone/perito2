@@ -257,69 +257,7 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: Session):
     await _check_and_trigger_generation(db, doc.case_id, org_id, is_async=True)
 
 
-# -----------------------------------------------------------------------------
-# SYNCHRONOUS WRAPPERS
-# -----------------------------------------------------------------------------
-import threading
-extraction_sync_semaphore = threading.BoundedSemaphore(5)
 
-def process_document_extraction_sync(doc_id: UUID, org_id: str, db: Session):
-    """
-    Synchronous version of process_document_extraction.
-    """
-    doc = db.query(Document).filter(Document.id == doc_id).first()
-    if not doc:
-        return
-
-    # FIX: Idempotency Check - Skip extraction if already processed
-    # This prevents expensive re-downloads and re-extractions on Cloud Tasks retries
-    if doc.ai_status == "processed":
-        logger.info(f"Document {doc.id} already processed. Skipping extraction, proceeding to Fan-In check.")
-    else:
-        # Perform extraction only if not already processed
-        tmp_dir = tempfile.mkdtemp()
-        try:
-            with extraction_sync_semaphore:
-                _perform_extraction_logic(doc, tmp_dir)
-                
-            # 3. Save to DB
-            doc.ai_status = "processed"
-            db.commit()
-            logger.info(f"Extraction complete for {doc.id}")
-            
-        except Exception as e:
-            logger.error(f"Error extracting document {doc.id}: {e}")
-            doc.ai_status = "error"
-            db.commit()
-        finally:
-            shutil.rmtree(tmp_dir)
-
-    # 4. Check for Case Completion (Fan-in)
-    # We run the async check in a sync wrapper if needed, or just the sync version?
-    # The original code had a sync implementation of the check.
-    # Let's use the shared logic but handle the async part.
-    # Actually, _check_and_trigger_generation can handle both if designed well,
-    # or we can just await it if we are in async, and run sync if not.
-    # But wait, we can't await in sync function.
-    # So we need _check_and_trigger_generation to be async? Or sync?
-    # The trigger_generation_task is async, trigger_generation_task_sync is sync.
-    
-    # Let's make _check_and_trigger_generation return a coroutine if is_async=True?
-    # No, that's messy.
-    # Let's make it an async function and a sync function? No, that defeats the purpose.
-    # Let's make the logic sync, but the trigger part configurable.
-    
-    # Actually, we can just use asyncio.run() for the async part if needed? No, that's bad.
-    # Let's look at how we can share the logic.
-    
-    # The logic is:
-    # 1. Lock Case
-    # 2. Check status
-    # 3. Check docs
-    # 4. Trigger
-    
-    # We can make a common function that takes a callback for the trigger.
-    _check_and_trigger_generation_sync(db, doc.case_id, org_id)
 
 
 def _perform_extraction_logic(doc: Document, tmp_dir: str):
@@ -434,48 +372,5 @@ async def _check_and_trigger_generation(db: Session, case_id: UUID, org_id: str,
         # Re-raise to ensure Cloud Tasks retries
         raise e
 
-def _check_and_trigger_generation_sync(db: Session, case_id: UUID, org_id: str):
-    """
-    Synchronous version of check and trigger.
-    """
-    try:
-        case = db.query(Case).filter(Case.id == case_id).with_for_update().first()
-        
-        if case.status == "generating":
-            logger.info(f"Case {case_id} is already generating. Skipping completion check.")
-            return
 
-        all_docs = db.query(Document).filter(Document.case_id == case_id).all()
-        pending_docs = [d for d in all_docs if d.ai_status not in ["processed", "error"]]
-        
-        if not pending_docs:
-            logger.info(f"All documents for case {case_id} finished. Triggering generation.")
-            
-            try:
-                case.status = "generating"
-                
-                from app.models.outbox import OutboxMessage
-                outbox_entry = OutboxMessage(
-                    topic="generate_report",
-                    payload={
-                        "case_id": str(case_id),
-                        "organization_id": str(org_id)
-                    }
-                )
-                db.add(outbox_entry)
-                
-                db.commit()
-                
-                # Skip immediate dispatch in sync mode
-                logger.info("Skipping immediate dispatch in sync mode (will be picked up by poller)")
-                
-            except Exception as e:
-                db.rollback()
-                logger.error(f"Error checking case completion: {e}")
-                raise e
-            
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error checking case completion: {e}")
-        raise e
 

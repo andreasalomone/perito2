@@ -116,7 +116,7 @@ def set_rls_context(db: Session, organization_id: str) -> None:
     status_code=status.HTTP_202_ACCEPTED,
     summary="Process Case Logic"
 )
-def process_case(
+async def process_case(
     payload: CaseTaskPayload,
     db: Session = Depends(get_db),
     _: bool = Depends(verify_cloud_tasks_auth)
@@ -138,7 +138,7 @@ def process_case(
 
     # 3. Execute Business Logic
     try:
-        report_generation_service.process_case_logic_sync(
+        await report_generation_service.process_case_logic(
             case_id=str(payload.case_id),
             organization_id=str(payload.organization_id),
             db=db
@@ -156,7 +156,7 @@ def process_case(
     status_code=status.HTTP_202_ACCEPTED,
     summary="Process Document Extraction"
 )
-def process_document(
+async def process_document(
     payload: DocumentTaskPayload,
     db: Session = Depends(get_db),
     _: bool = Depends(verify_cloud_tasks_auth)
@@ -174,9 +174,9 @@ def process_document(
         return {"status": "skipped", "reason": "not_found"}
 
     try:
-        case_service.process_document_extraction_sync(
-            document_id=str(doc.id), 
-            organization_id=str(payload.organization_id), 
+        await case_service.process_document_extraction(
+            doc_id=doc.id, 
+            org_id=str(payload.organization_id), 
             db=db
         )
     except Exception as e:
@@ -191,7 +191,7 @@ def process_document(
     status_code=status.HTTP_202_ACCEPTED,
     summary="Generate DOCX Report"
 )
-def generate_report(
+async def generate_report(
     payload: CaseTaskPayload,
     db: Session = Depends(get_db),
     _: bool = Depends(verify_cloud_tasks_auth)
@@ -204,7 +204,7 @@ def generate_report(
     set_rls_context(db, str(payload.organization_id))
 
     try:
-        report_generation_service.generate_report_logic_sync(
+        await report_generation_service.generate_report_logic(
             case_id=str(payload.case_id),
             organization_id=str(payload.organization_id),
             db=db
