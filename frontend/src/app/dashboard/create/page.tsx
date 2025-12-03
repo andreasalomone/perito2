@@ -7,9 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
-import axios from "axios";
 import { toast } from "sonner";
 import { handleApiError } from "@/lib/error";
+import { api } from "@/lib/api";
 
 export default function CreateCasePage() {
     const { getToken } = useAuth();
@@ -33,18 +33,13 @@ export default function CreateCasePage() {
         setLoading(true);
         try {
             const token = await getToken();
-            const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/api/cases`,
-                {
-                    reference_code: cleanRefCode,
-                    client_name: cleanClientName
-                },
-                {
-                    headers: { Authorization: `Bearer ${token}` }
-                }
-            );
+            const newCase = await api.cases.create(token, {
+                reference_code: cleanRefCode,
+                client_name: cleanClientName
+            });
 
             toast.success("Fascicolo creato con successo");
-            router.push(`/dashboard/cases/${res.data.id}`);
+            router.push(`/dashboard/cases/${newCase.id}`);
         } catch (error) {
             handleApiError(error, "Errore durante la creazione del fascicolo");
         } finally {

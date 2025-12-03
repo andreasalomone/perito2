@@ -22,10 +22,14 @@ export class ApiError extends Error {
 async function fetchWithValidation<T>(
     url: string,
     token: string,
-    schema: z.ZodType<T>
+    schema: z.ZodType<T>,
+    options: { method?: string; data?: any } = {}
 ): Promise<T> {
     try {
-        const res = await axios.get(url, {
+        const res = await axios({
+            method: options.method || "GET",
+            url,
+            data: options.data,
             headers: { Authorization: `Bearer ${token}` }
         });
 
@@ -63,6 +67,17 @@ export const api = {
                 `${API_URL}/api/cases/${id}`,
                 token,
                 CaseDetailSchema
+            ),
+
+        create: (token: string, data: { reference_code: string; client_name?: string }) =>
+            fetchWithValidation<CaseDetail>(
+                `${API_URL}/api/cases/`,
+                token,
+                CaseDetailSchema,
+                {
+                    method: "POST",
+                    data
+                }
             ),
 
         getStatus: (token: string, id: string) =>

@@ -1,8 +1,9 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, DateTime, String, Boolean, ForeignKey, Integer, Text, Float, UniqueConstraint, JSON, Uuid
+from sqlalchemy import Column, DateTime, String, Boolean, ForeignKey, Integer, Text, Float, UniqueConstraint, JSON, Uuid, Enum as SAEnum
 from sqlalchemy.orm import relationship
 from app.db.database import Base
+from app.schemas.enums import UserRole, ExtractionStatus, CaseStatus
 
 # --- TENANCY & CRM ---
 
@@ -10,7 +11,7 @@ class Organization(Base):
     __tablename__ = "organizations"
     id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     
     # Relationships
     users = relationship("User", back_populates="organization")
@@ -36,7 +37,7 @@ class Client(Base):
     
     __table_args__ = (UniqueConstraint('organization_id', 'name', name='uq_clients_org_name'),)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     organization = relationship("Organization", back_populates="clients")
     cases = relationship("Case", back_populates="client")
 
@@ -50,9 +51,9 @@ class Case(Base):
     client_id = Column(Uuid, ForeignKey("clients.id"), nullable=True)
     
     reference_code = Column(String(100)) # e.g. "Sinistro 2024/005"
-    status = Column(String(50), default="open") # open, closed, archived
+    status = Column(SAEnum(CaseStatus), default=CaseStatus.OPEN, nullable=False) # Checked by DB constraint
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     
     # Relationships
     organization = relationship("Organization", back_populates="cases")
@@ -71,10 +72,10 @@ class Document(Base):
     mime_type = Column(String(100))
     
     # AI Data (The "Brain")
-    ai_status = Column(String(50), default="pending")
+    ai_status = Column(SAEnum(ExtractionStatus), default=ExtractionStatus.PENDING, nullable=False)
     ai_extracted_data = Column(JSON, nullable=True) 
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     case = relationship("Case", back_populates="documents")
 
 class ReportVersion(Base):
@@ -91,7 +92,7 @@ class ReportVersion(Base):
     # Provenance
     ai_raw_output = Column(Text, nullable=True) # If this was v1
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     case = relationship("Case", back_populates="report_versions")
 
 class MLTrainingPair(Base):
@@ -104,14 +105,14 @@ class MLTrainingPair(Base):
     final_version_id = Column(Uuid, ForeignKey("report_versions.id"))
     
     quality_score = Column(Float) # Optional rating
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
 class AuditLog(Base):
     """Tracks critical user actions and system events for compliance and debugging."""
     __tablename__ = "audit_logs"
     id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     organization_id = Column(Uuid, ForeignKey("organizations.id"), nullable=False)
-    user_id = Column(String(128), ForeignKey("users.id"), nullable=True) # Nullable for system actions
+    user_id = Column(String(128), ForeignKey("users.id", ondelete="SET NULL"), nullable=True) # Nullable for system actions
     
     action = Column(String(50), nullable=False) # e.g. "LOGIN", "CREATE_CASE", "GENERATE_REPORT"
     resource_type = Column(String(50)) # e.g. "CASE", "DOCUMENT"
@@ -120,7 +121,7 @@ class AuditLog(Base):
     details = Column(JSON) # Flexible storage for metadata (e.g. tokens, cost, diffs)
     ip_address = Column(String(45))
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     
     # Relationships
     organization = relationship("Organization")
@@ -132,8 +133,8 @@ class AllowedEmail(Base):
     id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     organization_id = Column(Uuid, ForeignKey("organizations.id"), nullable=False)
     email = Column(String(255), nullable=False, unique=True)
-    role = Column(String(50), default="member")
+    role = Column(SAEnum(UserRole), default=UserRole.MEMBER, nullable=False)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     
     organization = relationship("Organization")

@@ -249,6 +249,7 @@ def register_document(
         organization_id=case.organization_id,
         filename=payload.filename,
         gcs_path=clean_path,
+        mime_type=payload.mime_type,
         ai_status="pending"
     )
     db.add(new_doc)

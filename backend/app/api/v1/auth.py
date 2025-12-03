@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_current_user_token
 from app.db.database import get_db
 from app.models import AllowedEmail, User
+from app.schemas.enums import UserRole
 
 # Configure Structured Logging
 logger = logging.getLogger("app.auth.sync")
@@ -29,7 +30,7 @@ class UserRead(BaseModel):
     id: str
     email: EmailStr
     organization_id: UUID  # Changed to UUID to match ORM model
-    role: str
+    role: UserRole
 
     class Config:
         from_attributes = True # Replaces 'orm_mode = True' in Pydantic v2
@@ -95,7 +96,7 @@ def sync_user(
             id=uid,
             email=email,
             organization_id=allowed_email.organization_id,
-            role=allowed_email.role
+            role=UserRole(allowed_email.role) if allowed_email.role else UserRole.MEMBER
         )
         db.add(new_user)
         db.commit()

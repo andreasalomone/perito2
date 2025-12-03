@@ -54,3 +54,4 @@ deploy.sh
 backend/sql/database_schema.sql
 perizia_db_schema.sql
 start_db_and_migrate.sh
+dump_schema.sh
