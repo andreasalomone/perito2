@@ -1,6 +1,6 @@
-# RobotPerizia "Hyperion" v2.0
+# PeritoAI v2.0
 
-**RobotPerizia** is an advanced, AI-powered **Case Management System** designed to streamline the workflow of insurance surveyors, legal experts, and claims adjusters. By leveraging the power of **Google's Gemini 2.5 LLM via Vertex AI**, it automates the extraction of critical information from uploaded documents and generates comprehensive, professionally formatted reports (DOCX).
+**PeritoAI** is an advanced, AI-powered **Case Management System** designed to streamline the workflow of insurance surveyors, legal experts, and claims adjusters. By leveraging the power of **Google's Gemini 2.5 LLM via Vertex AI**, it automates the extraction of critical information from uploaded documents and generates comprehensive, professionally formatted reports (DOCX).
 
 ## 🎯 Target Audience
 

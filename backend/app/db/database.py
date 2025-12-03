@@ -2,7 +2,7 @@ import logging
 from typing import Generator, Any
 
 from google.cloud.sql.connector import Connector, IPTypes
-from sqlalchemy import create_engine, Engine
+from sqlalchemy import create_engine, Engine, text
 from sqlalchemy.orm import sessionmaker, Session, declarative_base
 from sqlalchemy.pool import NullPool
 from contextlib import asynccontextmanager
@@ -106,7 +106,7 @@ async def lifespan(app: FastAPI):
         # Optional: Perform a 'warm-up' ping to ensure connectivity before accepting traffic
         # This fails fast if credentials are wrong.
         with engine.connect() as connection:
-             connection.execute("SELECT 1")
+             connection.execute(text("SELECT 1"))
         logger.info("✅ Database connection established and verified.")
     except Exception as e:
         logger.critical(f"❌ Failed to initialize database: {e}")

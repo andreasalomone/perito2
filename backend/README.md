@@ -1,6 +1,6 @@
-# RobotPerizia Backend
+# PeritoAI Backend
 
-This is the backend for the RobotPerizia application, built with FastAPI and designed to run on Google Cloud Run.
+This is the backend for the PeritoAI application, built with FastAPI and designed to run on Google Cloud Run.
 
 ## 🚀 Getting Started
 
@@ -53,13 +53,13 @@ To build and run the backend using Docker:
 1.  **Build the image:**
 
     ```bash
-    docker build -t robotperizia-backend .
+    docker build -t peritoai-backend .
     ```
 
 2.  **Run the container:**
 
     ```bash
-    docker run -p 8080:8080 --env-file .env robotperizia-backend
+    docker run -p 8080:8080 --env-file .env peritoai-backend
     ```
 
 ## 🛠️ Key Technologies

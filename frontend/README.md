@@ -1,6 +1,6 @@
-# RobotPerizia Frontend
+# PeritoAI Frontend
 
-This is the frontend for the RobotPerizia application, built with Next.js 16 and styled with Tailwind CSS v4. It is designed to be deployed on Google Cloud Run.
+This is the frontend for the PeritoAI application, built with Next.js 16 and styled with Tailwind CSS v4. It is designed to be deployed on Google Cloud Run.
 
 ## 🚀 Getting Started
 
