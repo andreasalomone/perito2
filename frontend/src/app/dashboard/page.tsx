@@ -131,12 +131,26 @@ export default function DashboardPage() {
                         {safeCases.map((c, i) => (
                             <Card
                                 key={c.id}
+                                onMouseMove={(e) => {
+                                    const { currentTarget, clientX, clientY } = e;
+                                    const { left, top } = currentTarget.getBoundingClientRect();
+                                    const x = clientX - left;
+                                    const y = clientY - top;
+                                    currentTarget.style.setProperty("--x", `${x}px`);
+                                    currentTarget.style.setProperty("--y", `${y}px`);
+                                }}
                                 className={cn(
-                                    "overflow-hidden transition-all hover:shadow-md hover:border-primary/20 group",
-                                    i === 0 ? "md:col-span-2 md:row-span-2" : "col-span-1"
+                                    "overflow-hidden transition-all hover:shadow-md hover:border-primary/20 group relative",
+                                    i === 0 ? "@lg:col-span-2 @lg:row-span-2" : "col-span-1"
                                 )}
                             >
-                                <div className="p-6 flex flex-col justify-between h-full gap-4">
+                                <div
+                                    className="pointer-events-none absolute -inset-px opacity-0 transition duration-300 group-hover:opacity-100"
+                                    style={{
+                                        background: `radial-gradient(600px circle at var(--x) var(--y), var(--glass-highlight), transparent 40%)`
+                                    }}
+                                />
+                                <div className="p-6 flex flex-col justify-between h-full gap-4 relative z-10">
                                     <div className="space-y-1">
                                         <div className="flex items-center gap-3">
                                             <h3 className="font-semibold text-lg flex items-center gap-2 group-hover:text-primary transition-colors">

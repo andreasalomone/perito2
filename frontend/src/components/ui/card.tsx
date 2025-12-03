@@ -10,10 +10,10 @@ const Card = React.forwardRef<
         ref={ref}
         className={cn(
             "relative overflow-hidden rounded-xl",
-            "bg-zinc-900/90 backdrop-blur-md", // Base & Frost
-            "border border-white/10", // Physical Bezel
-            "shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]", // Top Highlight
-            "ring-1 ring-black/5", // Outer separation
+            "bg-sidebar/50 backdrop-blur-xl",         // Translucent material
+            "border border-white/5",                  // Subtle physical edge
+            "shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]", // Top "light catch" (Bezel)
+            "ring-1 ring-black/10",                   // Outer separation
             className
         )}
         {...props}

@@ -67,7 +67,7 @@ export function DashboardLayoutClient({
                     </div>
                     <h1 className="text-lg font-bold">PeritoAI</h1>
                 </div>
-                <Button variant="ghost" size="icon" onClick={toggle}>
+                <Button variant="ghost" size="icon" onClick={toggle} aria-label={isOpen ? "Chiudi menu" : "Apri menu"}>
                     {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
                 </Button>
             </div>
@@ -88,21 +88,26 @@ export function DashboardLayoutClient({
             )}
 
             {/* Desktop Sidebar */}
-            <aside className="w-64 bg-card border-r border-border hidden md:flex flex-col h-screen sticky top-0">
+            <aside className={cn(
+                "bg-card/50 backdrop-blur-xl border-r border-white/5 hidden md:flex flex-col h-screen sticky top-0 transition-all duration-300",
+                isOpen ? "w-64" : "w-20"
+            )}>
                 <Sidebar
                     user={user}
                     dbUser={dbUser}
                     logout={logout}
                     pathname={pathname}
+                    collapsed={!isOpen}
+                    onToggle={toggle}
                 />
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 p-4 md:p-8 overflow-y-auto">
+            <motion.main layout className="flex-1 p-4 md:p-8 overflow-y-auto">
                 <div className="max-w-5xl mx-auto">
                     {children}
                 </div>
-            </main>
+            </motion.main>
         </div>
     );
 }

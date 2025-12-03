@@ -1,5 +1,8 @@
 import asyncio
 import logging
+from collections import deque
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Literal
 
 from google import genai
@@ -24,6 +27,124 @@ from app.services.llm import (
 )
 
 logger = logging.getLogger(__name__)
+
+# -----------------------------------------------------------------------------
+# Cleanup Retry Queue Infrastructure
+# -----------------------------------------------------------------------------
+
+@dataclass
+class CleanupRetryItem:
+    """Represents a file cleanup operation pending retry."""
+    file_names: List[str]
+    attempt: int = 0
+    max_attempts: int = 3
+    next_retry_at: datetime = field(default_factory=datetime.now)
+    first_failed_at: datetime = field(default_factory=datetime.now)
+    last_error: Optional[str] = None
+    
+    def should_retry(self) -> bool:
+        """Check if this item should be retried."""
+        return (
+            self.attempt < self.max_attempts and 
+            datetime.now() >= self.next_retry_at
+        )
+    
+    def calculate_next_retry(self) -> datetime:
+        """Exponential backoff: 2^attempt minutes."""
+        wait_minutes = 2 ** self.attempt  # 1, 2, 4 minutes
+        return datetime.now() + timedelta(minutes=wait_minutes)
+
+class CleanupRetryQueue:
+    """Manages retry queue for failed Gemini File API cleanup operations."""
+    
+    def __init__(self):
+        self.queue: deque[CleanupRetryItem] = deque()
+        self.dead_letter: List[CleanupRetryItem] = []
+        self._processing = False
+        
+    def enqueue(self, file_names: List[str], error: str):
+        """Add failed cleanup to retry queue."""
+        item = CleanupRetryItem(
+            file_names=file_names,
+            attempt=0,
+            next_retry_at=datetime.now() + timedelta(minutes=1),  # First retry after 1 min
+            last_error=error
+        )
+        self.queue.append(item)
+        logger.info(f"Enqueued {len(file_names)} files for cleanup retry")
+        
+    def move_to_dead_letter(self, item: CleanupRetryItem):
+        """Move persistently failing cleanup to dead letter queue."""
+        self.dead_letter.append(item)
+        logger.error(
+            f"Moved {len(item.file_names)} files to dead-letter queue after {item.attempt} attempts. "
+            f"Files: {item.file_names[:3]}...",
+            extra={
+                "alert": True,
+                "dead_letter_file_count": len(item.file_names),
+                "dead_letter_files": item.file_names,
+                "attempts": item.attempt,
+                "first_failed_at": item.first_failed_at.isoformat(),
+                "last_error": item.last_error
+            }
+        )
+    
+    async def process_queue(self, client: genai.Client):
+        """Process items in the retry queue."""
+        if self._processing:
+            return  # Prevent concurrent processing
+            
+        self._processing = True
+        try:
+            items_to_retry = []
+            
+            # Collect items ready for retry
+            while self.queue:
+                item = self.queue.popleft()
+                if item.should_retry():
+                    items_to_retry.append(item)
+                else:
+                    # Not ready yet, re-enqueue
+                    self.queue.append(item)
+                    break  # Items are ordered by retry time
+            
+            # Process retries
+            for item in items_to_retry:
+                item.attempt += 1
+                logger.info(f"Retrying cleanup attempt {item.attempt}/{item.max_attempts} for {len(item.file_names)} files")
+                
+                try:
+                    # Attempt cleanup
+                    success_count, fail_count = await file_upload_service.cleanup_uploaded_files(
+                        client, item.file_names
+                    )
+                    
+                    if fail_count == 0:
+                        logger.info(f"Retry successful: cleaned up {success_count} files")
+                    else:
+                        # Partial failure - update file list and retry
+                        item.last_error = f"Partial failure: {fail_count}/{len(item.file_names)} failed"
+                        
+                        if item.attempt >= item.max_attempts:
+                            self.move_to_dead_letter(item)
+                        else:
+                            item.next_retry_at = item.calculate_next_retry()
+                            self.queue.append(item)
+                            
+                except Exception as e:
+                    item.last_error = str(e)
+                    
+                    if item.attempt >= item.max_attempts:
+                        self.move_to_dead_letter(item)
+                    else:
+                        item.next_retry_at = item.calculate_next_retry()
+                        self.queue.append(item)
+                        logger.warning(f"Cleanup retry {item.attempt} failed, will retry at {item.next_retry_at}")
+        finally:
+            self._processing = False
+
+# Global retry queue instance
+cleanup_retry_queue = CleanupRetryQueue()
 
 # -----------------------------------------------------------------------------
 # 1. Strict Typing (Contracts)
@@ -253,11 +374,46 @@ class GeminiReportGenerator:
                 )
 
     async def _cleanup_files_safely(self, file_names: List[str]):
-        """Background cleanup task that doesn't block the response."""
+        """
+        Background cleanup task with retry queue and dead-letter handling.
+        
+        CRITICAL: Cleanup failures are a quota/cost risk. The Gemini File API has storage quotas.
+        If cleanup consistently fails, we will hit quota limits and block new uploads.
+        
+        IMPLEMENTATION: Uses exponential backoff retry queue (1min, 2min, 4min)
+        and moves persistent failures to dead-letter queue for manual intervention.
+        """
         try:
-            await file_upload_service.cleanup_uploaded_files(self.client, file_names)
+            success_count, fail_count = await file_upload_service.cleanup_uploaded_files(
+                self.client, file_names
+            )
+            
+            if fail_count == 0:
+                logger.info(f"Successfully cleaned up {len(file_names)} Gemini API files")
+            else:
+                # Partial failure - enqueue failed files for retry
+                error_msg = f"Partial cleanup failure: {fail_count}/{len(file_names)} files failed"
+                logger.warning(error_msg)
+                cleanup_retry_queue.enqueue(file_names, error_msg)
+                
         except Exception as e:
-            logger.warning(f"Cleanup failed: {e}")
+            # Complete failure - enqueue all files for retry
+            error_msg = f"Gemini File API cleanup failed: {str(e)}"
+            logger.error(
+                f"CRITICAL: {error_msg} for {len(file_names)} files. "
+                f"Enqueuing for retry. Files: {file_names[:3]}...",
+                exc_info=True,
+                extra={
+                    "alert": True,
+                    "failed_file_count": len(file_names),
+                    "failed_files": file_names,
+                    "error_type": type(e).__name__
+                }
+            )
+            cleanup_retry_queue.enqueue(file_names, error_msg)
+        
+        # Process retry queue in background (non-blocking)
+        asyncio.create_task(cleanup_retry_queue.process_queue(self.client))
 
     def _is_cache_error(self, e: Exception) -> bool:
         """Heuristic to check for 400 Invalid Argument related to cache."""

@@ -18,7 +18,7 @@ export default function Error({
     }, [error]);
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+        <div className="flex min-h-screen items-center justify-center bg-secondary/30 p-4">
             <Card className="w-full max-w-md border-destructive/20 shadow-lg">
                 <CardHeader className="items-center text-center">
                     <div className="p-3 bg-destructive/10 rounded-full mb-2">

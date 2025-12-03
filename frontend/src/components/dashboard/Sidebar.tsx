@@ -7,12 +7,17 @@ import { User } from "firebase/auth";
 import { DBUser } from "@/types";
 import { cn } from "@/lib/utils";
 
+import { motion, AnimatePresence } from "framer-motion";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+
 interface SidebarProps {
     user: User | null;
     dbUser: DBUser | null;
     logout: () => void;
     pathname: string;
     onItemClick?: () => void;
+    collapsed?: boolean;
+    onToggle?: () => void;
 }
 
 export function Sidebar({
@@ -20,7 +25,9 @@ export function Sidebar({
     dbUser,
     logout,
     pathname,
-    onItemClick
+    onItemClick,
+    collapsed = false,
+    onToggle
 }: SidebarProps) {
     const navItems = [
         { href: "/dashboard", label: "I Miei Report", icon: LayoutDashboard },
@@ -29,16 +36,27 @@ export function Sidebar({
 
     return (
         <>
-            <div className="p-6 border-b border-border/50">
-                <div className="flex items-center gap-2 mb-1">
+            <div className={cn("p-6 border-b border-white/5 flex items-center justify-between", collapsed && "p-4 justify-center")}>
+                <div className="flex items-center gap-2">
                     <div className="bg-primary text-primary-foreground p-1 rounded">
                         <ShieldCheck className="h-5 w-5" />
                     </div>
-                    <h1 className="text-xl font-bold tracking-tight">PeritoAI</h1>
+                    {!collapsed && (
+                        <motion.h1
+                            initial={{ opacity: 0, width: 0 }}
+                            animate={{ opacity: 1, width: "auto" }}
+                            exit={{ opacity: 0, width: 0 }}
+                            className="text-xl font-bold tracking-tight whitespace-nowrap overflow-hidden"
+                        >
+                            PeritoAI
+                        </motion.h1>
+                    )}
                 </div>
-                <p className="text-xs text-muted-foreground truncate" title={dbUser?.email || user?.email || ""}>
-                    {dbUser?.email || user?.email}
-                </p>
+                {!collapsed && onToggle && (
+                    <Button variant="ghost" size="icon" onClick={onToggle} className="h-6 w-6 ml-auto">
+                        <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                )}
             </div>
 
             <nav className="flex-1 p-4 space-y-1">
@@ -50,27 +68,65 @@ export function Sidebar({
                             href={item.href}
                             onClick={onItemClick}
                             className={cn(
-                                "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                                "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors relative group",
                                 isActive
                                     ? "bg-primary/10 text-primary"
-                                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                    : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+                                collapsed && "justify-center px-2"
                             )}
+                            title={collapsed ? item.label : undefined}
                         >
-                            <item.icon className="h-4 w-4" />
-                            {item.label}
+                            <item.icon className="h-4 w-4 shrink-0" />
+                            {!collapsed && (
+                                <motion.span
+                                    initial={{ opacity: 0, width: 0 }}
+                                    animate={{ opacity: 1, width: "auto" }}
+                                    exit={{ opacity: 0, width: 0 }}
+                                    className="whitespace-nowrap overflow-hidden"
+                                >
+                                    {item.label}
+                                </motion.span>
+                            )}
                         </Link>
                     );
                 })}
             </nav>
 
-            <div className="p-4 border-t border-border/50">
+            <div className={cn("p-4 border-t border-white/5", collapsed && "items-center flex flex-col")}>
+                {collapsed && onToggle && (
+                    <Button variant="ghost" size="icon" onClick={onToggle} className="mb-4">
+                        <ChevronRight className="h-4 w-4" />
+                    </Button>
+                )}
+
+                {!collapsed && (
+                    <div className="mb-4 px-2">
+                        <p className="text-xs text-muted-foreground truncate" title={dbUser?.email || user?.email || ""}>
+                            {dbUser?.email || user?.email}
+                        </p>
+                    </div>
+                )}
+
                 <Button
                     variant="ghost"
                     onClick={() => logout()}
-                    className="w-full justify-start gap-3 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    className={cn(
+                        "w-full justify-start gap-3 text-destructive hover:text-destructive hover:bg-destructive/10",
+                        collapsed && "justify-center px-0"
+                    )}
+                    aria-label="Esci"
                 >
-                    <LogOut className="h-4 w-4" />
-                    Esci
+                    <LogOut className="h-4 w-4 shrink-0" />
+                    {!collapsed && (
+                        <motion.span
+                            initial={{ opacity: 0, width: 0 }}
+                            animate={{ opacity: 1, width: "auto" }}
+                            exit={{ opacity: 0, width: 0 }}
+                            className="whitespace-nowrap overflow-hidden"
+                        >
+                            Esci
+                        </motion.span>
+                    )}
                 </Button>
             </div>
         </>

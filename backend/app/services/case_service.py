@@ -119,12 +119,13 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
         logger.error(f"IntegrityError creating final version {next_version} for case {case_id}")
         raise
     
-    # 2. Find the original AI Draft (Version 1 usually, or last AI version)
-    # Simple logic: First version is AI.
+    # 2. Find the original AI Draft
+    # FIX: Don't hardcode version_number == 1, as it may be missing if regenerated or pre-draft exists
+    # Instead, find the earliest non-final version
     ai_version = db.query(ReportVersion).filter(
         ReportVersion.case_id == case_id,
-        ReportVersion.version_number == 1
-    ).first()
+        ReportVersion.is_final == False
+    ).order_by(ReportVersion.version_number.asc()).first()
     
     if ai_version:
         # 3. THE GOLD MINE: Create Training Pair
@@ -134,6 +135,8 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
             final_version_id=final_version.id
         )
         db.add(pair)
+    else:
+        logger.warning(f"No AI draft version found for case {case_id}. ML training pair not created.")
         
     db.commit()
     return final_version
@@ -220,67 +223,71 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: Session):
     """
     Actual logic to process the document (Download -> Extract -> Save).
     """
-    """
-    Actual logic to process the document (Download -> Extract -> Save).
-    """
     
     doc = db.query(Document).filter(Document.id == doc_id).first()
     if not doc:
         return
+    
+    # FIX: Idempotency Check - Skip extraction if already processed
+    # This prevents expensive re-downloads and re-extractions on Cloud Tasks retries
+    if doc.ai_status == "processed":
+        logger.info(f"Document {doc.id} already processed. Skipping extraction, proceeding to Fan-In check.")
+        # Skip to Fan-In check at the end of this function
+    else:
+        # Perform extraction only if not already processed
+        tmp_dir = tempfile.mkdtemp()
+        try:
+            async with extraction_semaphore:
+                # 1. Download
+                local_filename = f"extract_{doc.id}_{doc.filename}"
+                local_path = os.path.join(tmp_dir, local_filename)
+                
+                logger.info(f"Downloading {doc.gcs_path} for extraction...")
+                await asyncio.to_thread(download_file_to_temp, doc.gcs_path, local_path)
+                
+                # 2. Extract
+                logger.info(f"Extracting text from {local_filename}...")
+                processed = await asyncio.to_thread(document_processor.process_uploaded_file, local_path, tmp_dir)
 
-    tmp_dir = tempfile.mkdtemp()
-    try:
-        async with extraction_semaphore:
-            # 1. Download
-            local_filename = f"extract_{doc.id}_{doc.filename}"
-            local_path = os.path.join(tmp_dir, local_filename)
-            
-            logger.info(f"Downloading {doc.gcs_path} for extraction...")
-            await asyncio.to_thread(download_file_to_temp, doc.gcs_path, local_path)
-            
-            # 2. Extract
-            logger.info(f"Extracting text from {local_filename}...")
-            processed = await asyncio.to_thread(document_processor.process_uploaded_file, local_path, tmp_dir)
+                # --- LOGIC FIX START: Persist extracted artifacts to GCS ---
+                storage_client = get_storage_client()
+                bucket_name = settings.STORAGE_BUCKET_NAME
+                bucket = storage_client.bucket(bucket_name)
 
-            # --- LOGIC FIX START: Persist extracted artifacts to GCS ---
-            storage_client = get_storage_client()
-            bucket_name = settings.STORAGE_BUCKET_NAME
-            bucket = storage_client.bucket(bucket_name)
-
-            for item in processed:
-                # If the item has a local path that is NOT the original file we downloaded,
-                # it is an artifact (attachment/split page) that must be persisted.
-                item_path = item.get("path")
-                if item_path and item_path != local_path and os.path.exists(item_path):
-                    # Generate a stable GCS path for this artifact
-                    # Structure: uploads/{org}/{case}/artifacts/{doc_id}_{filename}
-                    artifact_filename = os.path.basename(item_path)
-                    blob_name = f"uploads/{doc.organization_id}/{doc.case_id}/artifacts/{doc.id}_{artifact_filename}"
-                    
-                    logger.info(f"Uploading extracted artifact {artifact_filename} to GCS...")
-                    
-                    # Upload to GCS
-                    blob = bucket.blob(blob_name)
-                    await asyncio.to_thread(blob.upload_from_filename, item_path)
-                    
-                    # SAVE the specific GCS path in the metadata so Generation can find it
-                    item["item_gcs_path"] = f"gs://{bucket_name}/{blob_name}"
-                else:
-                    pass
-            # --- LOGIC FIX END ---
+                for item in processed:
+                    # If the item has a local path that is NOT the original file we downloaded,
+                    # it is an artifact (attachment/split page) that must be persisted.
+                    item_path = item.get("path")
+                    if item_path and item_path != local_path and os.path.exists(item_path):
+                        # Generate a stable GCS path for this artifact
+                        # Structure: uploads/{org}/{case}/artifacts/{doc_id}_{filename}
+                        artifact_filename = os.path.basename(item_path)
+                        blob_name = f"uploads/{doc.organization_id}/{doc.case_id}/artifacts/{doc.id}_{artifact_filename}"
+                        
+                        logger.info(f"Uploading extracted artifact {artifact_filename} to GCS...")
+                        
+                        # Upload to GCS
+                        blob = bucket.blob(blob_name)
+                        await asyncio.to_thread(blob.upload_from_filename, item_path)
+                        
+                        # SAVE the specific GCS path in the metadata so Generation can find it
+                        item["item_gcs_path"] = f"gs://{bucket_name}/{blob_name}"
+                    else:
+                        pass
+                # --- LOGIC FIX END ---
+                
+            # 3. Save to DB
+            doc.ai_extracted_data = processed
+            doc.ai_status = "processed"
+            db.commit()
+            logger.info(f"Extraction complete for {doc.id}")
             
-        # 3. Save to DB
-        doc.ai_extracted_data = processed
-        doc.ai_status = "processed"
-        db.commit()
-        logger.info(f"Extraction complete for {doc.id}")
-        
-    except Exception as e:
-        logger.error(f"Error extracting document {doc.id}: {e}")
-        doc.ai_status = "error"
-        db.commit()
-    finally:
-        shutil.rmtree(tmp_dir)
+        except Exception as e:
+            logger.error(f"Error extracting document {doc.id}: {e}")
+            doc.ai_status = "error"
+            db.commit()
+        finally:
+            shutil.rmtree(tmp_dir)
 
     # 4. Check for Case Completion (Fan-in)
     # We do this OUTSIDE the try/except block for the single doc, 
@@ -308,7 +315,30 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: Session):
         if not pending_docs:
             logger.info(f"All documents for case {doc.case_id} finished. Triggering generation.")
             
-            # CRITICAL: Set status here to prevent the other worker from entering
+            # CRITICAL: Set status here to prevent other workers from entering
+            # ZOMBIE STATE RACE CONDITION MITIGATION:
+            # We commit status='generating' BEFORE dispatching the Cloud Task.
+            # This creates a window where the process can crash (SIGKILL/OOM)
+            # after the commit but before the task is dispatched, leaving the case
+            # permanently stuck in 'generating' state with no task to process it.
+            #
+            # CURRENT MITIGATION:
+            # 1. The try/except block below reverts the status if task dispatch fails
+            #    with a caught exception.
+            # 2. For uncaught crashes (SIGKILL), we rely on Cloud Tasks retry of the 
+            #    document extraction task, which will re-enter this function and see
+            #    status='generating' at line 309, causing it to skip and return.
+            #
+            # KNOWN LIMITATION:
+            # If the process is killed exactly after line 323 (db.commit) and before
+            # line 331 (trigger task attempt), the case will be stuck. The Python
+            # process won't reach the except block.
+            #
+            # LONG-TERM FIX:
+            # Implement Transactional Outbox pattern: instead of dispatching the task
+            # directly, insert a row in an 'outbox' table within the same transaction,
+            # then have a separate worker poll and dispatch tasks from the outbox.
+            # This makes the commit atomic with the task intent.
             case.status = "generating" 
             db.commit() 
             
@@ -349,50 +379,57 @@ def process_document_extraction_sync(doc_id: UUID, org_id: str, db: Session):
     if not doc:
         return
 
-    tmp_dir = tempfile.mkdtemp()
-    try:
-        with extraction_sync_semaphore:
-            # 1. Download
-            local_filename = f"extract_{doc.id}_{doc.filename}"
-            local_path = os.path.join(tmp_dir, local_filename)
-            
-            logger.info(f"Downloading {doc.gcs_path} for extraction...")
-            download_file_to_temp(doc.gcs_path, local_path)
-            
-            # 2. Extract
-            logger.info(f"Extracting text from {local_filename}...")
-            processed = document_processor.process_uploaded_file(local_path, tmp_dir)
+    # FIX: Idempotency Check - Skip extraction if already processed
+    # This prevents expensive re-downloads and re-extractions on Cloud Tasks retries
+    if doc.ai_status == "processed":
+        logger.info(f"Document {doc.id} already processed. Skipping extraction, proceeding to Fan-In check.")
+        # Skip to Fan-In check at the end of this function
+    else:
+        # Perform extraction only if not already processed
+        tmp_dir = tempfile.mkdtemp()
+        try:
+            with extraction_sync_semaphore:
+                # 1. Download
+                local_filename = f"extract_{doc.id}_{doc.filename}"
+                local_path = os.path.join(tmp_dir, local_filename)
+                
+                logger.info(f"Downloading {doc.gcs_path} for extraction...")
+                download_file_to_temp(doc.gcs_path, local_path)
+                
+                # 2. Extract
+                logger.info(f"Extracting text from {local_filename}...")
+                processed = document_processor.process_uploaded_file(local_path, tmp_dir)
 
-            # --- Persist extracted artifacts to GCS ---
-            storage_client = get_storage_client()
-            bucket_name = settings.STORAGE_BUCKET_NAME
-            bucket = storage_client.bucket(bucket_name)
+                # --- Persist extracted artifacts to GCS ---
+                storage_client = get_storage_client()
+                bucket_name = settings.STORAGE_BUCKET_NAME
+                bucket = storage_client.bucket(bucket_name)
 
-            for item in processed:
-                item_path = item.get("path")
-                if item_path and item_path != local_path and os.path.exists(item_path):
-                    artifact_filename = os.path.basename(item_path)
-                    blob_name = f"uploads/{doc.organization_id}/{doc.case_id}/artifacts/{doc.id}_{artifact_filename}"
-                    
-                    logger.info(f"Uploading extracted artifact {artifact_filename} to GCS...")
-                    
-                    blob = bucket.blob(blob_name)
-                    blob.upload_from_filename(item_path)
-                    
-                    item["item_gcs_path"] = f"gs://{bucket_name}/{blob_name}"
+                for item in processed:
+                    item_path = item.get("path")
+                    if item_path and item_path != local_path and os.path.exists(item_path):
+                        artifact_filename = os.path.basename(item_path)
+                        blob_name = f"uploads/{doc.organization_id}/{doc.case_id}/artifacts/{doc.id}_{artifact_filename}"
+                        
+                        logger.info(f"Uploading extracted artifact {artifact_filename} to GCS...")
+                        
+                        blob = bucket.blob(blob_name)
+                        blob.upload_from_filename(item_path)
+                        
+                        item["item_gcs_path"] = f"gs://{bucket_name}/{blob_name}"
+                
+            # 3. Save to DB
+            doc.ai_extracted_data = processed
+            doc.ai_status = "processed"
+            db.commit()
+            logger.info(f"Extraction complete for {doc.id}")
             
-        # 3. Save to DB
-        doc.ai_extracted_data = processed
-        doc.ai_status = "processed"
-        db.commit()
-        logger.info(f"Extraction complete for {doc.id}")
-        
-    except Exception as e:
-        logger.error(f"Error extracting document {doc.id}: {e}")
-        doc.ai_status = "error"
-        db.commit()
-    finally:
-        shutil.rmtree(tmp_dir)
+        except Exception as e:
+            logger.error(f"Error extracting document {doc.id}: {e}")
+            doc.ai_status = "error"
+            db.commit()
+        finally:
+            shutil.rmtree(tmp_dir)
 
     # 4. Check for Case Completion (Fan-in)
     try:

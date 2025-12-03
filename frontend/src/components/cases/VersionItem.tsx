@@ -24,10 +24,10 @@ export const VersionItem = memo(({
             layout
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex items-center justify-between p-3 bg-muted/20 rounded border"
+            className="flex items-center justify-between p-3 bg-secondary/20 rounded border"
         >
             <div className="flex items-center gap-3">
-                <FileText className="h-5 w-5 text-blue-500" />
+                <FileText className="h-5 w-5 text-primary" />
                 <div>
                     <p className="font-medium text-sm">Versione {version.version_number}</p>
                     <p className="text-xs text-muted-foreground">

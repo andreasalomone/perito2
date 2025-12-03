@@ -40,8 +40,17 @@
   --radius-sm: calc(0.75rem - 4px);
 
   /* The "Linear" Dark Mode Base */
-  --color-zinc-950: oklch(0.13 0.02 260);
-  /* Deep blue-tinted gray */
+  --color-zinc-950: oklch(0.13 0.02 260); /* Deep blue-tinted gray */
+
+  /* Surface Levels for Depth */
+  --color-surface-100: oklch(0.15 0.02 260);
+  --color-surface-200: oklch(0.18 0.02 260);
+  --color-surface-300: oklch(0.22 0.03 260);
+
+  /* Glass & Bezel Tokens */
+  --glass-border: oklch(1 0 0 / 0.08);
+  --glass-highlight: oklch(1 0 0 / 0.1);
+  --glass-surface: oklch(0.13 0.02 260 / 0.8);
 
   --animate-accordion-down: accordion-down 0.2s ease-out;
   --animate-accordion-up: accordion-up 0.2s ease-out;
@@ -69,34 +78,46 @@
 
 /* Dark mode overrides */
 .dark {
-  --color-background: oklch(0.13 0.02 260);
-  /* Deep blue-tinted gray */
+  --color-background: oklch(0.13 0.02 260); /* Deep blue-tinted gray */
   --color-foreground: oklch(0.985 0 0);
 
-  --color-card: oklch(0.13 0.02 260);
+  --color-card: oklch(0.15 0.02 260); /* Surface 100 */
   --color-card-foreground: oklch(0.985 0 0);
 
-  --color-popover: oklch(0.13 0.02 260);
+  --color-popover: oklch(0.15 0.02 260);
   --color-popover-foreground: oklch(0.985 0 0);
 
   --color-primary: oklch(0.985 0 0);
   --color-primary-foreground: oklch(0.20 0.05 265);
 
-  --color-secondary: oklch(0.269 0 0);
+  --color-secondary: oklch(0.22 0.03 260); /* Surface 300 */
   --color-secondary-foreground: oklch(0.985 0 0);
 
-  --color-muted: oklch(0.269 0 0);
+  --color-muted: oklch(0.18 0.02 260); /* Surface 200 */
   --color-muted-foreground: oklch(0.708 0 0);
 
-  --color-accent: oklch(0.269 0 0);
+  --color-accent: oklch(0.22 0.03 260);
   --color-accent-foreground: oklch(0.985 0 0);
 
   --color-destructive: oklch(0.396 0.141 25.723);
   --color-destructive-foreground: oklch(0.985 0 0);
 
-  --color-border: oklch(0.269 0 0);
-  --color-input: oklch(0.269 0 0);
+  --color-border: oklch(1 0 0 / 0.08);
+  --color-input: oklch(1 0 0 / 0.08);
   --color-ring: oklch(0.439 0 0);
+}
+
+@utility noise-bg {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 50;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
 }
 
 @utility container {
