@@ -33,6 +33,7 @@ class Settings(BaseSettings):
         "https://perito.my", 
         "https://www.perito.my", 
         "https://api.perito.my",
+        "https://perito-479708.firebaseapp.com",
         "http://localhost:3000"
     ]
     # The URL of this backend service (for Cloud Tasks to target)
