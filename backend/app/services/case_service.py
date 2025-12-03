@@ -238,46 +238,10 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: Session):
         tmp_dir = tempfile.mkdtemp()
         try:
             async with extraction_semaphore:
-                # 1. Download
-                local_filename = f"extract_{doc.id}_{doc.filename}"
-                local_path = os.path.join(tmp_dir, local_filename)
-                
-                logger.info(f"Downloading {doc.gcs_path} for extraction...")
-                await asyncio.to_thread(download_file_to_temp, doc.gcs_path, local_path)
-                
-                # 2. Extract
-                logger.info(f"Extracting text from {local_filename}...")
-                processed = await asyncio.to_thread(document_processor.process_uploaded_file, local_path, tmp_dir)
-
-                # --- LOGIC FIX START: Persist extracted artifacts to GCS ---
-                storage_client = get_storage_client()
-                bucket_name = settings.STORAGE_BUCKET_NAME
-                bucket = storage_client.bucket(bucket_name)
-
-                for item in processed:
-                    # If the item has a local path that is NOT the original file we downloaded,
-                    # it is an artifact (attachment/split page) that must be persisted.
-                    item_path = item.get("path")
-                    if item_path and item_path != local_path and os.path.exists(item_path):
-                        # Generate a stable GCS path for this artifact
-                        # Structure: uploads/{org}/{case}/artifacts/{doc_id}_{filename}
-                        artifact_filename = os.path.basename(item_path)
-                        blob_name = f"uploads/{doc.organization_id}/{doc.case_id}/artifacts/{doc.id}_{artifact_filename}"
-                        
-                        logger.info(f"Uploading extracted artifact {artifact_filename} to GCS...")
-                        
-                        # Upload to GCS
-                        blob = bucket.blob(blob_name)
-                        await asyncio.to_thread(blob.upload_from_filename, item_path)
-                        
-                        # SAVE the specific GCS path in the metadata so Generation can find it
-                        item["item_gcs_path"] = f"gs://{bucket_name}/{blob_name}"
-                    else:
-                        pass
-                # --- LOGIC FIX END ---
+                # Run core logic in thread pool to avoid blocking event loop
+                await asyncio.to_thread(_perform_extraction_logic, doc, tmp_dir)
                 
             # 3. Save to DB
-            doc.ai_extracted_data = processed
             doc.ai_status = "processed"
             db.commit()
             logger.info(f"Extraction complete for {doc.id}")
@@ -290,79 +254,7 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: Session):
             shutil.rmtree(tmp_dir)
 
     # 4. Check for Case Completion (Fan-in)
-    # We do this OUTSIDE the try/except block for the single doc, 
-    # but we need to be careful. If this doc failed, should we still check?
-    # Yes, because maybe all other docs are done and this one failed.
-    
-    # Re-query to get fresh state of all docs
-    # We need to lock the Case to prevent race conditions where two workers finish at same time
-    # and both think they are the last one.
-    
-    try:
-        # Lock the Case immediately
-        case = db.query(Case).filter(Case.id == doc.case_id).with_for_update().first()
-        
-        # Check if we are already generating to fail fast
-        if case.status == "generating":
-            logger.info(f"Case {doc.case_id} is already generating. Skipping completion check.")
-            return
-
-        # Re-query all docs inside this locked transaction
-        all_docs = db.query(Document).filter(Document.case_id == doc.case_id).all()
-        
-        pending_docs = [d for d in all_docs if d.ai_status not in ["processed", "error"]]
-        
-        if not pending_docs:
-            logger.info(f"All documents for case {doc.case_id} finished. Triggering generation.")
-            
-            # CRITICAL: Set status here to prevent other workers from entering
-            # ZOMBIE STATE RACE CONDITION MITIGATION:
-            # We commit status='generating' BEFORE dispatching the Cloud Task.
-            # This creates a window where the process can crash (SIGKILL/OOM)
-            # after the commit but before the task is dispatched, leaving the case
-            # permanently stuck in 'generating' state with no task to process it.
-            #
-            # CURRENT MITIGATION:
-            # 1. The try/except block below reverts the status if task dispatch fails
-            #    with a caught exception.
-            # 2. For uncaught crashes (SIGKILL), we rely on Cloud Tasks retry of the 
-            #    document extraction task, which will re-enter this function and see
-            #    status='generating' at line 309, causing it to skip and return.
-            #
-            # KNOWN LIMITATION:
-            # If the process is killed exactly after line 323 (db.commit) and before
-            # line 331 (trigger task attempt), the case will be stuck. The Python
-            # process won't reach the except block.
-            #
-            # LONG-TERM FIX:
-            # Implement Transactional Outbox pattern: instead of dispatching the task
-            # directly, insert a row in an 'outbox' table within the same transaction,
-            # then have a separate worker poll and dispatch tasks from the outbox.
-            # This makes the commit atomic with the task intent.
-            case.status = "generating" 
-            db.commit() 
-            
-            # Trigger Generation Task
-            from app.services import report_generation_service
-            # We need to run this async. Since we are in an async function, we can await.
-            # Wrap in try/except for automatic retry: if this fails, Cloud Tasks will
-            # retry this document task, which will re-trigger the completion check.
-            try:
-                await report_generation_service.trigger_generation_task(str(doc.case_id), str(org_id))
-            except Exception as e:
-                logger.error(f"Failed to trigger generation for case {doc.case_id}: {e}")
-                # CRITICAL: Revert status so retry can happen
-                case.status = "processing"
-                db.commit()
-                # Raise so Cloud Tasks retries this document task
-                raise e
-            
-    except Exception as e:
-        # Rollback in case of error during the lock/check
-        db.rollback()
-        logger.error(f"Error checking case completion: {e}")
-        # Re-raise to ensure Cloud Tasks retries
-        raise e
+    await _check_and_trigger_generation(db, doc.case_id, org_id, is_async=True)
 
 
 # -----------------------------------------------------------------------------
@@ -383,43 +275,14 @@ def process_document_extraction_sync(doc_id: UUID, org_id: str, db: Session):
     # This prevents expensive re-downloads and re-extractions on Cloud Tasks retries
     if doc.ai_status == "processed":
         logger.info(f"Document {doc.id} already processed. Skipping extraction, proceeding to Fan-In check.")
-        # Skip to Fan-In check at the end of this function
     else:
         # Perform extraction only if not already processed
         tmp_dir = tempfile.mkdtemp()
         try:
             with extraction_sync_semaphore:
-                # 1. Download
-                local_filename = f"extract_{doc.id}_{doc.filename}"
-                local_path = os.path.join(tmp_dir, local_filename)
-                
-                logger.info(f"Downloading {doc.gcs_path} for extraction...")
-                download_file_to_temp(doc.gcs_path, local_path)
-                
-                # 2. Extract
-                logger.info(f"Extracting text from {local_filename}...")
-                processed = document_processor.process_uploaded_file(local_path, tmp_dir)
-
-                # --- Persist extracted artifacts to GCS ---
-                storage_client = get_storage_client()
-                bucket_name = settings.STORAGE_BUCKET_NAME
-                bucket = storage_client.bucket(bucket_name)
-
-                for item in processed:
-                    item_path = item.get("path")
-                    if item_path and item_path != local_path and os.path.exists(item_path):
-                        artifact_filename = os.path.basename(item_path)
-                        blob_name = f"uploads/{doc.organization_id}/{doc.case_id}/artifacts/{doc.id}_{artifact_filename}"
-                        
-                        logger.info(f"Uploading extracted artifact {artifact_filename} to GCS...")
-                        
-                        blob = bucket.blob(blob_name)
-                        blob.upload_from_filename(item_path)
-                        
-                        item["item_gcs_path"] = f"gs://{bucket_name}/{blob_name}"
+                _perform_extraction_logic(doc, tmp_dir)
                 
             # 3. Save to DB
-            doc.ai_extracted_data = processed
             doc.ai_status = "processed"
             db.commit()
             logger.info(f"Extraction complete for {doc.id}")
@@ -432,30 +295,183 @@ def process_document_extraction_sync(doc_id: UUID, org_id: str, db: Session):
             shutil.rmtree(tmp_dir)
 
     # 4. Check for Case Completion (Fan-in)
+    # We run the async check in a sync wrapper if needed, or just the sync version?
+    # The original code had a sync implementation of the check.
+    # Let's use the shared logic but handle the async part.
+    # Actually, _check_and_trigger_generation can handle both if designed well,
+    # or we can just await it if we are in async, and run sync if not.
+    # But wait, we can't await in sync function.
+    # So we need _check_and_trigger_generation to be async? Or sync?
+    # The trigger_generation_task is async, trigger_generation_task_sync is sync.
+    
+    # Let's make _check_and_trigger_generation return a coroutine if is_async=True?
+    # No, that's messy.
+    # Let's make it an async function and a sync function? No, that defeats the purpose.
+    # Let's make the logic sync, but the trigger part configurable.
+    
+    # Actually, we can just use asyncio.run() for the async part if needed? No, that's bad.
+    # Let's look at how we can share the logic.
+    
+    # The logic is:
+    # 1. Lock Case
+    # 2. Check status
+    # 3. Check docs
+    # 4. Trigger
+    
+    # We can make a common function that takes a callback for the trigger.
+    _check_and_trigger_generation_sync(db, doc.case_id, org_id)
+
+
+def _perform_extraction_logic(doc: Document, tmp_dir: str):
+    """
+    Core extraction logic: Download -> Extract -> Upload Artifacts.
+    This function is SYNCHRONOUS and blocking.
+    """
+    # 1. Download
+    local_filename = f"extract_{doc.id}_{doc.filename}"
+    local_path = os.path.join(tmp_dir, local_filename)
+    
+    logger.info(f"Downloading {doc.gcs_path} for extraction...")
+    download_file_to_temp(doc.gcs_path, local_path)
+    
+    # 2. Extract
+    logger.info(f"Extracting text from {local_filename}...")
+    processed = document_processor.process_uploaded_file(local_path, tmp_dir)
+
+    # --- Persist extracted artifacts to GCS ---
+    storage_client = get_storage_client()
+    bucket_name = settings.STORAGE_BUCKET_NAME
+    bucket = storage_client.bucket(bucket_name)
+
+    for item in processed:
+        item_path = item.get("path")
+        if item_path and item_path != local_path and os.path.exists(item_path):
+            artifact_filename = os.path.basename(item_path)
+            blob_name = f"uploads/{doc.organization_id}/{doc.case_id}/artifacts/{doc.id}_{artifact_filename}"
+            
+            logger.info(f"Uploading extracted artifact {artifact_filename} to GCS...")
+            
+            blob = bucket.blob(blob_name)
+            blob.upload_from_filename(item_path)
+            
+            item["item_gcs_path"] = f"gs://{bucket_name}/{blob_name}"
+    
+    # Update doc object (in memory, caller saves to DB)
+    doc.ai_extracted_data = processed
+
+
+async def _check_and_trigger_generation(db: Session, case_id: UUID, org_id: str, is_async: bool = True):
+    """
+    Checks if all documents are processed and triggers generation if so.
+    """
     try:
-        case = db.query(Case).filter(Case.id == doc.case_id).with_for_update().first()
+        # Lock the Case immediately
+        case = db.query(Case).filter(Case.id == case_id).with_for_update().first()
         
+        # Check if we are already generating to fail fast
         if case.status == "generating":
-            logger.info(f"Case {doc.case_id} is already generating. Skipping completion check.")
+            logger.info(f"Case {case_id} is already generating. Skipping completion check.")
             return
 
-        all_docs = db.query(Document).filter(Document.case_id == doc.case_id).all()
+        # Re-query all docs inside this locked transaction
+        all_docs = db.query(Document).filter(Document.case_id == case_id).all()
+        
         pending_docs = [d for d in all_docs if d.ai_status not in ["processed", "error"]]
         
         if not pending_docs:
-            logger.info(f"All documents for case {doc.case_id} finished. Triggering generation.")
+            logger.info(f"All documents for case {case_id} finished. Triggering generation.")
             
-            case.status = "generating" 
-            db.commit() 
+            # CRITICAL: Set status here to prevent other workers from entering
+            # ZOMBIE STATE RACE CONDITION MITIGATION:
+            # We use the Transactional Outbox Pattern.
+            # 1. Update Case Status
+            # 2. Insert Intent into Outbox (Same Transaction)
+            # 3. Atomic Commit
             
-            # Trigger Generation Task (SYNC)
-            from app.services import report_generation_service
             try:
-                report_generation_service.trigger_generation_task_sync(str(doc.case_id), str(org_id))
-            except Exception as e:
-                logger.error(f"Failed to trigger generation for case {doc.case_id}: {e}")
-                case.status = "processing"
+                # 1. Update Case Status
+                case.status = "generating"
+                
+                # 2. Insert Intent into Outbox (Same Transaction)
+                from app.models.outbox import OutboxMessage
+                outbox_entry = OutboxMessage(
+                    topic="generate_report",
+                    payload={
+                        "case_id": str(case_id),
+                        "organization_id": str(org_id)
+                    }
+                )
+                db.add(outbox_entry)
+                
+                # 3. Atomic Commit
+                # If this fails, BOTH the status update and the message insert are rolled back.
+                # No Zombie state is possible.
                 db.commit()
+                
+                # 4. Attempt Immediate Dispatch (Best Effort / Optimization)
+                # We try to send it now for speed. If this fails, the background poller will catch it.
+                if is_async:
+                    try:
+                        from app.services.outbox_processor import process_message
+                        await process_message(outbox_entry.id, db)
+                    except Exception as e:
+                        logger.warning(f"Immediate dispatch failed (will retry via cron): {e}")
+                        # Do NOT re-raise. The data is safe in the DB.
+                else:
+                    # For sync path, we skip immediate dispatch and rely on the poller
+                    # because process_message is async.
+                    logger.info("Skipping immediate dispatch in sync mode (will be picked up by poller)")
+
+            except Exception as e:
+                db.rollback()
+                logger.error(f"Error checking case completion: {e}")
+                raise e
+            
+    except Exception as e:
+        # Rollback in case of error during the lock/check
+        db.rollback()
+        logger.error(f"Error checking case completion: {e}")
+        # Re-raise to ensure Cloud Tasks retries
+        raise e
+
+def _check_and_trigger_generation_sync(db: Session, case_id: UUID, org_id: str):
+    """
+    Synchronous version of check and trigger.
+    """
+    try:
+        case = db.query(Case).filter(Case.id == case_id).with_for_update().first()
+        
+        if case.status == "generating":
+            logger.info(f"Case {case_id} is already generating. Skipping completion check.")
+            return
+
+        all_docs = db.query(Document).filter(Document.case_id == case_id).all()
+        pending_docs = [d for d in all_docs if d.ai_status not in ["processed", "error"]]
+        
+        if not pending_docs:
+            logger.info(f"All documents for case {case_id} finished. Triggering generation.")
+            
+            try:
+                case.status = "generating"
+                
+                from app.models.outbox import OutboxMessage
+                outbox_entry = OutboxMessage(
+                    topic="generate_report",
+                    payload={
+                        "case_id": str(case_id),
+                        "organization_id": str(org_id)
+                    }
+                )
+                db.add(outbox_entry)
+                
+                db.commit()
+                
+                # Skip immediate dispatch in sync mode
+                logger.info("Skipping immediate dispatch in sync mode (will be picked up by poller)")
+                
+            except Exception as e:
+                db.rollback()
+                logger.error(f"Error checking case completion: {e}")
                 raise e
             
     except Exception as e:

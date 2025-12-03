@@ -214,3 +214,14 @@ def generate_report(
         raise HTTPException(status_code=500, detail="Generation failed")
 
     return {"status": "success"}
+
+
+@router.post("/flush-outbox")
+async def flush_outbox_endpoint(db: Session = Depends(get_db)):
+    """
+    Trigger processing of pending outbox messages.
+    Called by Cloud Scheduler every minute.
+    """
+    from app.services.outbox_processor import process_outbox_batch
+    await process_outbox_batch(db)
+    return {"status": "ok"}

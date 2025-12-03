@@ -8,6 +8,7 @@ import { ShieldCheck, Menu, X } from "lucide-react";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { useSidebar } from "@/hooks/use-sidebar";
 import { cn } from "@/lib/utils";
+import { motion } from "framer-motion";
 
 export function DashboardLayoutClient({
     children,

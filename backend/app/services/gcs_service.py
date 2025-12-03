@@ -30,6 +30,8 @@ def generate_upload_signed_url(
         # URL valid for 15 minutes
         expiration=datetime.timedelta(minutes=15),
         content_type=content_type,
+        # Enforce size limit at the GCS ingress layer to prevent "Infinite Cost" attacks
+        headers={"x-goog-content-length-range": f"0,{settings.MAX_FILE_SIZE_BYTES}"}
     )
 
     return {
