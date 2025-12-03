@@ -317,3 +317,95 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: Session):
         # Re-raise to ensure Cloud Tasks retries
         raise e
 
+
+# -----------------------------------------------------------------------------
+# SYNCHRONOUS WRAPPERS
+# -----------------------------------------------------------------------------
+import threading
+extraction_sync_semaphore = threading.BoundedSemaphore(5)
+
+def process_document_extraction_sync(doc_id: UUID, org_id: str, db: Session):
+    """
+    Synchronous version of process_document_extraction.
+    """
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if not doc:
+        return
+
+    tmp_dir = tempfile.mkdtemp()
+    try:
+        with extraction_sync_semaphore:
+            # 1. Download
+            local_filename = f"extract_{doc.id}_{doc.filename}"
+            local_path = os.path.join(tmp_dir, local_filename)
+            
+            logger.info(f"Downloading {doc.gcs_path} for extraction...")
+            download_file_to_temp(doc.gcs_path, local_path)
+            
+            # 2. Extract
+            logger.info(f"Extracting text from {local_filename}...")
+            processed = document_processor.process_uploaded_file(local_path, tmp_dir)
+
+            # --- Persist extracted artifacts to GCS ---
+            storage_client = get_storage_client()
+            bucket_name = settings.STORAGE_BUCKET_NAME
+            bucket = storage_client.bucket(bucket_name)
+
+            for item in processed:
+                item_path = item.get("path")
+                if item_path and item_path != local_path and os.path.exists(item_path):
+                    artifact_filename = os.path.basename(item_path)
+                    blob_name = f"uploads/{doc.organization_id}/{doc.case_id}/artifacts/{doc.id}_{artifact_filename}"
+                    
+                    logger.info(f"Uploading extracted artifact {artifact_filename} to GCS...")
+                    
+                    blob = bucket.blob(blob_name)
+                    blob.upload_from_filename(item_path)
+                    
+                    item["item_gcs_path"] = f"gs://{bucket_name}/{blob_name}"
+            
+        # 3. Save to DB
+        doc.ai_extracted_data = processed
+        doc.ai_status = "processed"
+        db.commit()
+        logger.info(f"Extraction complete for {doc.id}")
+        
+    except Exception as e:
+        logger.error(f"Error extracting document {doc.id}: {e}")
+        doc.ai_status = "error"
+        db.commit()
+    finally:
+        shutil.rmtree(tmp_dir)
+
+    # 4. Check for Case Completion (Fan-in)
+    try:
+        case = db.query(Case).filter(Case.id == doc.case_id).with_for_update().first()
+        
+        if case.status == "generating":
+            logger.info(f"Case {doc.case_id} is already generating. Skipping completion check.")
+            return
+
+        all_docs = db.query(Document).filter(Document.case_id == doc.case_id).all()
+        pending_docs = [d for d in all_docs if d.ai_status not in ["processed", "error"]]
+        
+        if not pending_docs:
+            logger.info(f"All documents for case {doc.case_id} finished. Triggering generation.")
+            
+            case.status = "generating" 
+            db.commit() 
+            
+            # Trigger Generation Task (SYNC)
+            from app.services import report_generation_service
+            try:
+                report_generation_service.trigger_generation_task_sync(str(doc.case_id), str(org_id))
+            except Exception as e:
+                logger.error(f"Failed to trigger generation for case {doc.case_id}: {e}")
+                case.status = "processing"
+                db.commit()
+                raise e
+            
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error checking case completion: {e}")
+        raise e
+

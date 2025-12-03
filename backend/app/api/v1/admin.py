@@ -1,70 +1,103 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from pydantic import BaseModel, EmailStr, Field
-from typing import List, Optional
+import logging
+import uuid
+from typing import List
 from enum import Enum
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
 from app.db.database import get_db
 from app.api.dependencies import get_superadmin_user
 from app.models import User, Organization, AllowedEmail
-import uuid
+
+# Configure Structured Logging
+logger = logging.getLogger("app.admin.orgs")
 
 router = APIRouter()
 
 # ============= Enums =============
 
 class UserRole(str, Enum):
-    """Valid user roles"""
     ADMIN = "admin"
     MEMBER = "member"
 
 # ============= Request/Response Models =============
 
-class CreateOrganizationRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255, strip_whitespace=True)
+class OrganizationBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
 
-class OrganizationResponse(BaseModel):
-    id: str
-    name: str
+    @field_validator("name")
+    def strip_whitespace(cls, v: str):
+        return v.strip()
+
+class OrganizationResponse(OrganizationBase):
+    id: uuid.UUID
     created_at: str
+    
+    # Pydantic V2 Config for ORM mode
+    model_config = ConfigDict(from_attributes=True)
+    
+    @field_validator("created_at", mode="before")
+    def serialize_datetime(cls, v):
+        return v.isoformat() if v else None
 
 class InviteUserRequest(BaseModel):
     email: EmailStr
     role: UserRole = UserRole.MEMBER
 
+    @field_validator("email")
+    def normalize_email(cls, v: str):
+        return v.lower().strip()
+
 class AllowedEmailResponse(BaseModel):
-    id: str
+    id: uuid.UUID
     email: str
     role: str
-    organization_id: str
+    organization_id: uuid.UUID
     created_at: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("created_at", mode="before")
+    def serialize_datetime(cls, v):
+        return v.isoformat() if v else None
+
+class GenericMessage(BaseModel):
+    message: str
 
 # ============= Endpoints =============
 
-@router.get("/organizations")
+@router.get(
+    "/organizations",
+    response_model=List[OrganizationResponse],
+    summary="List Organizations",
+    description="Retrieve a list of all registered organizations."
+)
 def list_organizations(
-    superadmin: Optional[User] = Depends(get_superadmin_user),
+    superadmin: User = Depends(get_superadmin_user),
     db: Session = Depends(get_db)
-) -> List[OrganizationResponse]:
+) -> List[Organization]:
     """
     Superadmin only: List all organizations.
     """
-    orgs = db.query(Organization).all()
-    
-    return [
-        OrganizationResponse(
-            id=str(org.id),
-            name=org.name,
-            created_at=org.created_at.isoformat()
-        )
-        for org in orgs
-    ]
+    # Modern SQLAlchemy 2.0 syntax
+    stmt = select(Organization).order_by(Organization.name)
+    return db.scalars(stmt).all()
 
-@router.post("/organizations")
+@router.post(
+    "/organizations",
+    response_model=OrganizationResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create Organization"
+)
 def create_organization(
-    request: CreateOrganizationRequest,
-    superadmin: Optional[User] = Depends(get_superadmin_user),
+    request: OrganizationBase,
+    superadmin: User = Depends(get_superadmin_user),
     db: Session = Depends(get_db)
-) -> OrganizationResponse:
+) -> Organization:
     """
     Superadmin only: Create a new organization.
     """
@@ -73,112 +106,138 @@ def create_organization(
         db.add(new_org)
         db.commit()
         db.refresh(new_org)
+        logger.info(f"Organization created: {new_org.name} by {superadmin.email}")
+        return new_org
         
-        return OrganizationResponse(
-            id=str(new_org.id),
-            name=new_org.name,
-            created_at=new_org.created_at.isoformat()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An organization with this name likely already exists."
         )
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to create organization: {str(e)}")
+        logger.error(f"Failed to create organization: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal Server Error"
+        )
 
-@router.get("/organizations/{org_id}/invites")
+@router.get(
+    "/organizations/{org_id}/invites",
+    response_model=List[AllowedEmailResponse],
+    summary="List Invites"
+)
 def list_org_invites(
-    org_id: str,
-    superadmin: Optional[User] = Depends(get_superadmin_user),
+    org_id: uuid.UUID, # FastAPI automatically validates UUID format here
+    superadmin: User = Depends(get_superadmin_user),
     db: Session = Depends(get_db)
-) -> List[AllowedEmailResponse]:
+) -> List[AllowedEmail]:
     """
     Superadmin only: List all whitelisted emails for an organization.
     """
-    try:
-        org_uuid = uuid.UUID(org_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid organization ID format")
-    
-    # Verify org exists
-    org = db.query(Organization).filter(Organization.id == org_uuid).first()
+    # Verify org exists first
+    org = db.get(Organization, org_id)
     if not org:
-        raise HTTPException(status_code=404, detail="Organization not found")
-    
-    invites = db.query(AllowedEmail).filter(AllowedEmail.organization_id == org_uuid).all()
-    
-    return [
-        AllowedEmailResponse(
-            id=str(invite.id),
-            email=invite.email,
-            role=invite.role,
-            organization_id=str(invite.organization_id),
-            created_at=invite.created_at.isoformat()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Organization not found"
         )
-        for invite in invites
-    ]
+    
+    stmt = select(AllowedEmail).where(AllowedEmail.organization_id == org_id)
+    return db.scalars(stmt).all()
 
-@router.post("/organizations/{org_id}/users/invite")
+@router.post(
+    "/organizations/{org_id}/users/invite",
+    response_model=GenericMessage,
+    status_code=status.HTTP_201_CREATED,
+    summary="Invite User"
+)
 def invite_user_to_org(
-    org_id: str,
+    org_id: uuid.UUID,
     request: InviteUserRequest,
-    superadmin: Optional[User] = Depends(get_superadmin_user),
+    superadmin: User = Depends(get_superadmin_user),
     db: Session = Depends(get_db)
-) -> dict:
+) -> GenericMessage:
     """
     Superadmin only: Whitelist an email for a specific organization.
     """
-    try:
-        org_uuid = uuid.UUID(org_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid organization ID format")
-    
-    # Verify org exists
-    org = db.query(Organization).filter(Organization.id == org_uuid).first()
+    # 1. Validation: Organization
+    org = db.get(Organization, org_id)
     if not org:
-        raise HTTPException(status_code=404, detail="Organization not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Organization not found"
+        )
     
-    # Check if email is already whitelisted
-    existing_invite = db.query(AllowedEmail).filter(AllowedEmail.email == request.email).first()
-    if existing_invite:
-        raise HTTPException(status_code=400, detail="Email is already whitelisted")
+    # 2. Validation: Already Whitelisted?
+    # Uses 'select' with 'limit(1)' implicitly via scalar_one_or_none logic usually, 
+    # but scalar() works efficiently here.
+    invite_stmt = select(AllowedEmail).where(AllowedEmail.email == request.email)
+    if db.scalar(invite_stmt):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email is already whitelisted."
+        )
     
-    # Check if user already exists
-    existing_user = db.query(User).filter(User.email == request.email).first()
-    if existing_user:
-        raise HTTPException(status_code=400, detail="User already exists in the system")
+    # 3. Validation: User Already Exists?
+    user_stmt = select(User).where(User.email == request.email)
+    if db.scalar(user_stmt):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="User already registered in the system."
+        )
     
-    # Create invite
+    # 4. Action: Create Invite
     try:
         new_invite = AllowedEmail(
-            organization_id=org_uuid,
+            organization_id=org_id,
             email=request.email,
-            role=request.role.value  # Get enum value
+            role=request.role.value
         )
         db.add(new_invite)
         db.commit()
         
-        return {"message": f"User {request.email} invited to {org.name}"}
+        logger.info(f"Invite created: {request.email} -> Org {org_id}")
+        return GenericMessage(message=f"User {request.email} invited to {org.name}")
+
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to invite user: {str(e)}")
+        logger.error(f"Invite failure: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to process invite."
+        )
 
-@router.delete("/invites/{invite_id}")
+@router.delete(
+    "/invites/{invite_id}",
+    response_model=GenericMessage,
+    summary="Revoke Invite"
+)
 def delete_invite(
-    invite_id: str,
-    superadmin: Optional[User] = Depends(get_superadmin_user),
+    invite_id: uuid.UUID,
+    superadmin: User = Depends(get_superadmin_user),
     db: Session = Depends(get_db)
-) -> dict:
+) -> GenericMessage:
     """
     Superadmin only: Remove a whitelisted email.
     """
-    try:
-        invite_uuid = uuid.UUID(invite_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid invite ID format")
-    
-    invite = db.query(AllowedEmail).filter(AllowedEmail.id == invite_uuid).first()
+    invite = db.get(AllowedEmail, invite_id)
     if not invite:
-        raise HTTPException(status_code=404, detail="Invite not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invite not found"
+        )
     
-    db.delete(invite)
-    db.commit()
-    
-    return {"message": "Invite removed successfully"}
+    try:
+        db.delete(invite)
+        db.commit()
+        logger.info(f"Invite revoked: {invite.email}")
+        return GenericMessage(message="Invite removed successfully")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Revoke failure: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete invite."
+        )

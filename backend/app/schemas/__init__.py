@@ -89,3 +89,7 @@ class FinalizePayload(BaseModel):
 
 class DownloadVariantPayload(BaseModel):
     template_type: str # "bn" | "salomone"
+
+class DocumentRegisterPayload(BaseModel):
+    filename: str
+    gcs_path: str

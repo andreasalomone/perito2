@@ -20,6 +20,7 @@ export const metadata: Metadata = {
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/context/AuthContext";
 import Script from "next/script";
+import { CommandMenu } from "@/components/CommandMenu";
 
 export default function RootLayout({
   children,
@@ -42,8 +43,13 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
+        <div
+          className="fixed inset-0 z-50 pointer-events-none opacity-[0.03] mix-blend-overlay"
+          style={{ backgroundImage: 'url("/noise.svg")' }}
+        />
         <AuthProvider firebaseConfig={firebaseConfig}>
           {children}
+          <CommandMenu />
           <Toaster />
         </AuthProvider>
       </body>

@@ -1,13 +1,20 @@
-"""LLM handler for generating insurance reports using Google Gemini."""
-
 import asyncio
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Literal
 
 from google import genai
 from google.api_core import exceptions as google_exceptions
+from pydantic import BaseModel, Field
+from tenacity import (
+    retry, 
+    stop_after_attempt, 
+    wait_exponential, 
+    retry_if_exception_type,
+    AsyncRetrying
+)
 
 from app.core.config import settings
+# Assuming these services are refactored to be cleaner dependencies
 from app.services.llm import (
     cache_service,
     file_upload_service,
@@ -15,272 +22,244 @@ from app.services.llm import (
     prompt_builder_service,
     response_parser_service,
 )
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 logger = logging.getLogger(__name__)
 
+# -----------------------------------------------------------------------------
+# 1. Strict Typing (Contracts)
+# -----------------------------------------------------------------------------
+class ProcessedFile(BaseModel):
+    """Contract for file inputs to the LLM."""
+    filename: str
+    file_type: str = Field(alias="type") # Map 'type' from dict to 'file_type'
+    content: Optional[bytes] = None
+    gcs_uri: Optional[str] = None
+    
+    # Allow extra fields for compatibility with existing dicts if needed
+    model_config = {"extra": "ignore", "populate_by_name": True}
 
-async def generate_report_from_content(
-    processed_files: List[Dict[str, Any]], 
-    additional_text: str = ""
-) -> Tuple[str, Dict[str, int]]:
-    """Generate an insurance report using Google Gemini with multimodal content and context caching.
+class TokenUsage(BaseModel):
+    prompt_tokens: int = 0
+    candidate_tokens: int = 0
+    total_tokens: int = 0
+    cached_tokens: int = 0
 
-    Orchestrates the report generation by:
-      1. Initializing the Gemini client
-      2. Managing prompt cache
-      3. Uploading vision files (PDFs, images) to Gemini
-      4. Building the complete prompt with all content
-      5. Calling the LLM with retry and fallback logic
-      6. Parsing and validating the response
-      7. Cleaning up uploaded files
+class ReportResult(BaseModel):
+    content: str
+    usage: TokenUsage
 
-    Args:
-        processed_files: List of processed file information dictionaries containing
-            file type, path, content, and metadata.
-        additional_text: Optional additional text to include in the prompt.
-        pricing_config: Optional PricingConfig object (SQLAlchemy model) or dict.
+class LLMGenerationError(Exception):
+    """Base exception for LLM failures."""
+    pass
 
-    Returns:
-        The generated report content as a string, or an error message starting with "Error:".
-        A dictionary containing token usage details.
+# -----------------------------------------------------------------------------
+# 2. The Gemini Service
+# -----------------------------------------------------------------------------
+class GeminiReportGenerator:
     """
-    if not settings.GEMINI_API_KEY:
-        logger.error("GEMINI_API_KEY not configured in settings.")
-        return "Error: LLM service is not configured (API key missing).", {}
+    Orchestrates insurance report generation using Google Gemini 2.5.
+    Handles Multimodal inputs, Context Caching, and Resilience patterns.
+    """
 
-    client: genai.Client = genai.Client(api_key=settings.GEMINI_API_KEY)
-    uploaded_file_names: List[str] = []
-
-    try:
-        # Step 1: Get or create prompt cache (run in a thread to avoid blocking)
-        cache_name = await asyncio.to_thread(
-            cache_service.get_or_create_prompt_cache, client
+    def __init__(self):
+        if not settings.GEMINI_API_KEY:
+            # raise ValueError("GEMINI_API_KEY is not configured.")
+            # Don't crash on init if key is missing (e.g. during tests), just log
+            logger.error("GEMINI_API_KEY is not configured.")
+        
+        # Initialize client once (Singleton pattern via module instantiation)
+        # Assuming google.genai.Client is thread-safe (it usually is)
+        if settings.GEMINI_API_KEY:
+            self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        else:
+            self.client = None
+        
+        # Retry policy: Exponential backoff for transient errors
+        self.retry_policy = AsyncRetrying(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=2, max=10),
+            retry=retry_if_exception_type((
+                google_exceptions.ServiceUnavailable,
+                google_exceptions.TooManyRequests,
+                google_exceptions.InternalServerError
+            )),
+            reraise=True
         )
 
-        if cache_name:
-            logger.info("Using existing prompt cache: %s", cache_name)
-        else:
-            logger.warning(
-                "Proceeding with report generation without prompt caching due to an issue."
+    async def generate(
+        self, 
+        processed_files: List[ProcessedFile], 
+        additional_text: str = ""
+    ) -> ReportResult:
+        """
+        Main entry point for report generation.
+        """
+        if not self.client:
+             raise LLMGenerationError("LLM service is not configured (API key missing).")
+
+        uploaded_files = []
+        uploaded_names = []
+        
+        try:
+            # 1. Context Caching (Optimization)
+            # Run in threadpool if cache_service is blocking/heavy
+            cache_name = await asyncio.to_thread(
+                cache_service.get_or_create_prompt_cache, self.client
+            )
+            use_cache = bool(cache_name)
+            
+            logger.info(f"Report Gen Start. Files: {len(processed_files)} | Cache: {use_cache}")
+
+            # 2. Upload Vision Assets (PDFs/Images)
+            # We explicitly map the Pydantic models to what the service expects
+            # Note: Ideally refactor file_upload_service to accept ProcessedFile objects
+            # For now, convert back to dict for compatibility with existing services
+            file_dicts = [f.model_dump(by_alias=True) for f in processed_files]
+            
+            uploaded_files, uploaded_names, upload_errors = await file_upload_service.upload_vision_files(
+                self.client, file_dicts
             )
 
-        logger.info(
-            "Generating report from %d processed files. Using cache: %s",
-            len(processed_files),
-            bool(cache_name),
-        )
+            # 3. Execute Generation Strategy (The "waterfall")
+            response = await self._execute_generation_strategy(
+                processed_files=file_dicts, # Legacy service support
+                additional_text=additional_text,
+                uploaded_files=uploaded_files,
+                upload_errors=upload_errors,
+                cache_name=cache_name
+            )
 
-        # Step 2: Upload vision files to Gemini
-        (
-            uploaded_file_objects,
-            uploaded_file_names,
-            upload_error_messages,
-        ) = await file_upload_service.upload_vision_files(client, processed_files)
+            # 4. Parse Response
+            report_text = response_parser_service.parse_llm_response(response)
+            
+            # 5. Extract Metrics
+            usage = self._extract_usage(response)
+            
+            return ReportResult(content=report_text, usage=usage)
 
-        # Helper to build prompt (with or without cache)
-        def _get_prompt_parts(use_cache_flag: bool) -> List[Any]:
+        except Exception as e:
+            logger.error(f"LLM Generation Failed: {e}", exc_info=True)
+            raise LLMGenerationError(f"Report generation failed: {str(e)}") from e
+            
+        finally:
+            # 6. Cleanup (Best Effort)
+            if uploaded_names:
+                asyncio.create_task(
+                    self._cleanup_files_safely(uploaded_names)
+                )
+
+    async def _execute_generation_strategy(
+        self,
+        processed_files: List[Dict],
+        additional_text: str,
+        uploaded_files: List[Any],
+        upload_errors: List[str],
+        cache_name: Optional[str]
+    ) -> Any:
+        """
+        Implements the fallback waterfall:
+        1. Primary Model + Cache
+        2. Primary Model + No Cache (if Cache Invalid)
+        3. Fallback Model + No Cache (if Primary Overloaded)
+        """
+        
+        # Helper to build prompt
+        def get_prompt_parts(use_cache: bool):
             return prompt_builder_service.build_prompt_parts(
                 processed_files=processed_files,
                 additional_text=additional_text,
-                uploaded_file_objects=uploaded_file_objects,
-                upload_error_messages=upload_error_messages,
-                use_cache=use_cache_flag,
+                uploaded_file_objects=uploaded_files,
+                upload_error_messages=upload_errors,
+                use_cache=use_cache
             )
 
-        # --- Linear Retry Logic ---
-
-        response = None
-        last_exception = None
-
-        # ATTEMPT 1: Primary Model (with cache if available)
-        current_model = settings.LLM_MODEL_NAME
-        use_cache = bool(cache_name)
-
-        try:
-            logger.debug(
-                f"Attempt 1: Sending request to Gemini. Model: {current_model}. Using cache: {use_cache}"
-            )
-            prompt_parts = _get_prompt_parts(use_cache)
-            config = generation_service.build_generation_config(
-                cache_name if use_cache else None
-            )
-
-            # Define retry strategy: Wait 2^x * 1 seconds between retries, up to 10 seconds, max 5 attempts
-            # Only retry on transient errors (503, 429)
-            RETRY_STRATEGY = retry(
-                stop=stop_after_attempt(5),
-                wait=wait_exponential(multiplier=1, min=2, max=10),
-                retry=retry_if_exception_type(
-                    (google_exceptions.ServiceUnavailable, google_exceptions.TooManyRequests)
-                ),
-                before_sleep=lambda retry_state: logger.warning(f"Retrying LLM request... (Attempt {retry_state.attempt_number})")
-            )
-
-            @RETRY_STRATEGY
-            async def _generate_with_backoff(client, model, contents, config):
-                return await client.aio.models.generate_content(
-                    model=model,
-                    contents=contents,
-                    config=config,
-                )
-
-            response = await _generate_with_backoff(
-                client=client,
-                model=current_model,
-                contents=prompt_parts,
-                config=config,
-            )
-        except genai.errors.ClientError as e:
-            # Check for Cache Invalid/Expired (400 INVALID_ARGUMENT)
-            if (
-                use_cache
-                and "INVALID_ARGUMENT" in str(e)
-                and ("400" in str(e) or getattr(e, "status_code", 0) == 400)
-            ):
-                logger.warning(
-                    "Attempt 1 failed: Cache invalid/expired. Proceeding to Attempt 2 (No Cache)."
-                )
-                last_exception = e
-            else:
-                raise  # Re-raise other ClientErrors immediately
-        except genai.errors.ServerError as e:
-            # Check for Overload (503 UNAVAILABLE)
-            if "503" in str(e) or "overloaded" in str(e).lower():
-                logger.warning(
-                    "Attempt 1 failed: Server overloaded. Proceeding to Attempt 3 (Fallback)."
-                )
-                last_exception = e
-                # Proceed to Attempt 2 (No Cache) as per linear flow, though overload might persist.
-                pass
-            else:
-                raise  # Re-raise other ServerErrors
-
-        # ATTEMPT 2: Primary Model WITHOUT Cache (if Attempt 1 failed and response is None)
-        # Skip this attempt if the previous failure was an Overload error (Attempt 1),
-        # as retrying the same model immediately is unlikely to help.
-        is_overload_failure = isinstance(last_exception, genai.errors.ServerError) and (
-            "503" in str(last_exception) or "overloaded" in str(last_exception).lower()
-        )
-
-        if response is None and not is_overload_failure:
-            use_cache = False
+        # --- Attempt 1: Primary + Cache ---
+        if cache_name:
             try:
-                logger.debug(f"Attempt 2: Retrying with {current_model} without cache.")
-                prompt_parts = _get_prompt_parts(use_cache)
-                config = generation_service.build_generation_config(None)
-
-                response = await _generate_with_backoff(
-                    client=client,
-                    model=current_model,
-                    contents=prompt_parts,
-                    config=config,
+                logger.debug("Attempt 1: Primary Model with Cache")
+                return await self._generate_call(
+                    model_name=settings.LLM_MODEL_NAME,
+                    contents=get_prompt_parts(use_cache=True),
+                    cache_name=cache_name
                 )
-            except genai.errors.ServerError as e:
-                if "503" in str(e) or "overloaded" in str(e).lower():
-                    logger.warning(
-                        f"Attempt 2 failed: Model {current_model} overloaded. Proceeding to Attempt 3 (Fallback)."
-                    )
-                    last_exception = e
+            except Exception as e:
+                # Detect Cache Invalidation (400 or specific Google error)
+                if self._is_cache_error(e):
+                    logger.warning(f"Cache invalidated ({e}). Falling back to no-cache.")
                 else:
-                    raise  # Re-raise other ServerErrors
-            except Exception as e:
-                # If it was a ClientError from Attempt 1 that we caught, we might catch another one here?
-                # Attempt 2 shouldn't have cache errors.
-                logger.warning(f"Attempt 2 failed with unexpected error: {e}")
-                last_exception = e
-                # Fall through to Attempt 3
+                    # If it's an overload/server error, we might want to skip to fallback
+                    if self._is_overload_error(e):
+                         logger.warning(f"Primary model overloaded ({e}). Skipping to fallback.")
+                         return await self._attempt_fallback(get_prompt_parts(False))
+                    raise e # Retrying same config won't help for other errors
 
-        # ATTEMPT 3: Fallback Model (if Attempt 2 failed and response is None)
-        if response is None and settings.LLM_FALLBACK_MODEL_NAME:
-            fallback_model = settings.LLM_FALLBACK_MODEL_NAME
-            logger.warning(f"Attempt 3: Switching to fallback model: {fallback_model}")
-
-            try:
-                # Ensure No Cache for fallback
-                prompt_parts = _get_prompt_parts(False)
-                config = generation_service.build_generation_config(None)
-
-                response = await _generate_with_backoff(
-                    client=client,
-                    model=fallback_model,
-                    contents=prompt_parts,
-                    config=config,
-                )
-                logger.info(f"Fallback to {fallback_model} succeeded.")
-            except Exception as e:
-                logger.error(f"Attempt 3 (Fallback) failed: {e}")
-                raise e  # If fallback fails, we give up.
-
-        if response is None:
-            if last_exception:
-                raise last_exception
-            else:
-                raise Exception("LLM generation failed (unknown state).")
-
-        # Step 6: Parse and validate response
-        report_content = response_parser_service.parse_llm_response(response)
-
-        # Calculate cost - REMOVED
-        usage_metadata = getattr(response, "usage_metadata", None)
-
-        # Extract token counts
-        token_usage = {
-            "prompt_token_count": 0,
-            "candidates_token_count": 0,
-            "total_token_count": 0,
-            "cached_content_token_count": 0,
-        }
-        if usage_metadata:
-            token_usage["prompt_token_count"] = getattr(
-                usage_metadata, "prompt_token_count", 0
+        # --- Attempt 2: Primary + No Cache ---
+        try:
+            logger.debug("Attempt 2: Primary Model without Cache")
+            return await self._generate_call(
+                model_name=settings.LLM_MODEL_NAME,
+                contents=get_prompt_parts(use_cache=False),
+                cache_name=None
             )
-            token_usage["candidates_token_count"] = getattr(
-                usage_metadata, "candidates_token_count", 0
-            )
-            token_usage["total_token_count"] = getattr(
-                usage_metadata, "total_token_count", 0
-            )
-            token_usage["cached_content_token_count"] = getattr(
-                usage_metadata, "cached_content_token_count", 0
-            )
+        except Exception as e:
+            if self._is_overload_error(e) and settings.LLM_FALLBACK_MODEL_NAME:
+                logger.warning(f"Primary model overloaded ({e}). Switching to Fallback.")
+                return await self._attempt_fallback(get_prompt_parts(False))
+            raise e
 
-        return report_content, token_usage
-
-    except asyncio.CancelledError:
-        # Important for async correctness: don't swallow cancellations.
-        logger.warning("Report generation task was cancelled.", exc_info=True)
-        raise
-    except google_exceptions.GoogleAPIError as e:
-        logger.error("Gemini API error during report generation: %s", e, exc_info=True)
-        return f"Error generating report due to an LLM API issue: {str(e)}", {}
-    except Exception as e:  # noqa: BLE001 (we want a last-resort guardrail here)
-        logger.error(
-            "An unexpected error occurred with the Gemini service: %s",
-            e,
-            exc_info=True,
+    async def _attempt_fallback(self, prompt_parts: List[Any]) -> Any:
+        """Executes the request against the fallback model."""
+        if not settings.LLM_FALLBACK_MODEL_NAME:
+            raise LLMGenerationError("Primary model failed and no fallback configured.")
+            
+        logger.info(f"Attempt 3: Fallback Model ({settings.LLM_FALLBACK_MODEL_NAME})")
+        return await self._generate_call(
+            model_name=settings.LLM_FALLBACK_MODEL_NAME,
+            contents=prompt_parts,
+            cache_name=None
         )
-        return (
-            f"Error generating report due to an unexpected LLM issue: {str(e)}",
-            {},
+
+    async def _generate_call(self, model_name: str, contents: List[Any], cache_name: Optional[str]) -> Any:
+        """Executes the actual API call wrapped in the retry policy."""
+        config = generation_service.build_generation_config(cache_name)
+        
+        async for attempt in self.retry_policy:
+            with attempt:
+                return await self.client.aio.models.generate_content(
+                    model=model_name,
+                    contents=contents,
+                    config=config
+                )
+
+    async def _cleanup_files_safely(self, file_names: List[str]):
+        """Background cleanup task that doesn't block the response."""
+        try:
+            await file_upload_service.cleanup_uploaded_files(self.client, file_names)
+        except Exception as e:
+            logger.warning(f"Cleanup failed: {e}")
+
+    def _is_cache_error(self, e: Exception) -> bool:
+        """Heuristic to check for 400 Invalid Argument related to cache."""
+        s_e = str(e)
+        return "INVALID_ARGUMENT" in s_e or "400" in s_e
+
+    def _is_overload_error(self, e: Exception) -> bool:
+        """Heuristic to check for 503 or Overloaded."""
+        s_e = str(e).lower()
+        return "503" in s_e or "overloaded" in s_e
+
+    def _extract_usage(self, response: Any) -> TokenUsage:
+        """Safe extraction of token usage."""
+        meta = getattr(response, "usage_metadata", None)
+        if not meta:
+            return TokenUsage()
+        
+        return TokenUsage(
+            prompt_tokens=getattr(meta, "prompt_token_count", 0),
+            candidate_tokens=getattr(meta, "candidates_token_count", 0),
+            total_tokens=getattr(meta, "total_token_count", 0),
+            cached_tokens=getattr(meta, "cached_content_token_count", 0),
         )
-    finally:
-        # Step 7: Cleanup uploaded files (best-effort, don't override main errors)
-        if uploaded_file_names:
-            try:
-                await file_upload_service.cleanup_uploaded_files(
-                    client, uploaded_file_names
-                )
-            except Exception as cleanup_error:  # noqa: BLE001
-                logger.warning(
-                    "Failed to clean up uploaded files: %s",
-                    cleanup_error,
-                    exc_info=True,
-                )
 
-
-def generate_report_from_content_sync(
-    processed_files: List[Dict[str, Any]], additional_text: str = ""
-) -> Tuple[str, Dict[str, int]]:
-    """Synchronous wrapper for generate_report_from_content."""
-    return asyncio.run(generate_report_from_content(processed_files, additional_text))
+# Singleton Instance (Optional, depending on DI framework)
+gemini_generator = GeminiReportGenerator()

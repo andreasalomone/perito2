@@ -125,41 +125,49 @@ export default function DashboardPage() {
                     </CardContent>
                 </Card>
             ) : (
-                <div className="grid gap-4">
-                    {safeCases.map((c) => (
-                        <Card key={c.id} className="overflow-hidden transition-all hover:shadow-md hover:border-primary/20 group">
-                            <div className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                <div className="space-y-1">
-                                    <div className="flex items-center gap-3">
-                                        <h3 className="font-semibold text-lg flex items-center gap-2 group-hover:text-primary transition-colors">
-                                            <Folder className="h-4 w-4 text-primary" />
-                                            {c.reference_code}
-                                        </h3>
-                                        <Badge variant={c.status === "open" ? "default" : "secondary"}>
-                                            {c.status.toUpperCase()}
-                                        </Badge>
+                <div className="@container">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 auto-rows-[minmax(180px,auto)] grid-flow-dense">
+                        {safeCases.map((c, i) => (
+                            <Card
+                                key={c.id}
+                                className={cn(
+                                    "overflow-hidden transition-all hover:shadow-md hover:border-primary/20 group",
+                                    i === 0 ? "md:col-span-2 md:row-span-2" : "col-span-1"
+                                )}
+                            >
+                                <div className="p-6 flex flex-col justify-between h-full gap-4">
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-3">
+                                            <h3 className="font-semibold text-lg flex items-center gap-2 group-hover:text-primary transition-colors">
+                                                <Folder className="h-4 w-4 text-primary" />
+                                                {c.reference_code}
+                                            </h3>
+                                            <Badge variant={c.status === "open" ? "default" : "secondary"}>
+                                                {c.status.toUpperCase()}
+                                            </Badge>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                            <span className="font-medium text-foreground">{c.client_name || "Cliente non specificato"}</span>
+                                            <span>•</span>
+                                            <Calendar className="h-3.5 w-3.5" />
+                                            <span>{new Date(c.created_at).toLocaleDateString("it-IT", {
+                                                day: 'numeric', month: 'short', year: 'numeric'
+                                            })}</span>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                        <span className="font-medium text-foreground">{c.client_name || "Cliente non specificato"}</span>
-                                        <span>•</span>
-                                        <Calendar className="h-3.5 w-3.5" />
-                                        <span>Creato il {new Date(c.created_at).toLocaleDateString("it-IT", {
-                                            day: 'numeric', month: 'long', year: 'numeric'
-                                        })}</span>
-                                    </div>
-                                </div>
 
-                                <div className="flex items-center gap-2">
-                                    <Link href={`/dashboard/cases/${c.id}`}>
-                                        <Button variant="ghost" className="gap-2 group-hover:bg-primary/5">
-                                            Apri Fascicolo
-                                            <ArrowRight className="h-4 w-4" />
-                                        </Button>
-                                    </Link>
+                                    <div className="flex items-center gap-2 mt-auto">
+                                        <Link href={`/dashboard/cases/${c.id}`} className="w-full">
+                                            <Button variant="ghost" className="w-full justify-between group-hover:bg-primary/5">
+                                                Apri Fascicolo
+                                                <ArrowRight className="h-4 w-4" />
+                                            </Button>
+                                        </Link>
+                                    </div>
                                 </div>
-                            </div>
-                        </Card>
-                    ))}
+                            </Card>
+                        ))}
+                    </div>
                 </div>
             )}
         </div>

@@ -1,49 +1,109 @@
+import logging
+import os
+from typing import Generator, Optional, Any
+
 import firebase_admin
 from firebase_admin import auth, credentials
-from fastapi import Depends, HTTPException, Security
+from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+
 from app.db.database import get_db as get_raw_db
 from app.models import User
-import os
+from app.core.config import settings
 
-# Initialize Firebase
-try:
-    firebase_admin.get_app()
-except ValueError:
+# Configure structured logging
+logger = logging.getLogger("app.auth")
+
+security = HTTPBearer()
+
+# -----------------------------------------------------------------------------
+# 1. Firebase Initialization
+# -----------------------------------------------------------------------------
+def initialize_firebase() -> None:
+    """
+    Idempotent Firebase initialization.
+    Handles both local development (SA file) and Cloud Run (ADC).
+    """
+    try:
+        firebase_admin.get_app()
+        return  # Already initialized
+    except ValueError:
+        pass  # Not initialized yet
+
+    logger.info("🔥 Initializing Firebase Admin SDK...")
+    
     # In Cloud Run, we mount the secret to /secrets/service-account.json
-    # We explicitly use this file for Firebase, so we don't have to set GOOGLE_APPLICATION_CREDENTIALS
-    # globally, which would break Cloud SQL Connector (which prefers ADC).
     cred_path = "/secrets/service-account.json"
+    
     if os.path.exists(cred_path):
         try:
             cred = credentials.Certificate(cred_path)
             firebase_admin.initialize_app(cred)
+            logger.info(f"✅ Firebase initialized with credentials from {cred_path}")
+            return
         except Exception as e:
-            # If the file exists but is invalid (e.g. user put email instead of JSON key),
-            # log it and fall back to ADC.
-            print(f"WARNING: Failed to load Firebase credentials from {cred_path}: {e}")
-            print("Falling back to Application Default Credentials (ADC).")
-            firebase_admin.initialize_app()
-    else:
-        # Fallback to default (ADC or GOOGLE_APPLICATION_CREDENTIALS env var)
+            logger.warning(f"⚠️ Failed to load Firebase credentials from {cred_path}: {e}")
+            logger.info("Falling back to Application Default Credentials (ADC).")
+
+    # Fallback to ADC or GOOGLE_APPLICATION_CREDENTIALS env var
+    try:
         firebase_admin.initialize_app()
+        logger.info("✅ Firebase initialized with Application Default Credentials (ADC)")
+    except Exception as e:
+        logger.critical(f"❌ Failed to initialize Firebase: {e}")
+        raise RuntimeError("Firebase initialization failed") from e
 
-security = HTTPBearer()
+# Initialize on module load (safe because it's idempotent)
+initialize_firebase()
 
-def get_current_user_token(creds: HTTPAuthorizationCredentials = Security(security)):
-    """Validates Firebase Token"""
+# -----------------------------------------------------------------------------
+# 2. Authentication Dependency
+# -----------------------------------------------------------------------------
+def get_current_user_token(creds: HTTPAuthorizationCredentials = Security(security)) -> dict[str, Any]:
+    """
+    Validates the Firebase ID Token.
+    Returns the decoded token dictionary.
+    """
     token = creds.credentials
     try:
-        return auth.verify_id_token(token, check_revoked=True)
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        # verify_id_token checks signature, expiration, and format
+        decoded_token = auth.verify_id_token(token, check_revoked=True)
+        return decoded_token
+    except auth.ExpiredIdTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except auth.RevokedIdTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token revoked",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except auth.InvalidIdTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except Exception as e:
+        logger.error(f"Authentication error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
+# -----------------------------------------------------------------------------
+# 3. Secure Database Session (RLS)
+# -----------------------------------------------------------------------------
 def get_db(
-    current_user_token: dict = Depends(get_current_user_token),
+    current_user_token: dict[str, Any] = Depends(get_current_user_token),
     db: Session = Depends(get_raw_db)
-):
+) -> Generator[Session, None, None]:
     """
     Secure Database Session Dependency.
     1. Gets the User's UID from Firebase Token.
@@ -55,41 +115,48 @@ def get_db(
     
     # 1. Set the User UID session variable FIRST
     # This allows the 'user_self_access' RLS policy to let us read our own record.
-    # FIX: Use bind parameters (:uid) instead of f-strings to prevent SQL injection
-    db.execute(
-        text("SELECT set_config('app.current_user_uid', :uid, true)"), 
-        {"uid": uid}
-    )
+    try:
+        db.execute(
+            text("SELECT set_config('app.current_user_uid', :uid, true)"), 
+            {"uid": uid}
+        )
+    except Exception as e:
+        logger.error(f"Failed to set app.current_user_uid: {e}")
+        raise HTTPException(status_code=500, detail="Database session initialization failed")
     
     # 2. Now we can safely query the User table
     user_record = db.query(User).filter(User.id == uid).first()
     
     if not user_record:
-        # FIX: Phantom User Race Condition
-        # User not synced yet - this is a critical error for protected endpoints
-        # Don't yield a session without org context as it causes "Missing Organization Context" 500 errors
-        from fastapi import HTTPException
+        # Phantom User Race Condition: User authenticated in Firebase but not yet synced to DB
+        logger.warning(f"User {uid} authenticated but not found in database.")
         raise HTTPException(
-            status_code=403,
+            status_code=status.HTTP_403_FORBIDDEN,
             detail="User account not initialized. Please complete registration first."
         )
 
     org_id = str(user_record.organization_id)
     
-    # THE SECURITY MAGIC:
-    # Set the session variable. If RLS is on, Postgres now filters everything automatically.
-    # FIX: Use bind parameters (:org_id)
-    db.execute(
-        text("SELECT set_config('app.current_org_id', :org_id, true)"), 
-        {"org_id": org_id}
-    )
+    # 3. Set the Organization ID session variable
+    # If RLS is on, Postgres now filters everything automatically.
+    try:
+        db.execute(
+            text("SELECT set_config('app.current_org_id', :org_id, true)"), 
+            {"org_id": org_id}
+        )
+    except Exception as e:
+        logger.error(f"Failed to set app.current_org_id: {e}")
+        raise HTTPException(status_code=500, detail="Database session initialization failed")
     
     yield db
 
+# -----------------------------------------------------------------------------
+# 4. Superadmin Dependency
+# -----------------------------------------------------------------------------
 def get_superadmin_user(
-    current_user_token: dict = Depends(get_current_user_token),
+    current_user_token: dict[str, Any] = Depends(get_current_user_token),
     db: Session = Depends(get_raw_db)  # Use raw DB, skip RLS for superadmins
-):
+) -> Optional[User]:
     """
     Dependency for superadmin-only endpoints.
     Checks if the current user's email is in the superadmin list.
@@ -97,14 +164,13 @@ def get_superadmin_user(
     Note: Uses raw DB connection without RLS to allow superadmins
     to operate without organization membership.
     """
-    from app.core.config import settings
-    
     email = current_user_token.get('email')
     
     if not email:
         raise HTTPException(status_code=403, detail="Email not found in token")
     
     if email not in settings.SUPERADMIN_EMAIL_LIST:
+        logger.warning(f"Unauthorized superadmin access attempt by {email}")
         raise HTTPException(status_code=403, detail="Superadmin access required")
     
     # Superadmins don't need to have a User record or belong to an organization

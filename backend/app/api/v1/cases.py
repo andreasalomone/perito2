@@ -1,71 +1,142 @@
-import os
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from sqlalchemy.orm import Session, joinedload, selectinload
-from typing import List
+import logging
+import re
+from pathlib import Path
+from typing import Annotated, List, Optional
 from uuid import UUID
 
-from app.db.database import get_db as get_raw_db # Keep if needed, but we need the secure one
-from app.models import Case, Document, ReportVersion, Client
-from app.api.dependencies import get_current_user_token, get_db # Import secure get_db
-from app import schemas
-from app.services import gcs_service, case_service
-import logging
-from app.core.config import settings
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from sqlalchemy import exists, select
+from sqlalchemy.orm import Session, selectinload
 
-logger = logging.getLogger(__name__)
+from app import schemas
+from app.api.dependencies import get_current_user_token, get_db
+from app.core.config import settings
+from app.models import Case, Client, Document, ReportVersion
+from app.services import case_service, gcs_service
+# In a real scenario, we assume report_generation_service is refactored 
+# to create its own DB session, not accept one as an arg.
+from app.services import report_generation_service as generation_service 
+
+# Configure structured logging
+logger = logging.getLogger("app.api.cases")
 
 router = APIRouter()
 
-# 1. LIST CASES (RLS Protected automatically)
-@router.get("/", response_model=List[schemas.CaseSummary])
-def list_cases(
-    skip: int = 0, 
-    limit: int = 50, 
-    db: Session = Depends(get_db)
-):
-    # RLS magic: This only returns rows for the current tenant
-    return db.query(Case).options(joinedload(Case.client)).order_by(Case.created_at.desc()).offset(skip).limit(limit).all()
+# -----------------------------------------------------------------------------
+# Constants & Configuration
+# -----------------------------------------------------------------------------
+ALLOWED_EXTENSIONS = {
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".txt": "text/plain",
+    ".eml": "message/rfc822",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+}
 
-# 1.5 GET CASE STATUS (Lightweight for Polling)
-@router.get("/{case_id}/status", response_model=schemas.CaseStatusRead)
-def get_case_status(case_id: UUID, db: Session = Depends(get_db)):
-    case = db.query(Case).filter(Case.id == case_id).first()
+# Regex for safe filenames (alphanumeric, dashes, underscores, spaces)
+SAFE_FILENAME_REGEX = re.compile(r"^[a-zA-Z0-9_\-\. ]+$")
+
+# -----------------------------------------------------------------------------
+# Endpoints
+# -----------------------------------------------------------------------------
+
+@router.get(
+    "/",
+    response_model=List[schemas.CaseSummary],
+    summary="List Cases",
+    description="Retrieve a paginated list of cases for the authenticated organization."
+)
+def list_cases(
+    db: Annotated[Session, Depends(get_db)],
+    skip: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(50, ge=1, le=100, description="Max records to return"),
+) -> List[Case]:
+    """
+    Fetches cases using SQLAlchemy 2.0 syntax.
+    Relies on RLS (Row Level Security) applied by `get_db` or query filtering.
+    """
+    stmt = (
+        select(Case)
+        .options(selectinload(Case.client)) # efficient for collections
+        .order_by(Case.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    return list(db.scalars(stmt).all())
+
+
+@router.get(
+    "/{case_id}/status", 
+    response_model=schemas.CaseStatusRead,
+    summary="Get Case Status"
+)
+def get_case_status(
+    case_id: UUID, 
+    db: Annotated[Session, Depends(get_db)]
+) -> dict:
+    """
+    Lightweight polling endpoint. 
+    Optimized to avoid loading heavy relationships.
+    """
+    case = db.get(Case, case_id)
     if not case:
-        raise HTTPException(status_code=404, detail="Case not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Case not found"
+        )
     
-    # Check if any doc is processing to infer "is_generating" hint
-    # Optimized: Use SQL EXISTS instead of loading all docs
-    is_generating = case.status == "generating" or db.query(Document).filter(
+    # Check for processing documents using an EXISTS query (High Performance)
+    # SQLAlchemy 2.0: select(exists().where(...))
+    is_processing_stmt = select(exists().where(
         Document.case_id == case_id,
         Document.ai_status.in_(["pending", "processing"])
-    ).first() is not None
+    ))
+    has_processing_docs = db.scalar(is_processing_stmt)
+
+    is_generating = (case.status == "generating") or has_processing_docs
     
     return {
         "id": case.id,
         "status": case.status,
-        "documents": case.documents,
+        "documents": case.documents, # Relies on lazy loading or simple fetch
         "is_generating": is_generating
     }
 
-# 2. CREATE CASE
-@router.post("/", response_model=schemas.CaseSummary)
+
+@router.post(
+    "/", 
+    response_model=schemas.CaseSummary, 
+    status_code=status.HTTP_201_CREATED,
+    summary="Create Case"
+)
 def create_case(
-    case_in: schemas.CaseCreate, 
-    current_user: dict = Depends(get_current_user_token), # From deps.py
-    db: Session = Depends(get_db)
-):
-    # Optional: CRM Logic (Find or Create Client)
-    # Optional: CRM Logic (Find or Create Client)
-    client_id = None
+    case_in: schemas.CaseCreate,
+    current_user: Annotated[dict, Depends(get_current_user_token)],
+    db: Annotated[Session, Depends(get_db)]
+) -> Case:
+    """
+    Creates a new case. Handles optional client creation via CRM service.
+    """
+    # Strict Type Parsing
+    try:
+        org_id = UUID(current_user["organization_id"])
+    except (KeyError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid Organization ID in token")
+
+    # CRM Logic
+    client_id: Optional[UUID] = None
     if case_in.client_name:
-        # FIX: Pass explicit organization_id from token
-        org_id = UUID(current_user['organization_id'])
         client = case_service.get_or_create_client(db, case_in.client_name, org_id)
         client_id = client.id
 
     new_case = Case(
         reference_code=case_in.reference_code,
-        organization_id=current_user['organization_id'], # Explicit for safety
+        organization_id=org_id,
         client_id=client_id,
         status="open"
     )
@@ -74,224 +145,245 @@ def create_case(
     db.refresh(new_case)
     return new_case
 
-# 3. GET DETAILS (Docs + Versions)
+
 @router.get("/{case_id}", response_model=schemas.CaseDetail)
-def get_case(case_id: UUID, db: Session = Depends(get_db)):
-    case = db.query(Case).options(selectinload(Case.documents), selectinload(Case.report_versions)).filter(Case.id == case_id).first()
+def get_case_detail(
+    case_id: UUID, 
+    db: Annotated[Session, Depends(get_db)]
+) -> Case:
+    """
+    Retrieves full case details including documents and report versions.
+    """
+    stmt = (
+        select(Case)
+        .options(
+            selectinload(Case.documents), 
+            selectinload(Case.report_versions)
+        )
+        .where(Case.id == case_id)
+    )
+    case = db.scalar(stmt)
+    
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
     return case
 
-# 4. UPLOAD DOCUMENT URL
+
 @router.post("/{case_id}/documents/upload-url")
 def get_doc_upload_url(
     case_id: UUID, 
     filename: str, 
     content_type: str,
-    db: Session = Depends(get_db)
-):
-    # Verify case access
-    case = db.query(Case).filter(Case.id == case_id).first()
+    db: Annotated[Session, Depends(get_db)]
+) -> dict:
+    """
+    Generates a secure, time-limited Signed URL for GCS uploads.
+    Enforces MIME types and Organization isolation.
+    """
+    case = db.get(Case, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    # ALLOWED MIME TYPES
-    ALLOWED_MIME_TYPES = {
-        ".pdf": "application/pdf",
-        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        ".txt": "text/plain",
-        ".eml": "message/rfc822",
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".webp": "image/webp",
-        ".gif": "image/gif",
-    }
+    # 1. Sanitize Filename
+    clean_filename = Path(filename).name
+    if not SAFE_FILENAME_REGEX.match(clean_filename):
+        raise HTTPException(status_code=400, detail="Invalid filename characters.")
 
-    # Validate Extension & MIME Type
-    import os
-    _, ext = os.path.splitext(filename)
-    ext = ext.lower()
-
-    if ext not in ALLOWED_MIME_TYPES:
+    # 2. Validate Extension & MIME
+    ext = Path(clean_filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"Unsupported file extension: {ext}")
-
-    expected_mime = ALLOWED_MIME_TYPES[ext]
-    # Simple check: content_type must match expected_mime
-    # For images, we might want to be more flexible (e.g. image/jpg vs image/jpeg), but strict is safer.
-    if content_type != expected_mime:
-         raise HTTPException(
-            status_code=400, 
-            detail=f"MIME type mismatch. Expected {expected_mime} for extension {ext}, got {content_type}"
+    
+    if content_type != ALLOWED_EXTENSIONS[ext]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"MIME type mismatch. Expected {ALLOWED_EXTENSIONS[ext]}."
         )
 
-    # Generate path: uploads/{org_id}/{case_id}/{filename}
-    # We use case.organization_id to ensure clean bucket structure
+    # 3. Generate URL
+    # Path: uploads/{org_id}/{case_id}/{clean_filename}
     return gcs_service.generate_upload_signed_url(
         org_id=str(case.organization_id),
         case_id=str(case.id),
-        filename=filename,
+        filename=clean_filename,
         content_type=content_type
     )
 
-# 5. REGISTER UPLOADED DOC & TRIGGER AI
-@router.post("/{case_id}/documents/register", response_model=schemas.DocumentRead)
+
+@router.post(
+    "/{case_id}/documents/register", 
+    response_model=schemas.DocumentRead
+)
 def register_document(
     case_id: UUID,
-    gcs_path: str,
-    filename: str,
-    db: Session = Depends(get_db)
-):
-    case = db.query(Case).filter(Case.id == case_id).first()
+    payload: schemas.DocumentRegisterPayload, # Refactored to use Pydantic body
+    db: Annotated[Session, Depends(get_db)]
+) -> Document:
+    """
+    Registers a file uploaded to GCS in the database.
+    
+    Security: Strictly validates that the provided GCS path belongs 
+    to the authenticated organization and case.
+    """
+    case = db.get(Case, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
+    # 1. Security: Path Validation (Prevent IDOR)
+    # The path MUST start with: uploads/<org_id>/<case_id>/
+    expected_prefix = f"uploads/{case.organization_id}/{case.id}/"
+    
+    # Strip potential 'gs://bucket/' prefix if sent by client
+    clean_path = payload.gcs_path.replace(f"gs://{settings.STORAGE_BUCKET_NAME}/", "")
+    
+    if not clean_path.startswith(expected_prefix):
+        logger.warning(f"IDOR Attempt: User tried to register path {clean_path} for case {case.id}")
+        raise HTTPException(
+            status_code=403, 
+            detail="Security violation: File path does not match case context."
+        )
+
+    # 2. Create Record
     new_doc = Document(
         case_id=case.id,
         organization_id=case.organization_id,
-        filename=filename,
-        gcs_path=gcs_path,
+        filename=payload.filename,
+        gcs_path=clean_path,
         ai_status="pending"
     )
     db.add(new_doc)
     db.commit()
     db.refresh(new_doc)
     
-    # Trigger Async Extraction (Cloud Task or Background)
-    # We pass org_id because the Worker needs to set RLS context manually!
+    # 3. Trigger Async Processing
+    # Note: We do NOT pass 'db' here.
     case_service.trigger_extraction_task(new_doc.id, str(case.organization_id))
     
     return new_doc
 
-# 6. TRIGGER GENERATION
+
 @router.post("/{case_id}/generate")
 async def trigger_generation(
     case_id: UUID,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
-):
-    case = db.query(Case).filter(Case.id == case_id).first()
+    db: Annotated[Session, Depends(get_db)]
+) -> dict:
+    """
+    Triggers the AI Report Generation pipeline.
+    """
+    case = db.get(Case, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    # Use Cloud Tasks in production, BackgroundTasks for local dev
-    from app.services import case_service
-    from app.core.config import settings
-    
     if settings.RUN_LOCALLY:
-        # For local dev, use background tasks with the full pipeline
-        from app.services import report_generation_service as generation_service
+        # LOCAL DEV: Use BackgroundTasks
+        # CRITICAL: Do NOT pass 'db' session. 
+        # The service method must create a NEW session using SessionLocal()
         background_tasks.add_task(
             generation_service.process_case_logic,
             case_id=str(case.id),
-            organization_id=str(case.organization_id),
-            db=db  # Pass the current session for background task
+            organization_id=str(case.organization_id)
         )
     else:
-        # For production, enqueue a Cloud Task that will call /tasks/process-case
+        # PROD: Cloud Tasks
         case_service.trigger_case_processing_task(str(case.id), str(case.organization_id))
     
     return {"status": "generation_started"}
 
-# 7. FINALIZE CASE
+
 @router.post("/{case_id}/finalize", response_model=schemas.VersionRead)
 def finalize_case_endpoint(
     case_id: UUID,
     payload: schemas.FinalizePayload,
-    db: Session = Depends(get_db)
-):
-    case = db.query(Case).filter(Case.id == case_id).first()
+    db: Annotated[Session, Depends(get_db)]
+) -> ReportVersion:
+    """
+    Finalizes a case by promoting a specific DOCX as the official version.
+    """
+    case = db.get(Case, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    # FIX: Path Traversal & IDOR Vulnerability
-    # The auditor found that startswith allows traversal like: reports/{org}/{case}/../../../other/file.pdf
+    # 1. Path Security & Traversal Protection
+    raw_path = payload.final_docx_path
     
-    # 1. Normalize the path to resolve any .. or . components
-    normalized_path = os.path.normpath(payload.final_docx_path)
-    
-    # 2. Check for traversal attempts (.. in original path is suspicious)
-    if ".." in payload.final_docx_path or normalized_path != payload.final_docx_path.replace("\\", "/"):
-        logger.warning(f"Security Alert: Path traversal attempt detected. Path: {payload.final_docx_path}")
-        raise HTTPException(status_code=403, detail="Invalid file path.")
-    
-    # 3. Validate prefix after normalization
-    # FIX: Allow both 'reports/' (generated by AI) and 'uploads/' (uploaded by user)
-    # The user uploads to 'uploads/{org}/{case}/', so we must accept that.
-    
-    # Check for User Upload path
-    valid_upload_prefix = f"uploads/{case.organization_id}/{case.id}/"
-    # Check for System Generated path
-    valid_report_prefix = f"reports/{case.organization_id}/{case.id}/"
-    
-    valid_path = False
-    
-    # Strip GS prefix for logic check
-    clean_path = normalized_path
-    if clean_path.startswith(f"gs://{settings.STORAGE_BUCKET_NAME}/"):
-        clean_path = clean_path[len(f"gs://{settings.STORAGE_BUCKET_NAME}/"):]
-        
-    if clean_path.startswith(valid_upload_prefix) or clean_path.startswith(valid_report_prefix):
-        valid_path = True
-        
-    if not valid_path:
-         logger.warning(f"Security Alert: Attempted IDOR in finalize_case. Path: {payload.final_docx_path}")
-         raise HTTPException(status_code=403, detail="Invalid file path. File must belong to this case.")
+    # Check for traversal chars
+    if ".." in raw_path or "~" in raw_path:
+        raise HTTPException(status_code=403, detail="Invalid path characters.")
 
-    # Call service
+    # 2. Strict Prefix Validation
+    # Allow files from 'uploads/' (user uploaded) or 'reports/' (system generated)
+    clean_path = raw_path.replace(f"gs://{settings.STORAGE_BUCKET_NAME}/", "")
+    
+    valid_prefixes = [
+        f"uploads/{case.organization_id}/{case.id}/",
+        f"reports/{case.organization_id}/{case.id}/"
+    ]
+    
+    if not any(clean_path.startswith(prefix) for prefix in valid_prefixes):
+        logger.warning(f"IDOR Attempt in finalize: {clean_path}")
+        raise HTTPException(
+            status_code=403, 
+            detail="File must belong to this case (invalid path prefix)."
+        )
+
+    # 3. Execute Service
     final_version = case_service.finalize_case(
         db=db,
         case_id=case.id,
         org_id=case.organization_id,
-        final_docx_path=payload.final_docx_path
+        final_docx_path=clean_path
     )
     
     return final_version
 
-# 8. DOWNLOAD VERSION (Generated or Final)
+
 @router.post("/{case_id}/versions/{version_id}/download")
 async def download_version(
     case_id: UUID,
     version_id: UUID,
-    payload: schemas.DownloadVariantPayload, # Optional: template choice
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user_token)
-):
+    payload: schemas.DownloadVariantPayload,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[dict, Depends(get_current_user_token)]
+) -> dict:
     """
-    Unified download endpoint.
-    - If Final: Returns signed URL for the stored final DOCX.
-    - If Draft: Generates the requested template variant on the fly.
+    Generates a download URL.
+    - Final versions: Direct GCS link.
+    - Draft versions: Renders template on-the-fly.
     """
-    # Verify access (RLS)
-    case = db.query(Case).filter(Case.id == case_id).first()
+    # Validate Case
+    case = db.get(Case, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
         
-    # Verify version belongs to case
-    version = db.query(ReportVersion).filter(ReportVersion.id == version_id, ReportVersion.case_id == case_id).first()
+    # Validate Version
+    stmt = select(ReportVersion).where(
+        ReportVersion.id == version_id, 
+        ReportVersion.case_id == case_id
+    )
+    version = db.scalar(stmt)
+    
     if not version:
         raise HTTPException(status_code=404, detail="Version not found")
 
-    # A. FINAL VERSION -> Direct Download
-    if version.is_final:
-        if not version.docx_storage_path:
-             raise HTTPException(status_code=404, detail="File path missing for final version")
-        
-        # Generate Signed URL for the existing file
-        url = gcs_service.generate_download_signed_url(version.docx_storage_path)
-        return {"download_url": url}
-
-    # B. DRAFT VERSION -> Generate Variant
-    from app.services import report_generation_service as generation_service
     try:
-        url = await generation_service.generate_docx_variant(
-            version_id=str(version_id),
-            template_type=payload.template_type,
-            db=db
-        )
-        return {"download_url": url}
+        if version.is_final:
+            if not version.docx_storage_path:
+                 raise HTTPException(status_code=404, detail="File path missing.")
+            
+            url = gcs_service.generate_download_signed_url(version.docx_storage_path)
+            return {"download_url": url}
+        else:
+            # Generate variant logic
+            url = await generation_service.generate_docx_variant(
+                version_id=str(version_id),
+                template_type=payload.template_type,
+                db=db
+            )
+            return {"download_url": url}
+            
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Download generation failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal Server Error")

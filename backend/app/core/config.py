@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str
     
     # Local or Not
+    ENVIRONMENT: str = "production" # "local", "production", "staging"
     RUN_LOCALLY: bool = False  # Default to False (Production)
     
     # CORS Settings

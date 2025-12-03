@@ -1,61 +1,130 @@
-from fastapi import APIRouter, Depends, HTTPException
+import logging
+from typing import Any, Dict, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, EmailStr
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from app.db.database import get_db
+
 from app.api.dependencies import get_current_user_token
-from app.models import User, Organization, AllowedEmail
+from app.db.database import get_db
+from app.models import AllowedEmail, User
+
+# Configure Structured Logging
+logger = logging.getLogger("app.auth.sync")
 
 router = APIRouter()
 
-@router.post("/sync")
-def sync_user(
-    current_user_token: dict = Depends(get_current_user_token),
-    db: Session = Depends(get_db)
-):
+# -----------------------------------------------------------------------------
+# 1. Pydantic Models (Strict API Contracts)
+# -----------------------------------------------------------------------------
+class UserRead(BaseModel):
     """
-    Syncs the Firebase user with the local database.
-    If the user doesn't exist, creates a new User and a default Organization.
+    Public-facing user profile.
+    Excludes sensitive internal fields if any.
     """
-    uid = current_user_token['uid']
-    email = current_user_token.get('email')
-    
-    if not email:
-        raise HTTPException(status_code=400, detail="Email is required")
+    id: str
+    email: EmailStr
+    organization_id: str  # Changed to str because UUIDs are often serialized as strings
+    role: str
 
-    # Check if user exists
-    # Note: RLS might block this if we don't handle it. 
-    # But deps.get_db sets app.current_user_uid, so we should be able to read our own record if RLS is on for users.
-    db_user = db.query(User).filter(User.id == uid).first()
+    class Config:
+        from_attributes = True # Replaces 'orm_mode = True' in Pydantic v2
+
+# -----------------------------------------------------------------------------
+# 2. The Refactored Endpoint
+# -----------------------------------------------------------------------------
+@router.post(
+    "/sync",
+    response_model=UserRead,
+    status_code=status.HTTP_200_OK,
+    summary="Sync Firebase User",
+    description="Idempotently syncs a Firebase user to the internal Postgres database."
+)
+def sync_user(
+    token: Dict[str, Any] = Depends(get_current_user_token),
+    db: Session = Depends(get_db)
+) -> User:
+    """
+    Synchronizes the authenticated Firebase user with the local database.
     
-    if not db_user:
-        # Invite-Only: Check if email is whitelisted
-        allowed_email = db.query(AllowedEmail).filter(AllowedEmail.email == email).first()
+    Flow:
+    1. Check if user exists (Fast Path).
+    2. If not, validate against AllowedEmail whitelist.
+    3. create user safely (handling concurrency).
+    """
+    # 1. Input Sanitization
+    uid: str | None = token.get("uid")
+    email: str | None = token.get("email")
+
+    if not uid or not email:
+        logger.warning("Sync attempted with invalid token claims.", extra={"token_keys": token.keys()})
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Token missing required claims (uid, email)."
+        )
+
+    # 2. Fast Path: User Already Exists
+    # Use scalar queries for modern SQLAlchemy 2.0 style
+    stmt = select(User).where(User.id == uid)
+    db_user = db.scalar(stmt)
+
+    if db_user:
+        return db_user
+
+    # 3. Slow Path: New User Registration
+    logger.info(f"New user registration attempt: {email}")
+
+    # Check Whitelist
+    invite_stmt = select(AllowedEmail).where(AllowedEmail.email == email)
+    allowed_email = db.scalar(invite_stmt)
+
+    if not allowed_email:
+        logger.warning(f"Registration rejected: Email not whitelisted: {email}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Please contact your administrator for an invite."
+        )
+
+    # 4. Atomic Creation
+    try:
+        new_user = User(
+            id=uid,
+            email=email,
+            organization_id=allowed_email.organization_id,
+            role=allowed_email.role
+        )
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
         
-        if not allowed_email:
-            raise HTTPException(status_code=403, detail="User not registered. Please contact your administrator.")
-            
-        # Create new User from Invite
-        try:
-            db_user = User(
-                id=uid,
-                email=email,
-                organization_id=allowed_email.organization_id,
-                role=allowed_email.role
-            )
-            db.add(db_user)
-            db.commit()
-            db.refresh(db_user)
-            
-            # Optional: Delete invite after use? 
-            # Or keep it as a record? Let's keep it for now or maybe delete to keep table clean.
-            # Let's keep it simple and just create the user.
-            
-        except Exception as e:
-            db.rollback()
-            raise HTTPException(status_code=500, detail=f"Failed to create user: {str(e)}")
+        logger.info(f"User created successfully: {uid} (Org: {allowed_email.organization_id})")
+        return new_user
+
+    except IntegrityError:
+        # 5. Race Condition Handling
+        # If two requests hit this block simultaneously, the database unique constraint
+        # will fail the second one. We catch this, rollback, and return the existing user.
+        db.rollback()
+        logger.warning(f"Race condition detected for user {uid}. Recovering...")
         
-    return {
-        "id": db_user.id,
-        "email": db_user.email,
-        "organization_id": db_user.organization_id,
-        "role": db_user.role
-    }
+        existing_user = db.scalar(select(User).where(User.id == uid))
+        if existing_user:
+            return existing_user
+        
+        # If we still can't find it, something is truly broken
+        logger.error(f"IntegrityError raised but user {uid} not found.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while synchronizing user profile."
+        )
+        
+    except Exception as e:
+        # Catch-all for unexpected errors (Network, DB connection lost, etc.)
+        logger.error(f"Unexpected error syncing user {uid}: {e}", exc_info=True)
+        # NEVER return 'str(e)' to the client
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal Server Error"
+        )

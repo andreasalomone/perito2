@@ -1,80 +1,119 @@
-from google.cloud.sql.connector import Connector, IPTypes
 import logging
+from typing import Generator, Any
 
-logger = logging.getLogger(__name__)
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from google.cloud.sql.connector import Connector, IPTypes
+from sqlalchemy import create_engine, Engine
+from sqlalchemy.orm import sessionmaker, Session, declarative_base
 from sqlalchemy.pool import NullPool
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+
 from app.core.config import settings
 
-# 1. Initialize the Connector (Global State)
-# We initialize it as None and set it up in the lifespan event
-connector = None
+# Configure structured logging for Cloud Run
+logger = logging.getLogger("app.db")
 
-def getconn():
-    """
-    Helper function used by SQLAlchemy to ask Google for a fresh connection.
-    """
-    global connector
-    conn = connector.connect(
-        settings.CLOUD_SQL_CONNECTION_NAME,
-        "pg8000",
-        user=settings.DB_USER,
-        password=settings.DB_PASS,
-        db=settings.DB_NAME,
-        ip_type=IPTypes.PUBLIC,  # Uses the Public IP (Secured by the Connector)
-    )
-    return conn
+# -----------------------------------------------------------------------------
+# 1. Global State Management
+# -----------------------------------------------------------------------------
+# We hold the connector instance here, but we access it safely.
+_connector: Connector | None = None
 
-# 2. Create the SQLAlchemy Engine
-# We tell SQLAlchemy: "Don't use a normal URL, use this getconn() function instead"
-engine = create_engine(
+def get_connector() -> Connector:
+    """
+    Retrieves the active Google Cloud SQL Connector.
+    Raises a runtime error if the connector has not been initialized.
+    """
+    if _connector is None:
+        raise RuntimeError(
+            "Database connector is not initialized. "
+            "Ensure the application lifespan has started."
+        )
+    return _connector
+
+# -----------------------------------------------------------------------------
+# 2. Connection Creator
+# -----------------------------------------------------------------------------
+def getconn() -> Any:
+    """
+    Callback function used by SQLAlchemy to request a raw DBAPI connection.
+    Uses the Cloud SQL Connector to establish a secure mTLS tunnel.
+    """
+    connector = get_connector()
+    try:
+        conn = connector.connect(
+            instance_connection_string=settings.CLOUD_SQL_CONNECTION_NAME,
+            driver="pg8000",
+            user=settings.DB_USER,
+            password=settings.DB_PASS,
+            db=settings.DB_NAME,
+            ip_type=IPTypes.PUBLIC,  # Change to IPTypes.PRIVATE if using VPC Peering
+        )
+        return conn
+    except Exception as e:
+        logger.error(f"Failed to establish Cloud SQL connection: {e}")
+        raise
+
+# -----------------------------------------------------------------------------
+# 3. SQLAlchemy Engine & Session Setup
+# -----------------------------------------------------------------------------
+# We use NullPool for Cloud Run to disable client-side pooling.
+# Cloud Run scales horizontally; maintaining a pool per instance exhausts
+# the database connection limit.
+engine: Engine = create_engine(
     "postgresql+pg8000://",
     creator=getconn,
-    # Connection Pool Optimization for Cloud Run Horizontal Scaling
-    # Cloud Run scales horizontally (e.g., 50 concurrent users = ~3-5 containers)
-    # CRITICAL: Use NullPool to prevent connection exhaustion:
-    #   - Cloud Run containers are ephemeral and stateless.
-    #   - Keeping a pool of connections open per container (multiplier effect) is dangerous.
-    #   - NullPool ensures connections are closed immediately after use.
     poolclass=NullPool,
+    # Echo SQL queries in Dev, silence in Prod
+    echo=(settings.LOG_LEVEL == "DEBUG"), 
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# 3. Dependency for FastAPI Routes
-def get_db():
+# -----------------------------------------------------------------------------
+# 4. FastAPI Dependency
+# -----------------------------------------------------------------------------
+def get_db() -> Generator[Session, None, None]:
+    """
+    Dependency to yield a database session per request.
+    Ensures the session is closed even if an error occurs.
+    """
     db = SessionLocal()
     try:
         yield db
+    except Exception as e:
+        logger.error(f"Database session error: {e}")
+        db.rollback()
+        raise
     finally:
         db.close()
 
-def close_db_connection():
-    if connector:
-        connector.close()
-        logger.info("🛑 Google Cloud SQL Connector closed")
-
-# 4. Lifespan Manager (Handles Startup/Shutdown)
+# -----------------------------------------------------------------------------
+# 5. Lifespan Event Manager
+# -----------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Runs when Cloud Run starts the container.
-    Initializes the connection pool safely.
+    Application Lifespan Context Manager.
+    Handles the initialization and teardown of the Cloud SQL Connector.
     """
-    global connector
-    connector = Connector()
-    print("✅ Google Cloud SQL Connector initialized")
+    global _connector
     
-    # Create tables if they don't exist (Simple migration)
-    # In a real SaaS, use Alembic, but this is fine for MVP
-    # Base.metadata.create_all(bind=engine)
-    
+    logger.info("🚀 Initializing Google Cloud SQL Connector...")
+    try:
+        _connector = Connector()
+        # Optional: Perform a 'warm-up' ping to ensure connectivity before accepting traffic
+        # This fails fast if credentials are wrong.
+        with engine.connect() as connection:
+             connection.execute("SELECT 1")
+        logger.info("✅ Database connection established and verified.")
+    except Exception as e:
+        logger.critical(f"❌ Failed to initialize database: {e}")
+        raise e
+
     yield
-    
-    # Cleanup on shutdown
-    connector.close()
-    print("🛑 Google Cloud SQL Connector closed")
+
+    logger.info("🛑 Shutting down Google Cloud SQL Connector...")
+    if _connector:
+        _connector.close()

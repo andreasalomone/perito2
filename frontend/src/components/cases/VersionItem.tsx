@@ -4,6 +4,7 @@ import { memo, useState } from "react";
 import { ReportVersion } from "@/types";
 import { Button } from "@/components/ui/button";
 import { FileText, Download } from "lucide-react";
+import { motion } from "framer-motion";
 
 export type TemplateType = "bn" | "salomone";
 
@@ -19,7 +20,12 @@ export const VersionItem = memo(({
     const [template, setTemplate] = useState<TemplateType>("bn");
 
     return (
-        <div className="flex items-center justify-between p-3 bg-muted/20 rounded border">
+        <motion.div
+            layout
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex items-center justify-between p-3 bg-muted/20 rounded border"
+        >
             <div className="flex items-center gap-3">
                 <FileText className="h-5 w-5 text-blue-500" />
                 <div>
@@ -59,7 +65,7 @@ export const VersionItem = memo(({
                     <Download className="h-4 w-4" />
                 </Button>
             </div>
-        </div>
+        </motion.div>
     );
 });
 VersionItem.displayName = "VersionItem";
