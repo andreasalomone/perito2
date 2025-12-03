@@ -29,10 +29,13 @@ class GoogleCloudFormatter(jsonlogger.JsonFormatter):
             
         return log_record
 
-def setup_logging() -> None:
+def setup_logging() -> logging.Logger:
     """
     Configures the root logger for structured JSON output.
     Idempotent: Safe to call multiple times, though typically called once at startup.
+    
+    Returns:
+        logging.Logger: The configured root logger instance.
     """
     root_logger = logging.getLogger()
     
@@ -85,3 +88,5 @@ def setup_logging() -> None:
         "📝 Logging initialized.", 
         extra={"configuration": "json", "environment": getattr(settings, "ENVIRONMENT", "UNKNOWN")}
     )
+    
+    return root_logger

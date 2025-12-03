@@ -88,8 +88,7 @@ class GeminiReportGenerator:
 
     async def generate(
         self, 
-        processed_files: List[ProcessedFile], 
-        additional_text: str = ""
+        processed_files: List[ProcessedFile]
     ) -> ReportResult:
         """
         Main entry point for report generation.
@@ -111,19 +110,33 @@ class GeminiReportGenerator:
             logger.info(f"Report Gen Start. Files: {len(processed_files)} | Cache: {use_cache}")
 
             # 2. Upload Vision Assets (PDFs/Images)
-            # We explicitly map the Pydantic models to what the service expects
-            # Note: Ideally refactor file_upload_service to accept ProcessedFile objects
-            # For now, convert back to dict for compatibility with existing services
-            file_dicts = [f.model_dump(by_alias=True) for f in processed_files]
+            # Create UploadCandidate objects for the new service API
+            upload_candidates = [
+                file_upload_service.UploadCandidate(
+                    file_path=f.gcs_uri or f.filename, # Fallback if gcs_uri is missing, though logic might need review
+                    mime_type=f.file_type,
+                    display_name=f.filename,
+                    is_vision_asset=(f.file_type != "application/json") # Simple heuristic, adjust as needed
+                )
+                for f in processed_files
+            ]
             
-            uploaded_files, uploaded_names, upload_errors = await file_upload_service.upload_vision_files(
-                self.client, file_dicts
+            # The new API returns a list of FileOperationResult objects
+            upload_results = await file_upload_service.upload_vision_files_batch(
+                self.client, upload_candidates
             )
 
+            # Process results
+            uploaded_files = [res.gemini_file for res in upload_results if res.success]
+            uploaded_names = [res.file_name for res in upload_results if res.success]
+            upload_errors = [res.error_message for res in upload_results if not res.success]
+
             # 3. Execute Generation Strategy (The "waterfall")
+            # Convert ProcessedFile back to dict for legacy service support in prompt builder
+            file_dicts = [f.model_dump(by_alias=True) for f in processed_files]
+            
             response = await self._execute_generation_strategy(
-                processed_files=file_dicts, # Legacy service support
-                additional_text=additional_text,
+                processed_files=file_dicts,
                 uploaded_files=uploaded_files,
                 upload_errors=upload_errors,
                 cache_name=cache_name
@@ -143,15 +156,24 @@ class GeminiReportGenerator:
             
         finally:
             # 6. Cleanup (Best Effort)
-            if uploaded_names:
+            # We need the actual file names (resource names) from the uploaded files for deletion
+            # The FileOperationResult.file_name is the display name, but we need the resource name for deletion?
+            # Wait, file_upload_service.delete_single_file takes `file_name`. 
+            # In the old code: `temp_uploaded_file_names_for_api.append(result.name)` which is the resource name (files/...)
+            # In the new code: `FileOperationResult` has `gemini_file` which has `.name`.
+            
+            resource_names_to_delete = [
+                f.name for f in uploaded_files if f and f.name
+            ]
+            
+            if resource_names_to_delete:
                 asyncio.create_task(
-                    self._cleanup_files_safely(uploaded_names)
+                    self._cleanup_files_safely(resource_names_to_delete)
                 )
 
     async def _execute_generation_strategy(
         self,
         processed_files: List[Dict],
-        additional_text: str,
         uploaded_files: List[Any],
         upload_errors: List[str],
         cache_name: Optional[str]
@@ -167,7 +189,6 @@ class GeminiReportGenerator:
         def get_prompt_parts(use_cache: bool):
             return prompt_builder_service.build_prompt_parts(
                 processed_files=processed_files,
-                additional_text=additional_text,
                 uploaded_file_objects=uploaded_files,
                 upload_error_messages=upload_errors,
                 use_cache=use_cache

@@ -1,28 +1,39 @@
-"""File upload service for managing Gemini File Service uploads and deletions."""
+"""
+Gemini File Service Manager.
+
+Handles secure upload, lifecycle management, and deletion of files within
+the Vertex AI/Gemini ecosystem. Enforces strict concurrency limits and
+robust error handling.
+"""
 
 import asyncio
 import logging
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import List, Optional, Sequence
 
 import httpx
 from google import genai
 from google.api_core import exceptions as google_exceptions
 from google.genai import types
 from tenacity import (
-    RetryError,
     retry,
     retry_if_exception_type,
     stop_after_attempt,
-    wait_fixed,
+    wait_exponential,
 )
 
 from app.core.config import settings
 
+# Configure Module Logger
 logger = logging.getLogger(__name__)
 
-RETRIABLE_GEMINI_EXCEPTIONS = (
-    google_exceptions.RetryError,
+# Constants
+MAX_CONCURRENT_UPLOADS = 5  # Prevent thread pool starvation
+MAX_CONCURRENT_DELETES = 10
+
+# Define Retriable Exceptions explicitly
+RETRIABLE_EXCEPTIONS = (
     google_exceptions.ServiceUnavailable,
     google_exceptions.DeadlineExceeded,
     google_exceptions.InternalServerError,
@@ -32,207 +43,186 @@ RETRIABLE_GEMINI_EXCEPTIONS = (
     httpx.PoolTimeout,
 )
 
+# --- Type Definitions ---
 
-async def upload_vision_file(
-    client: genai.Client, file_path: str, display_name: str, mime_type: str
-) -> Optional[types.File]:
-    """Uploads a single file for vision processing to Gemini.
+@dataclass(frozen=True)
+class UploadCandidate:
+    """Represents a file prepared for upload."""
+    file_path: str
+    mime_type: str
+    display_name: str
+    is_vision_asset: bool = True
+
+@dataclass(frozen=True)
+class FileOperationResult:
+    """Encapsulates the result of a file operation (upload/delete)."""
+    file_name: str
+    success: bool
+    gemini_file: Optional[types.File] = None
+    error_message: Optional[str] = None
+
+# --- Internal Helpers (Synchronous wrapper for Blocking I/O) ---
+
+@retry(
+    stop=stop_after_attempt(settings.LLM_API_RETRY_ATTEMPTS),
+    wait=wait_exponential(multiplier=1, min=settings.LLM_API_RETRY_WAIT_SECONDS, max=10),
+    retry=retry_if_exception_type(RETRIABLE_EXCEPTIONS),
+    reraise=True,
+)
+def _execute_blocking_upload(
+    client: genai.Client, 
+    path: str, 
+    config: types.UploadFileConfig
+) -> types.File:
+    """Executes the blocking upload call with retry logic."""
+    return client.files.upload(file=path, config=config)
+
+@retry(
+    stop=stop_after_attempt(settings.LLM_API_RETRY_ATTEMPTS),
+    wait=wait_exponential(multiplier=1, min=settings.LLM_API_RETRY_WAIT_SECONDS, max=10),
+    retry=retry_if_exception_type(RETRIABLE_EXCEPTIONS),
+    reraise=True,
+)
+def _execute_blocking_delete(client: genai.Client, file_name: str) -> None:
+    """Executes the blocking delete call with retry logic."""
+    client.files.delete(name=file_name)
+
+def _sanitize_path(path: str) -> str:
+    """Returns the basename of a path for logging to avoid PII leakage."""
+    return os.path.basename(path)
+
+# --- Public Async Interface ---
+
+async def upload_single_file(
+    client: genai.Client, 
+    candidate: UploadCandidate,
+    semaphore: asyncio.Semaphore
+) -> FileOperationResult:
+    """
+    Uploads a single file to Gemini with concurrency control.
 
     Args:
         client: The Gemini API client.
-        file_path: Path to the file to upload.
-        display_name: Display name for the uploaded file.
-        mime_type: MIME type of the file.
+        candidate: The file metadata object.
+        semaphore: Asyncio semaphore to limit concurrency.
 
     Returns:
-        Optional[types.File]: The uploaded File object, or None on error.
+        FileOperationResult indicating success or failure.
     """
-    try:
-        logger.debug(
-            f"Attempting to upload file {display_name} from path: {file_path} to Gemini."
-        )
-
-        upload_config = types.UploadFileConfig(
-            display_name=display_name,
-            mime_type=mime_type,
-        )
-
-        @retry(
-            stop=stop_after_attempt(settings.LLM_API_RETRY_ATTEMPTS),
-            wait=wait_fixed(settings.LLM_API_RETRY_WAIT_SECONDS),
-            retry=retry_if_exception_type(RETRIABLE_GEMINI_EXCEPTIONS),
-            reraise=True,
-        )
-        def _upload_file_with_retry():
-            return client.files.upload(file=file_path, config=upload_config)
-
-        uploaded_file = await asyncio.to_thread(_upload_file_with_retry)
-        logger.debug(
-            f"Successfully uploaded file {display_name} (URI: {uploaded_file.uri}) to Gemini."
-        )
-        return uploaded_file
-    except RetryError as re:
-        logger.error(
-            f"Failed to upload file {display_name} to Gemini after multiple retries: {re}",
-            exc_info=True,
-        )
-        return None
-    except Exception as e:
-        logger.error(
-            f"Failed to upload file {display_name} to Gemini: {e}",
-            exc_info=True,
-        )
-        return None
-
-
-async def upload_vision_files(
-    client: genai.Client, processed_files: List[Dict[str, Any]]
-) -> Tuple[List[types.File], List[str], List[str]]:
-    """Uploads all vision files from the processed files list.
-
-    Args:
-        client: The Gemini API client.
-        processed_files: List of processed file information dictionaries.
-
-    Returns:
-        Tuple containing:
-            - List of successfully uploaded File objects
-            - List of file names for API reference
-            - List of error messages for failed uploads
-    """
-    upload_coroutines = []
-    file_display_names = []
-
-    for file_info in processed_files:
-        if file_info.get("type") == "vision":
-            file_path = file_info.get("path")
-            mime_type_from_info = file_info.get("mime_type")
-            display_name = file_info.get(
-                "filename",
-                os.path.basename(file_path) if file_path else "uploaded_file",
+    safe_name = _sanitize_path(candidate.file_path)
+    
+    async with semaphore:
+        try:
+            logger.debug(f"Starting upload for: {candidate.display_name} ({safe_name})")
+            
+            upload_config = types.UploadFileConfig(
+                display_name=candidate.display_name,
+                mime_type=candidate.mime_type,
             )
-            if not file_path or not mime_type_from_info:
-                logger.warning(
-                    f"Skipping vision file due to missing path or mime_type: {file_info}"
-                )
-                continue
 
-            upload_coroutines.append(
-                upload_vision_file(client, file_path, display_name, mime_type_from_info)
+            # Offload blocking I/O to a thread
+            uploaded_file = await asyncio.to_thread(
+                _execute_blocking_upload, 
+                client, 
+                candidate.file_path, 
+                upload_config
             )
-            file_display_names.append(display_name)
 
-    uploaded_file_objects: List[types.File] = []
-    temp_uploaded_file_names_for_api: List[str] = []
-    error_messages: List[str] = []
+            logger.info(f"Upload success: {candidate.display_name} -> {uploaded_file.uri}")
+            return FileOperationResult(
+                file_name=candidate.display_name,
+                success=True,
+                gemini_file=uploaded_file
+            )
 
-    if upload_coroutines:
-        logger.info(
-            f"Starting upload of {len(upload_coroutines)} vision files to Gemini."
-        )
-        upload_results = await asyncio.gather(
-            *upload_coroutines, return_exceptions=False
-        )
-        successful_uploads = 0
-        failed_uploads = 0
+        except Exception as e:
+            # We catch generic Exception here because the retry logic handled the specific ones.
+            # If we are here, retries were exhausted or a non-retriable error occurred.
+            error_msg = f"Upload failed for {candidate.display_name}: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return FileOperationResult(
+                file_name=candidate.display_name,
+                success=False,
+                error_message=error_msg
+            )
 
-        for idx, result in enumerate(upload_results):
-            display_name = file_display_names[idx]
-            if isinstance(result, types.File):
-                uploaded_file_objects.append(result)
-                temp_uploaded_file_names_for_api.append(result.name)
-                successful_uploads += 1
-            else:
-                error_messages.append(
-                    f"\n\n[AVVISO: Il file {display_name} non ha potuto essere caricato per l'analisi.]\n\n"
-                )
-                failed_uploads += 1
-
-        logger.info(
-            f"Finished uploading vision files to Gemini. {successful_uploads} succeeded, {failed_uploads} failed."
-        )
-
-    return uploaded_file_objects, temp_uploaded_file_names_for_api, error_messages
-
-
-async def delete_uploaded_file(client: genai.Client, file_name: str) -> bool:
-    """Deletes a single uploaded file from Gemini File Service.
+async def upload_vision_files_batch(
+    client: genai.Client, 
+    files: Sequence[UploadCandidate]
+) -> List[FileOperationResult]:
+    """
+    Uploads a batch of vision files to Gemini.
 
     Args:
         client: The Gemini API client.
-        file_name: Name of the file to delete.
+        files: Sequence of UploadCandidate objects.
 
     Returns:
-        bool: True if deletion succeeded, False otherwise.
+        List of FileOperationResult objects.
     """
-    try:
-        logger.debug(
-            f"Attempting to delete uploaded file {file_name} from Gemini File Service."
-        )
+    if not files:
+        return []
 
-        @retry(
-            stop=stop_after_attempt(settings.LLM_API_RETRY_ATTEMPTS),
-            wait=wait_fixed(settings.LLM_API_RETRY_WAIT_SECONDS),
-            retry=retry_if_exception_type(RETRIABLE_GEMINI_EXCEPTIONS),
-            reraise=True,
-        )
-        def _delete_file_with_retry():
-            client.files.delete(name=file_name)
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_UPLOADS)
+    
+    # Filter only vision assets if mixed types are passed, strictly checking existence
+    valid_candidates = [
+        f for f in files 
+        if f.is_vision_asset and os.path.exists(f.file_path)
+    ]
+    
+    if len(valid_candidates) < len(files):
+        logger.warning(f"Skipped {len(files) - len(valid_candidates)} invalid or non-vision files.")
 
-        await asyncio.to_thread(_delete_file_with_retry)
-        logger.debug(f"Successfully deleted file {file_name} from Gemini File Service.")
-        return True
-    except google_exceptions.NotFound:
-        logger.warning(
-            f"File {file_name} not found for deletion, or already deleted.",
-            exc_info=False,
-        )
-        return False
-    except RetryError as re:
-        logger.error(
-            f"Failed to delete file {file_name} from Gemini after multiple retries: {re}",
-            exc_info=True,
-        )
-        return False
-    except Exception as e:
-        logger.error(
-            f"Failed to delete file {file_name} from Gemini: {e}",
-            exc_info=True,
-        )
-        return False
+    tasks = [
+        upload_single_file(client, candidate, semaphore) 
+        for candidate in valid_candidates
+    ]
 
+    logger.info(f"Dispatching {len(tasks)} file uploads to Gemini.")
+    results = await asyncio.gather(*tasks)
+    
+    return list(results)
+
+async def delete_single_file(
+    client: genai.Client, 
+    file_name: str,
+    semaphore: asyncio.Semaphore
+) -> bool:
+    """Deletes a single file with concurrency control."""
+    async with semaphore:
+        try:
+            await asyncio.to_thread(_execute_blocking_delete, client, file_name)
+            logger.debug(f"Deleted file: {file_name}")
+            return True
+        except google_exceptions.NotFound:
+            logger.warning(f"File not found during deletion: {file_name}")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to delete {file_name}: {e}", exc_info=True)
+            return False
 
 async def cleanup_uploaded_files(
-    client: genai.Client, file_names: List[str]
-) -> Tuple[int, int]:
-    """Deletes multiple uploaded files from Gemini File Service.
-
-    Args:
-        client: The Gemini API client.
-        file_names: List of file names to delete.
+    client: genai.Client, 
+    file_names: List[str]
+) -> tuple[int, int]:
+    """
+    Deletes multiple uploaded files from Gemini File Service.
 
     Returns:
-        Tuple containing (successful_deletions, failed_deletions).
+        Tuple[int, int]: (successful_deletions, failed_deletions)
     """
     if not file_names:
         return 0, 0
 
-    logger.info(
-        f"Cleaning up {len(file_names)} uploaded files from Gemini File Service."
-    )
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_DELETES)
+    tasks = [delete_single_file(client, name, semaphore) for name in file_names]
 
-    delete_tasks = [delete_uploaded_file(client, name) for name in file_names]
+    logger.info(f"Cleaning up {len(tasks)} files from Gemini.")
+    results = await asyncio.gather(*tasks)
 
-    logger.info(
-        f"Starting deletion of {len(delete_tasks)} files from Gemini File Service."
-    )
-    delete_results = await asyncio.gather(*delete_tasks)
-
-    successful_deletions = sum(1 for success in delete_results if success)
-    failed_deletions = len(delete_results) - successful_deletions
-
-    logger.info(
-        f"Finished deleting files from Gemini. {successful_deletions} deleted, {failed_deletions} failed or not found."
-    )
-
-    return successful_deletions, failed_deletions
+    success_count = sum(results)
+    fail_count = len(results) - success_count
+    
+    logger.info(f"Cleanup complete: {success_count} deleted, {fail_count} failed.")
+    return success_count, fail_count
