@@ -14,7 +14,7 @@ import { handleApiError } from "@/lib/error";
 import { useInterval } from "@/hooks/useInterval";
 import { DocumentItem } from "@/components/cases/DocumentItem";
 import { VersionItem, TemplateType } from "@/components/cases/VersionItem";
-import { api } from "@/lib/api";
+import { api, API_URL } from "@/lib/api";
 
 export default function CaseWorkspace() {
     const { id } = useParams();
@@ -29,7 +29,8 @@ export default function CaseWorkspace() {
     const docInputRef = useRef<HTMLInputElement>(null);
     const finalInputRef = useRef<HTMLInputElement>(null);
 
-    const API = process.env.NEXT_PUBLIC_API_URL;
+    // REMOVE THIS LINE: const API = process.env.NEXT_PUBLIC_API_URL;
+    // Use API_URL imported above instead.
 
 
     // ... inside component ...
@@ -115,7 +116,7 @@ export default function CaseWorkspace() {
         try {
             const token = await getToken();
             // 1. Get Signed URL
-            const signRes = await axios.post(`${API}/api/cases/${id}/documents/upload-url`,
+            const signRes = await axios.post(`${API_URL}/api/cases/${id}/documents/upload-url`,
                 { filename: file.name, content_type: file.type },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
@@ -126,7 +127,7 @@ export default function CaseWorkspace() {
             });
 
             // 3. Register & Update State Locally
-            const res = await axios.post<Document>(`${API}/api/cases/${id}/documents/register`,
+            const res = await axios.post<Document>(`${API_URL}/api/cases/${id}/documents/register`,
                 { filename: file.name, gcs_path: signRes.data.gcs_path },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
@@ -149,7 +150,7 @@ export default function CaseWorkspace() {
         setGenerating(true);
         try {
             const token = await getToken();
-            await axios.post(`${API}/api/cases/${id}/generate`, {}, {
+            await axios.post(`${API_URL}/api/cases/${id}/generate`, {}, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             toast.success("Generazione avviata! Il sistema ti avviserà al termine.");
@@ -176,7 +177,7 @@ export default function CaseWorkspace() {
         try {
             const token = await getToken();
             const res = await axios.post(
-                `${API}/api/cases/${id}/versions/${v.id}/download`,
+                `${API_URL}/api/cases/${id}/versions/${v.id}/download`,
                 { template_type: template },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
@@ -184,7 +185,7 @@ export default function CaseWorkspace() {
         } catch (e) {
             handleApiError(e, "Errore durante il download");
         }
-    }, [API, id, getToken]);
+    }, [id, getToken]);
 
     const handleFinalize = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files?.length) return;
@@ -193,14 +194,14 @@ export default function CaseWorkspace() {
 
         try {
             const token = await getToken();
-            const signRes = await axios.post(`${API}/api/cases/${id}/documents/upload-url`,
+            const signRes = await axios.post(`${API_URL}/api/cases/${id}/documents/upload-url`,
                 { filename: `FINAL_${file.name}`, content_type: file.type },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
 
             await axios.put(signRes.data.upload_url, file, { headers: { "Content-Type": file.type } });
 
-            const res = await axios.post<ReportVersion>(`${API}/api/cases/${id}/finalize`,
+            const res = await axios.post<ReportVersion>(`${API_URL}/api/cases/${id}/finalize`,
                 { final_docx_path: signRes.data.gcs_path },
                 { headers: { Authorization: `Bearer ${token}` } }
             );

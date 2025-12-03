@@ -10,7 +10,12 @@ import {
 } from "@/types";
 
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || "").replace(/^http:\/\//, "https://");
+// FORCE HTTPS: This ensures that even if the build environment passes http://, 
+// the browser will always upgrade it to https://
+export const API_URL = (process.env.NEXT_PUBLIC_API_URL || "")
+    .trim()
+    .replace(/^http:\/\//, "https://")
+    .replace(/\/$/, ""); // Remove trailing slash if present
 
 export class ApiError extends Error {
     constructor(message: string, public status?: number) {
