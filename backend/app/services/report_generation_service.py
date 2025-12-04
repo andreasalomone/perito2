@@ -9,7 +9,8 @@ import logging
 import json
 from datetime import datetime
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text, select
 from uuid import UUID
 from google.cloud import tasks_v2
 from sqlalchemy.exc import IntegrityError
@@ -20,7 +21,7 @@ from app.services.gcs_service import get_storage_client, download_file_to_temp
 from app.core.config import settings
 from app.services import document_processor, llm_handler, docx_generator, case_service
 from app.services.llm_handler import gemini_generator, ProcessedFile
-from app.db.database import SessionLocal
+from app.db.database import AsyncSessionLocal
 
 import threading
 
@@ -31,46 +32,52 @@ download_semaphore = threading.Semaphore(5)
 
 async def run_generation_task(case_id: str, organization_id: str):
     """
-    Wrapper for background execution that manages its own DB session.
-    Now calls generate_report_logic instead of process_case_logic.
+    Wrapper for background execution that manages its own ASYNC DB session.
+    Uses AsyncSessionLocal for proper async database operations.
     """
-    db = SessionLocal()
-    try:
-        # FIX: Manually set RLS context for the background session
-        # Without this, RLS policies will hide the rows from the worker
-        db.execute(
-            text("SELECT set_config('app.current_org_id', :org_id, false)"), 
-            {"org_id": organization_id}
-        )
-        
-        await generate_report_logic(case_id, organization_id, db)
-    finally:
-        db.close()
+    async with AsyncSessionLocal() as db:
+        try:
+            # Set RLS context for the background session (async style)
+            await db.execute(
+                text("SELECT set_config('app.current_org_id', :org_id, false)"), 
+                {"org_id": organization_id}
+            )
+            
+            await generate_report_logic(case_id, organization_id, db)
+        except Exception as e:
+            logger.error(f"Async generation task failed: {e}")
+            await db.rollback()
+            raise
 
 async def run_process_case_logic_standalone(case_id: str, organization_id: str):
     """
-    Wrapper for background execution that manages its own DB session.
+    Wrapper for background execution that manages its own ASYNC DB session.
     Used by Cloud Tasks to process cases safely without sharing sessions across threads.
     """
-    db = SessionLocal()
-    try:
-        # FIX: Manually set RLS context for the background session
-        db.execute(
-            text("SELECT set_config('app.current_org_id', :org_id, false)"), 
-            {"org_id": organization_id}
-        )
-        
-        await process_case_logic(case_id, organization_id, db)
-    finally:
-        db.close()
+    async with AsyncSessionLocal() as db:
+        try:
+            # Set RLS context for the background session (async style)
+            await db.execute(
+                text("SELECT set_config('app.current_org_id', :org_id, false)"), 
+                {"org_id": organization_id}
+            )
+            
+            await process_case_logic(case_id, organization_id, db)
+        except Exception as e:
+            logger.error(f"Async case processing task failed: {e}")
+            await db.rollback()
+            raise
 
-async def process_case_logic(case_id: str, organization_id: str, db: Session):
+async def process_case_logic(case_id: str, organization_id: str, db: AsyncSession):
     """
     Phase 1: Dispatch Tasks
     Iterates all documents and dispatches a 'process-document' Cloud Task for each.
     """
     # 1. Setup - Get Case with locking to prevent race conditions
-    case = db.query(Case).filter(Case.id == case_id).with_for_update().first()
+    result = await db.execute(
+        select(Case).filter(Case.id == case_id).with_for_update()
+    )
+    case = result.scalars().first()
     if not case:
         logger.error(f"Case {case_id} not found in DB")
         return
@@ -82,10 +89,13 @@ async def process_case_logic(case_id: str, organization_id: str, db: Session):
 
     # Update status to processing
     case.status = CaseStatus.PROCESSING
-    db.commit()
+    await db.commit()
 
     # 2. Fetch Documents
-    documents = db.query(Document).filter(Document.case_id == case_id).all()
+    result = await db.execute(
+        select(Document).filter(Document.case_id == case_id)
+    )
+    documents = result.scalars().all()
     if not documents:
         logger.warning(f"No documents found for case {case_id}")
         return
@@ -154,7 +164,7 @@ async def trigger_generation_task(case_id: str, organization_id: str):
         raise
 
 
-async def generate_report_logic(case_id: str, organization_id: str, db: Session):
+async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSession):
     """
     Phase 2: Generation
     Called when all documents are processed.
@@ -163,7 +173,10 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
     3. Creates Version 1.
     """
     # 1. Fetch case
-    case = db.query(Case).filter(Case.id == case_id).with_for_update().first()
+    result = await db.execute(
+        select(Case).filter(Case.id == case_id).with_for_update()
+    )
+    case = result.scalars().first()
     if not case:
         logger.error(f"Case {case_id} not found")
         return
@@ -175,26 +188,32 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
     # We rely on case_service's strict locking to ensure only one task is triggered.
 
     # IDEMPOTENCY CHECK: Check if report already exists
-    existing_report = db.query(ReportVersion).filter(
-        ReportVersion.case_id == case_id,
-        ReportVersion.version_number == 1
-    ).first()
+    result = await db.execute(
+        select(ReportVersion).filter(
+            ReportVersion.case_id == case_id,
+            ReportVersion.version_number == 1
+        )
+    )
+    existing_report = result.scalars().first()
     
     if existing_report:
         logger.info(f"Report for case {case_id} already exists. Aborting duplicate generation.")
         # Ensure status is correct
         if case.status != CaseStatus.OPEN:
             case.status = CaseStatus.OPEN
-            db.commit()
+            await db.commit()
         return
 
     # Set granular status
     case.status = CaseStatus.GENERATING
-    db.commit()
+    await db.commit()
 
     # --- INVARIANT CHECK ---
     # Re-fetch documents to get latest status
-    all_docs = db.query(Document).filter(Document.case_id == case_id).all()
+    result = await db.execute(
+        select(Document).filter(Document.case_id == case_id)
+    )
+    all_docs = result.scalars().all()
     
     # Check if all documents are processed
     pending_docs = [d for d in all_docs if d.ai_status not in [ExtractionStatus.SUCCESS.value, ExtractionStatus.ERROR.value, ExtractionStatus.SKIPPED.value]]
@@ -207,7 +226,7 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
     if not has_completed_docs:
         logger.error(f"Cannot generate report for case {case_id}: No successfully processed documents found (all failed or empty).")
         case.status = CaseStatus.ERROR
-        db.commit()
+        await db.commit()
         # STOP RETRIES: Return gracefully as this is an unrecoverable data state.
         # Raising an error would cause Cloud Tasks to retry indefinitely.
         return
@@ -218,12 +237,12 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
     
     # CRITICAL FIX: Release the lock before starting long-running AI operations.
     # This prevents DB connection starvation and deadlocks.
-    db.commit()
+    await db.commit()
     # -----------------------
 
     # CRITICAL FIX: Release the lock before starting long-running AI operations.
     # This prevents DB connection starvation and deadlocks.
-    db.commit()
+    await db.commit()
     # -----------------------
 
     processed_data_for_llm = []
@@ -233,7 +252,10 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
     try:
         # 1. Fetch Processed Data (Re-query as we released the session)
         # Note: We don't need a lock here as we are just reading data for the prompt.
-        documents = db.query(Document).filter(Document.case_id == case_id).all()
+        result = await db.execute(
+            select(Document).filter(Document.case_id == case_id)
+        )
+        documents = result.scalars().all()
         if documents:
              pass
         for doc in documents:
@@ -339,7 +361,10 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
 
         # 5. Save Version 1
         # Re-acquire Lock to save the result safely
-        case = db.query(Case).filter(Case.id == case_id).with_for_update().first()
+        result = await db.execute(
+            select(Case).filter(Case.id == case_id).with_for_update()
+        )
+        case = result.scalars().first()
         
         # Defensive: Check if state changed while we were away (e.g. user cancelled, or error)
         if not case:
@@ -349,10 +374,13 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
         if case.status == "error":
              logger.warning("Case marked as error by another process during generation. Overwriting with success.")
         
-        v1 = db.query(ReportVersion).filter(
-            ReportVersion.case_id == case_id, 
-            ReportVersion.version_number == 1
-        ).first()
+        result = await db.execute(
+            select(ReportVersion).filter(
+                ReportVersion.case_id == case_id, 
+                ReportVersion.version_number == 1
+            )
+        )
+        v1 = result.scalars().first()
         
         if not v1:
             v1 = ReportVersion(
@@ -370,10 +398,10 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
             
         case.status = CaseStatus.OPEN
         try:
-            db.commit()
+            await db.commit()
             logger.info("✅ Case processing completed successfully. Version 1 created.")
         except IntegrityError:
-            db.rollback()
+            await db.rollback()
             logger.error(f"IntegrityError saving Version 1 for case {case_id}. Likely race condition.")
             raise
 
@@ -381,10 +409,13 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
         logger.error(f"❌ Error during generation: {e}", exc_info=True)
         # Re-acquire lock to set error state
         try:
-            case = db.query(Case).filter(Case.id == case_id).with_for_update().first()
+            result = await db.execute(
+                select(Case).filter(Case.id == case_id).with_for_update()
+            )
+            case = result.scalars().first()
             if case:
                 case.status = CaseStatus.ERROR
-                db.commit()
+                await db.commit()
         except Exception as db_e:
             logger.error(f"Failed to update case status to error: {db_e}")
             

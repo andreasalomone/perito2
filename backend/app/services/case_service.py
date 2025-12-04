@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text, select
 from uuid import UUID
 from app.models import Case, ReportVersion, MLTrainingPair, Document, Client
 from app.schemas.enums import ExtractionStatus, CaseStatus
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 from sqlalchemy.exc import IntegrityError
-from app.db.database import SessionLocal
+from app.db.database import SessionLocal, AsyncSessionLocal
 
 def get_or_create_client(db: Session, name: str, organization_id: UUID) -> Client:
     # 1. Try to find existing within this organization
@@ -223,27 +224,32 @@ def trigger_case_processing_task(case_id: str, org_id: str):
 
 async def run_process_document_extraction_standalone(doc_id: UUID, org_id: str):
     """
-    Wrapper for background execution that manages its own DB session.
+    Wrapper for background execution that manages its own ASYNC DB session.
     Used by Cloud Tasks to process documents safely without sharing sessions across threads.
     """
-    db = SessionLocal()
-    try:
-        # FIX: Manually set RLS context for the background session
-        db.execute(
-            text("SELECT set_config('app.current_org_id', :org_id, false)"), 
-            {"org_id": org_id}
-        )
-        
-        await process_document_extraction(doc_id, org_id, db)
-    finally:
-        db.close()
+    async with AsyncSessionLocal() as db:
+        try:
+            # Set RLS context for the background session (async style)
+            await db.execute(
+                text("SELECT set_config('app.current_org_id', :org_id, false)"), 
+                {"org_id": org_id}
+            )
+            
+            await process_document_extraction(doc_id, org_id, db)
+        except Exception as e:
+            logger.error(f"Async extraction task failed: {e}")
+            await db.rollback()
+            raise
 
-async def process_document_extraction(doc_id: UUID, org_id: str, db: Session):
+async def process_document_extraction(doc_id: UUID, org_id: str, db: AsyncSession):
     """
     Actual logic to process the document (Download -> Extract -> Save).
     """
     
-    doc = db.query(Document).filter(Document.id == doc_id).first()
+    result = await db.execute(
+        select(Document).filter(Document.id == doc_id)
+    )
+    doc = result.scalars().first()
     if not doc:
         return
     
@@ -262,13 +268,13 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: Session):
                 
             # 3. Save to DB
             doc.ai_status = ExtractionStatus.SUCCESS.value
-            db.commit()
+            await db.commit()
             logger.info(f"Extraction complete for {doc.id}")
             
         except Exception as e:
             logger.error(f"Error extracting document {doc.id}: {e}")
             doc.ai_status = ExtractionStatus.ERROR.value
-            db.commit()
+            await db.commit()
         finally:
             shutil.rmtree(tmp_dir)
 
@@ -317,13 +323,16 @@ def _perform_extraction_logic(doc: Document, tmp_dir: str):
     doc.ai_extracted_data = processed
 
 
-async def _check_and_trigger_generation(db: Session, case_id: UUID, org_id: str, is_async: bool = True):
+async def _check_and_trigger_generation(db: AsyncSession, case_id: UUID, org_id: str, is_async: bool = True):
     """
     Checks if all documents are processed and triggers generation if so.
     """
     try:
         # Lock the Case immediately
-        case = db.query(Case).filter(Case.id == case_id).with_for_update().first()
+        result = await db.execute(
+            select(Case).filter(Case.id == case_id).with_for_update()
+        )
+        case = result.scalars().first()
         
         # Check if we are already generating to fail fast
         if case.status == CaseStatus.GENERATING:
@@ -331,7 +340,10 @@ async def _check_and_trigger_generation(db: Session, case_id: UUID, org_id: str,
             return
 
         # Re-query all docs inside this locked transaction
-        all_docs = db.query(Document).filter(Document.case_id == case_id).all()
+        result = await db.execute(
+            select(Document).filter(Document.case_id == case_id)
+        )
+        all_docs = result.scalars().all()
         
         # Check if all documents are processed (SUCCESS, ERROR, or SKIPPED)
         pending_docs = [d for d in all_docs if d.ai_status not in [ExtractionStatus.SUCCESS.value, ExtractionStatus.ERROR.value, ExtractionStatus.SKIPPED.value]]
@@ -365,7 +377,7 @@ async def _check_and_trigger_generation(db: Session, case_id: UUID, org_id: str,
                 # 3. Atomic Commit
                 # If this fails, BOTH the status update and the message insert are rolled back.
                 # No Zombie state is possible.
-                db.commit()
+                await db.commit()
                 
                 # 4. Attempt Immediate Dispatch (Best Effort / Optimization)
                 # We try to send it now for speed. If this fails, the background poller will catch it.
@@ -382,13 +394,13 @@ async def _check_and_trigger_generation(db: Session, case_id: UUID, org_id: str,
                     logger.info("Skipping immediate dispatch in sync mode (will be picked up by poller)")
 
             except Exception as e:
-                db.rollback()
+                await db.rollback()
                 logger.error(f"Error checking case completion: {e}")
                 raise e
             
     except Exception as e:
         # Rollback in case of error during the lock/check
-        db.rollback()
+        await db.rollback()
         logger.error(f"Error checking case completion: {e}")
         # Re-raise to ensure Cloud Tasks retries
         raise e
