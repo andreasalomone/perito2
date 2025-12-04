@@ -10,7 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.db.database import get_db
+from app.db.database import get_raw_db as get_db
 from app.models import Case, Document
 from app.services import report_generation_service, case_service
 

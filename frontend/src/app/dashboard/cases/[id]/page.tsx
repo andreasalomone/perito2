@@ -44,8 +44,11 @@ export default function CaseWorkspace() {
             const token = await getToken();
             // 1. Get Signed URL
             const signRes = await axios.post(`${API_URL}/api/cases/${caseId}/documents/upload-url`,
-                { filename: file.name, content_type: file.type },
-                { headers: { Authorization: `Bearer ${token}` } }
+                null,
+                {
+                    headers: { Authorization: `Bearer ${token}` },
+                    params: { filename: file.name, content_type: file.type }
+                }
             );
 
             // 2. Upload to GCS
@@ -110,8 +113,11 @@ export default function CaseWorkspace() {
         try {
             const token = await getToken();
             const signRes = await axios.post(`${API_URL}/api/cases/${caseId}/documents/upload-url`,
-                { filename: `FINAL_${file.name}`, content_type: file.type },
-                { headers: { Authorization: `Bearer ${token}` } }
+                null,
+                {
+                    headers: { Authorization: `Bearer ${token}` },
+                    params: { filename: `FINAL_${file.name}`, content_type: file.type }
+                }
             );
 
             await axios.put(signRes.data.upload_url, file, { headers: { "Content-Type": file.type } });

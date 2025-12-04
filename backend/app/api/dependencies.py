@@ -9,7 +9,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from app.db.database import get_db as get_raw_db
+from app.db.database import get_raw_db
 from app.models import User
 from app.core.config import settings
 

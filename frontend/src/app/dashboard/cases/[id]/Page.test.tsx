@@ -28,7 +28,7 @@ const mockCase = {
     status: "OPEN",
     created_at: "2023-01-01T00:00:00Z", // Added missing field
     documents: [
-        { id: "d1", filename: "doc1.pdf", ai_status: "COMPLETED", created_at: "2023-01-01T00:00:00Z" }, // Added missing field
+        { id: "d1", filename: "doc1.pdf", ai_status: "SUCCESS", created_at: "2023-01-01T00:00:00Z" }, // Added missing field
         { id: "d2", filename: "doc2.pdf", ai_status: "PROCESSING", created_at: "2023-01-01T00:00:00Z" }  // Added missing field
     ],
     report_versions: [

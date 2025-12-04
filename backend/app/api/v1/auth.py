@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user_token
-from app.db.database import get_db
+from app.api.dependencies import get_db
 from app.models import AllowedEmail, User
 from app.schemas.enums import UserRole
 
