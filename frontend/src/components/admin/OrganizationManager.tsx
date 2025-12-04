@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,12 +9,7 @@ import { useAuth } from "@/context/AuthContext";
 import axios from "axios";
 import { toast } from "sonner";
 import { Loader2, Building2, Plus } from "lucide-react";
-
-interface Organization {
-    id: string;
-    name: string;
-    created_at: string;
-}
+import { useOrganizations } from "@/hooks/useOrganizations";
 
 interface Props {
     onSelectOrganization: (orgId: string) => void;
@@ -22,32 +17,10 @@ interface Props {
 
 export default function OrganizationManager({ onSelectOrganization }: Props) {
     const { getToken } = useAuth();
-    const [organizations, setOrganizations] = useState<Organization[]>([]);
-    const [loading, setLoading] = useState(true);
+    const { organizations, isLoading: loading, mutate } = useOrganizations();
     const [creating, setCreating] = useState(false);
     const [newOrgName, setNewOrgName] = useState("");
     const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
-
-    useEffect(() => {
-        fetchOrganizations();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Only run on mount
-
-    const fetchOrganizations = async () => {
-        try {
-            const token = await getToken();
-            const response = await axios.get(
-                `${process.env.NEXT_PUBLIC_API_URL}/api/admin/organizations`,
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
-            setOrganizations(response.data);
-        } catch (error) {
-            console.error("Error fetching organizations:", error);
-            toast.error("Failed to load organizations");
-        } finally {
-            setLoading(false);
-        }
-    };
 
     const handleCreateOrg = async () => {
         if (!newOrgName.trim()) {
@@ -65,7 +38,7 @@ export default function OrganizationManager({ onSelectOrganization }: Props) {
             );
             toast.success("Organization created successfully");
             setNewOrgName("");
-            fetchOrganizations();
+            mutate(); // Refresh list
         } catch (error: any) {
             console.error("Error creating organization:", error);
             toast.error(error.response?.data?.detail || "Failed to create organization");
@@ -139,3 +112,4 @@ export default function OrganizationManager({ onSelectOrganization }: Props) {
         </Card>
     );
 }
+

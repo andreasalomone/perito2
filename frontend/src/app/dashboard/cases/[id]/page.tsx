@@ -167,7 +167,7 @@ export default function CaseWorkspace() {
                     <h1 className="text-3xl font-bold tracking-tight">{caseData.reference_code}</h1>
                     <p className="text-muted-foreground">Cliente: <span className="font-medium text-foreground">{caseData.client_name || "N/A"}</span></p>
                 </div>
-                <Badge variant={caseData.status === "open" ? "default" : "secondary"} className="text-sm px-3 py-1">
+                <Badge variant={caseData.status === "OPEN" ? "default" : "secondary"} className="text-sm px-3 py-1">
                     {caseData.status.toUpperCase()}
                 </Badge>
             </div>

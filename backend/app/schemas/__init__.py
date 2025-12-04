@@ -6,14 +6,18 @@ from enum import Enum
 
 # --- ENUMS ---
 class AIStatus(str, Enum):
-    PENDING = "pending"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    ERROR = "error"
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    ERROR = "ERROR"
 
 class CaseStatus(str, Enum):
-    OPEN = "open"
-    CLOSED = "closed"
+    OPEN = "OPEN"
+    CLOSED = "CLOSED"
+    ARCHIVED = "ARCHIVED"
+    GENERATING = "GENERATING"
+    PROCESSING = "PROCESSING"
+    ERROR = "ERROR"
 
 # --- BASE ---
 class CaseBase(BaseModel):

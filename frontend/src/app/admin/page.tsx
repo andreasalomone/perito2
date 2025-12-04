@@ -2,49 +2,31 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, ShieldAlert } from "lucide-react";
 import OrganizationManager from "@/components/admin/OrganizationManager";
 import UserInviteManager from "@/components/admin/UserInviteManager";
-import axios from "axios";
+import { useOrganizations } from "@/hooks/useOrganizations";
 
 export default function AdminPage() {
-    const { user, loading, getToken } = useAuth();
+    const { user, loading: authLoading } = useAuth();
     const router = useRouter();
-    const [isSuperadmin, setIsSuperadmin] = useState(false);
-    const [checking, setChecking] = useState(true);
     const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
 
+    // We use the organizations list fetch as a proxy for "Is Superadmin?" check.
+    // If it fails (403), the user is not a superadmin.
+    const { isLoading: orgsLoading, isError } = useOrganizations();
+
+    // Redirect if not logged in
     useEffect(() => {
-        const checkSuperadminAccess = async () => {
-            if (!user) {
-                router.push("/");
-                return;
-            }
-
-            try {
-                const token = await getToken();
-                // Try to access a superadmin endpoint to verify
-                await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/organizations`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                setIsSuperadmin(true);
-            } catch (error) {
-                console.error("Superadmin access check failed:", error);
-                setIsSuperadmin(false);
-            } finally {
-                setChecking(false);
-            }
-        };
-
-        if (!loading) {
-            checkSuperadminAccess();
+        if (!authLoading && !user) {
+            router.push("/");
         }
-    }, [user, loading, getToken, router]);
+    }, [user, authLoading, router]);
 
-    if (loading || checking) {
+    if (authLoading || (user && orgsLoading)) {
         return (
             <div className="flex h-screen w-full items-center justify-center bg-background">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -52,7 +34,7 @@ export default function AdminPage() {
         );
     }
 
-    if (!isSuperadmin) {
+    if (isError) {
         return (
             <div className="flex min-h-screen items-center justify-center bg-background p-4">
                 <Card className="w-full max-w-md">

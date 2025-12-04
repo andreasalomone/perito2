@@ -8,17 +8,17 @@ import { Loader2, CheckCircle, AlertCircle, Clock, File as FileIcon } from "luci
 export const DocumentItem = memo(({ doc }: { doc: Document }) => {
     const getStatusColor = (status: string) => {
         switch (status) {
-            case "completed": return "default"; // Black/Primary
-            case "processing": return "secondary"; // Gray
-            case "error": return "destructive"; // Red
+            case "COMPLETED": return "default"; // Black/Primary
+            case "PROCESSING": return "secondary"; // Gray
+            case "ERROR": return "destructive"; // Red
             default: return "outline";
         }
     };
 
     const getStatusIcon = (status: string) => {
-        if (status === "processing") return <Loader2 className="h-3 w-3 animate-spin mr-1" />;
-        if (status === "completed") return <CheckCircle className="h-3 w-3 mr-1" />;
-        if (status === "error") return <AlertCircle className="h-3 w-3 mr-1" />;
+        if (status === "PROCESSING") return <Loader2 className="h-3 w-3 animate-spin mr-1" />;
+        if (status === "COMPLETED") return <CheckCircle className="h-3 w-3 mr-1" />;
+        if (status === "ERROR") return <AlertCircle className="h-3 w-3 mr-1" />;
         return <Clock className="h-3 w-3 mr-1" />;
     };
 

@@ -5,7 +5,7 @@ import { z } from "zod";
 export const DocumentSchema = z.object({
     id: z.string(),
     filename: z.string(),
-    ai_status: z.enum(["pending", "processing", "completed", "error"]),
+    ai_status: z.enum(["PENDING", "PROCESSING", "COMPLETED", "ERROR"]),
     created_at: z.string()
 });
 export type Document = z.infer<typeof DocumentSchema>;
@@ -23,7 +23,7 @@ export const CaseBaseSchema = z.object({
     id: z.string(),
     reference_code: z.string(),
     client_name: z.string().optional().nullable(), // Handle Python None
-    status: z.enum(["open", "closed", "processing", "generating", "error"]),
+    status: z.enum(["OPEN", "CLOSED", "PROCESSING", "GENERATING", "ERROR"]),
     created_at: z.string(),
 });
 
@@ -41,7 +41,7 @@ export type CaseDetail = z.infer<typeof CaseDetailSchema>;
 // Lightweight status for polling
 export const CaseStatusSchema = z.object({
     id: z.string(),
-    status: z.enum(["open", "closed", "processing", "generating", "error"]),
+    status: z.enum(["OPEN", "CLOSED", "PROCESSING", "GENERATING", "ERROR"]),
     documents: z.array(DocumentSchema),
     is_generating: z.boolean()
 });

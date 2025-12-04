@@ -230,7 +230,7 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: Session):
     
     # FIX: Idempotency Check - Skip extraction if already processed
     # This prevents expensive re-downloads and re-extractions on Cloud Tasks retries
-    if doc.ai_status == "processed":
+    if doc.ai_status == ExtractionStatus.PROCESSING:
         logger.info(f"Document {doc.id} already processed. Skipping extraction, proceeding to Fan-In check.")
         # Skip to Fan-In check at the end of this function
     else:
@@ -242,13 +242,13 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: Session):
                 await asyncio.to_thread(_perform_extraction_logic, doc, tmp_dir)
                 
             # 3. Save to DB
-            doc.ai_status = "processed"
+            doc.ai_status = ExtractionStatus.PROCESSING
             db.commit()
             logger.info(f"Extraction complete for {doc.id}")
             
         except Exception as e:
             logger.error(f"Error extracting document {doc.id}: {e}")
-            doc.ai_status = "error"
+            doc.ai_status = ExtractionStatus.ERROR
             db.commit()
         finally:
             shutil.rmtree(tmp_dir)
@@ -307,14 +307,14 @@ async def _check_and_trigger_generation(db: Session, case_id: UUID, org_id: str,
         case = db.query(Case).filter(Case.id == case_id).with_for_update().first()
         
         # Check if we are already generating to fail fast
-        if case.status == "generating":
+        if case.status == CaseStatus.GENERATING:
             logger.info(f"Case {case_id} is already generating. Skipping completion check.")
             return
 
         # Re-query all docs inside this locked transaction
         all_docs = db.query(Document).filter(Document.case_id == case_id).all()
         
-        pending_docs = [d for d in all_docs if d.ai_status not in ["processed", "error"]]
+        pending_docs = [d for d in all_docs if d.ai_status not in [ExtractionStatus.PROCESSING, ExtractionStatus.ERROR]]
         
         if not pending_docs:
             logger.info(f"All documents for case {case_id} finished. Triggering generation.")
@@ -328,7 +328,7 @@ async def _check_and_trigger_generation(db: Session, case_id: UUID, org_id: str,
             
             try:
                 # 1. Update Case Status
-                case.status = "generating"
+                case.status = CaseStatus.GENERATING
                 
                 # 2. Insert Intent into Outbox (Same Transaction)
                 from app.models.outbox import OutboxMessage

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,14 +10,7 @@ import { useAuth } from "@/context/AuthContext";
 import axios from "axios";
 import { toast } from "sonner";
 import { Loader2, UserPlus, Trash2, Users } from "lucide-react";
-
-interface AllowedEmail {
-    id: string;
-    email: string;
-    role: string;
-    organization_id: string;
-    created_at: string;
-}
+import { useInvites } from "@/hooks/useInvites";
 
 interface Props {
     selectedOrgId: string | null;
@@ -25,39 +18,10 @@ interface Props {
 
 export default function UserInviteManager({ selectedOrgId }: Props) {
     const { getToken } = useAuth();
-    const [invites, setInvites] = useState<AllowedEmail[]>([]);
-    const [loading, setLoading] = useState(false);
+    const { invites, isLoading: loading, mutate } = useInvites(selectedOrgId);
     const [inviting, setInviting] = useState(false);
     const [newEmail, setNewEmail] = useState("");
-    const [newRole, setNewRole] = useState("member");
-
-    useEffect(() => {
-        if (selectedOrgId) {
-            fetchInvites();
-        } else {
-            setInvites([]);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedOrgId]); // Only depend on selectedOrgId
-
-    const fetchInvites = async () => {
-        if (!selectedOrgId) return;
-
-        setLoading(true);
-        try {
-            const token = await getToken();
-            const response = await axios.get(
-                `${process.env.NEXT_PUBLIC_API_URL}/api/admin/organizations/${selectedOrgId}/invites`,
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
-            setInvites(response.data);
-        } catch (error) {
-            console.error("Error fetching invites:", error);
-            toast.error("Failed to load invites");
-        } finally {
-            setLoading(false);
-        }
-    };
+    const [newRole, setNewRole] = useState("MEMBER");
 
     const handleInviteUser = async () => {
         if (!selectedOrgId) {
@@ -80,8 +44,8 @@ export default function UserInviteManager({ selectedOrgId }: Props) {
             );
             toast.success(`${newEmail} invited successfully`);
             setNewEmail("");
-            setNewRole("member");
-            fetchInvites();
+            setNewRole("MEMBER");
+            mutate(); // Refresh list
         } catch (error: any) {
             console.error("Error inviting user:", error);
             toast.error(error.response?.data?.detail || "Failed to invite user");
@@ -98,7 +62,7 @@ export default function UserInviteManager({ selectedOrgId }: Props) {
                 { headers: { Authorization: `Bearer ${token}` } }
             );
             toast.success(`Removed ${email}`);
-            fetchInvites();
+            mutate(); // Refresh list
         } catch (error: any) {
             console.error("Error deleting invite:", error);
             toast.error(error.response?.data?.detail || "Failed to remove invite");
@@ -140,8 +104,8 @@ export default function UserInviteManager({ selectedOrgId }: Props) {
                                             <SelectValue placeholder="Select role" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="member">Member</SelectItem>
-                                            <SelectItem value="admin">Admin</SelectItem>
+                                            <SelectItem value="MEMBER">Member</SelectItem>
+                                            <SelectItem value="ADMIN">Admin</SelectItem>
                                         </SelectContent>
                                     </Select>
                                     <Button onClick={handleInviteUser} disabled={inviting} className="flex-1">
@@ -192,3 +156,4 @@ export default function UserInviteManager({ selectedOrgId }: Props) {
         </Card>
     );
 }
+

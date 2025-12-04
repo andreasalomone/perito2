@@ -18,7 +18,7 @@ export function useCaseDetail(id: string | undefined) {
         {
             refreshInterval: (data) => {
                 // Poll if locally generating OR backend says generating OR docs are processing
-                const isProcessing = data?.documents.some(d => ["processing", "pending"].includes(d.ai_status));
+                const isProcessing = data?.documents.some(d => ["PROCESSING", "PENDING"].includes(d.ai_status));
 
                 // Note: We don't have 'is_generating' on CaseDetail usually, but the previous code 
                 // inferred it or fetched it from a separate status endpoint. 
@@ -37,7 +37,7 @@ export function useCaseDetail(id: string | undefined) {
     // Reset local generating state when we see completion
     useEffect(() => {
         if (data && isGenerating) {
-            const allDone = data.documents.every(d => ["completed", "error"].includes(d.ai_status));
+            const allDone = data.documents.every(d => ["COMPLETED", "ERROR"].includes(d.ai_status));
             if (allDone) {
                 setIsGenerating(false);
             }

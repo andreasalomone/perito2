@@ -52,7 +52,7 @@ export const CaseCard = memo(function CaseCard({ caseItem: c, index }: CaseCardP
                             <Folder className="h-4 w-4 text-primary" />
                             {c.reference_code}
                         </h3>
-                        <Badge variant={c.status === "open" ? "default" : "secondary"}>
+                        <Badge variant={c.status === "OPEN" ? "default" : "secondary"}>
                             {c.status.toUpperCase()}
                         </Badge>
                     </div>
