@@ -119,6 +119,8 @@ steps:
       - 'GEMINI_API_KEY=gemini-api-key:latest'
       - '--set-secrets'
       - 'CLOUD_TASKS_SA_EMAIL=cloud-tasks-sa-email:latest'
+      - '--set-secrets'
+      - 'SUPERADMIN_EMAILS=SUPERADMIN_EMAILS:latest'
     waitFor: ['Push Backend']
 
   # 8. Deploy Frontend to Cloud Run

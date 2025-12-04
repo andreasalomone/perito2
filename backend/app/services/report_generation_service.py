@@ -21,10 +21,12 @@ from app.services import document_processor, llm_handler, docx_generator, case_s
 from app.services.llm_handler import gemini_generator, ProcessedFile
 from app.db.database import SessionLocal
 
+import threading
+
 logger = logging.getLogger(__name__)
 
 # Limit concurrent downloads during generation to prevent filling up memory/disk
-download_semaphore = asyncio.Semaphore(5)
+download_semaphore = threading.Semaphore(5)
 
 async def run_generation_task(case_id: str, organization_id: str):
     """
@@ -236,6 +238,15 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
                             # This prevents loading all files into disk/RAM at once.
                             item["gcs_uri"] = target_gcs_path
                             item["local_path"] = None # Ensure we don't rely on stale local paths
+                            try:
+                                logger.info(f"Re-downloading {target_gcs_path} for generation...")
+                                with download_semaphore:
+                                    # Use the helper that handles gs:// parsing
+                                    await asyncio.to_thread(download_file_to_temp, target_gcs_path, local_path)
+                            except Exception as e:
+                                logger.error(f"Failed to re-download {target_gcs_path} for generation: {e}")
+                                item["type"] = "error"
+                                item["error"] = f"Failed to download: {e}"
                         else:
                             logger.warning(f"Item {item.get('filename', 'unknown')} has no GCS source.")
                             item["type"] = "error"

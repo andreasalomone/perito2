@@ -230,5 +230,5 @@ def flush_outbox_endpoint(db: Session = Depends(get_db)):
     Called by Cloud Scheduler every minute.
     """
     from app.services.outbox_processor import process_outbox_batch
-    asyncio.run(process_outbox_batch(db))
+    process_outbox_batch(db)
     return {"status": "ok"}

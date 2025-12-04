@@ -7,7 +7,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-async def process_message(message_id, db: Session):
+import asyncio
+
+def process_message(message_id, db: Session):
     """
     Process a single message by ID. 
     Used for immediate dispatch optimization.
@@ -28,10 +30,10 @@ async def process_message(message_id, db: Session):
 
     try:
         if msg.topic == "generate_report":
-            await report_generation_service.trigger_generation_task(
+            asyncio.run(report_generation_service.trigger_generation_task(
                 case_id=msg.payload["case_id"],
                 organization_id=msg.payload["organization_id"]
-            )
+            ))
         
         msg.status = "PROCESSED"
         msg.processed_at = datetime.utcnow()
@@ -48,7 +50,7 @@ async def process_message(message_id, db: Session):
         db.commit()
         raise e
 
-async def process_outbox_batch(db: Session, batch_size: int = 10):
+def process_outbox_batch(db: Session, batch_size: int = 10):
     """
     Reads PENDING messages and dispatches them.
     Uses 'SKIP LOCKED' to allow multiple Cloud Run instances to process safely.
@@ -65,10 +67,10 @@ async def process_outbox_batch(db: Session, batch_size: int = 10):
         try:
             if msg.topic == "generate_report":
                 # Call the original Cloud Task logic
-                await report_generation_service.trigger_generation_task(
+                asyncio.run(report_generation_service.trigger_generation_task(
                     case_id=msg.payload["case_id"],
                     organization_id=msg.payload["organization_id"]
-                )
+                ))
             
             # Mark as processed
             msg.status = "PROCESSED"

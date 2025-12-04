@@ -75,7 +75,7 @@ from app.models.base import Base
 # -----------------------------------------------------------------------------
 # 4. FastAPI Dependency
 # -----------------------------------------------------------------------------
-def get_db() -> Generator[Session, None, None]:
+def get_raw_db() -> Generator[Session, None, None]:
     """
     Dependency to yield a database session per request.
     Ensures the session is closed even if an error occurs.

@@ -141,6 +141,10 @@ class CleanupRetryItem:
         return datetime.now(timezone.utc) + timedelta(minutes=wait_minutes)
 
 
+import threading
+
+# ... (imports)
+
 class CleanupRetryQueue:
     """
     Manages retry queue for failed Gemini File API cleanup operations.
@@ -150,7 +154,7 @@ class CleanupRetryQueue:
     def __init__(self, max_dead_letter_size: int = 100):
         self._queue: List[CleanupRetryItem] = []  # Heapq structure
         self._dead_letter: Deque[CleanupRetryItem] = deque(maxlen=max_dead_letter_size)
-        self._lock = asyncio.Lock()
+        self._lock = threading.Lock()
         # Track background tasks to prevent premature GC
         self._background_tasks: Set[asyncio.Task] = set()
 
@@ -165,7 +169,7 @@ class CleanupRetryQueue:
             next_retry_at=datetime.now(timezone.utc) + timedelta(minutes=1),
             last_error=error,
         )
-        async with self._lock:
+        with self._lock:
             heapq.heappush(self._queue, item)
         
         # Log count only, avoid leaking PII (filenames)
@@ -193,7 +197,7 @@ class CleanupRetryQueue:
             # triggers are frequent.
             return
 
-        async with self._lock:
+        with self._lock:
             now = datetime.now(timezone.utc)
             items_to_retry: List[CleanupRetryItem] = []
 
@@ -235,7 +239,7 @@ class CleanupRetryQueue:
             await self._move_to_dead_letter(item)
         else:
             item.next_retry_at = item.calculate_next_retry()
-            async with self._lock:
+            with self._lock:
                 heapq.heappush(self._queue, item)
 
     def create_background_task(self, coro) -> None:

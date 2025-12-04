@@ -58,3 +58,4 @@ dump_schema.sh
 generate_migration.sh
 frontend/src/app/dashboard/cases/\[id]/Page.test.tsx
 frontend/src/app/dashboard/cases/\[id]/Page.test.tsx
+frontend/src/app/dashboard/cases/\[id]/Page.test.tsx
