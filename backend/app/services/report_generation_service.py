@@ -196,6 +196,10 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
     processed_count = sum(1 for d in all_docs if d.ai_status == ExtractionStatus.SUCCESS.value)
     error_count = sum(1 for d in all_docs if d.ai_status == "error")
     logger.info(f"Starting generation for case {case_id} with {processed_count} processed and {error_count} failed documents.")
+    
+    # CRITICAL FIX: Release the lock before starting long-running AI operations.
+    # This prevents DB connection starvation and deadlocks.
+    db.commit()
     # -----------------------
 
     tmp_dir = tempfile.mkdtemp()
@@ -203,7 +207,8 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
     failed_docs = []  # Track failed documents for user visibility
     
     try:
-        # 1. Fetch Processed Data
+        # 1. Fetch Processed Data (Re-query as we released the session)
+        # Note: We don't need a lock here as we are just reading data for the prompt.
         documents = db.query(Document).filter(Document.case_id == case_id).all()
         if documents:
              pass
@@ -308,8 +313,16 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
         final_docx_path = await asyncio.to_thread(upload_blob)
 
         # 5. Save Version 1
-        # Lock Case to serialize
-        db.query(Case).filter(Case.id == case_id).with_for_update().first()
+        # Re-acquire Lock to save the result safely
+        case = db.query(Case).filter(Case.id == case_id).with_for_update().first()
+        
+        # Defensive: Check if state changed while we were away (e.g. user cancelled, or error)
+        if not case:
+             logger.error(f"Case {case_id} disappeared during generation.")
+             return
+             
+        if case.status == "error":
+             logger.warning("Case marked as error by another process during generation. Overwriting with success.")
         
         v1 = db.query(ReportVersion).filter(
             ReportVersion.case_id == case_id, 
@@ -341,8 +354,16 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
 
     except Exception as e:
         logger.error(f"❌ Error during generation: {e}", exc_info=True)
-        case.status = "error"
-        db.commit()
+        # Re-acquire lock to set error state
+        try:
+            case = db.query(Case).filter(Case.id == case_id).with_for_update().first()
+            if case:
+                case.status = "error"
+                db.commit()
+        except Exception as db_e:
+            logger.error(f"Failed to update case status to error: {db_e}")
+            
+        # Don't raise if we want to swallow the error in the task worker,
         # Don't raise if we want to swallow the error in the task worker, 
         # but usually we want to raise so Cloud Tasks might retry (if transient)
         # For logic errors, maybe don't retry.
