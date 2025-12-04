@@ -1,7 +1,9 @@
 import datetime
 from google.cloud import storage
+from functools import lru_cache
 from app.core.config import settings
 
+@lru_cache(maxsize=1)
 def get_storage_client():
     return storage.Client()
 
