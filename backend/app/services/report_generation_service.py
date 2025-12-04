@@ -187,8 +187,9 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
         logger.error(f"Cannot generate report for case {case_id}: No successfully processed documents found (all failed or empty).")
         case.status = "error"
         db.commit()
-        # We raise an error so the task might be retried or logged as failure in Cloud Tasks
-        raise ValueError("No valid documents to generate report from")
+        # STOP RETRIES: Return gracefully as this is an unrecoverable data state.
+        # Raising an error would cause Cloud Tasks to retry indefinitely.
+        return
 
     processed_count = sum(1 for d in all_docs if d.ai_status == "processed")
     error_count = sum(1 for d in all_docs if d.ai_status == "error")
@@ -234,6 +235,8 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
                                 
                                 # Update the path to point to the fresh local copy
                                 item["path"] = local_path
+                                # Explicitly set local_path for ProcessedFile
+                                item["local_path"] = local_path
                             except Exception as e:
                                 logger.error(f"Failed to re-download {target_gcs_path}: {e}")
                                 item["type"] = "error"

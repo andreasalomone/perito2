@@ -41,3 +41,4 @@ You can start editing the page by modifying `src/app/page.tsx` (or relevant file
 *   **Radix UI:** Unstyled, accessible components for building high-quality design systems.
 *   **Lucide React:** Beautiful & consistent icons.
 *   **Axios:** Promise based HTTP client for the browser and node.js.
+*   **SWR:** React Hooks for Data Fetching.

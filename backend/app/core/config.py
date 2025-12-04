@@ -81,11 +81,13 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     
     # Superadmin Access
-    SUPERADMIN_EMAILS: str = "cuentos.eth@gmail.com"  # Comma-separated list
+    SUPERADMIN_EMAILS: str = ""  # Comma-separated list
     
     @property
     def SUPERADMIN_EMAIL_LIST(self) -> list[str]:
         """Parse superadmin emails into a list"""
+        if not self.SUPERADMIN_EMAILS:
+            return []
         return [email.strip() for email in self.SUPERADMIN_EMAILS.split(",")]
     
     @property

@@ -57,6 +57,8 @@ async def process_outbox_batch(db: Session, batch_size: int = 10):
     # This prevents two workers from grabbing the same task
     messages = db.query(OutboxMessage).filter(
         OutboxMessage.status == "PENDING"
+    ).order_by(
+        OutboxMessage.created_at.asc()
     ).with_for_update(skip_locked=True).limit(batch_size).all()
 
     for msg in messages:

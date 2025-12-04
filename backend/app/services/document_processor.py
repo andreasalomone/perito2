@@ -228,7 +228,8 @@ def process_eml_file(eml_path: str, upload_folder: str, depth: int = 0) -> List[
 
             decoded_payload = base64.b64decode(payload)
             
-            safe_filename = "".join(c if c.isalnum() or c in (".", "_", "-") else "_" for c in original_filename)
+            # Use the robust sanitize_filename utility
+            safe_filename = sanitize_filename(original_filename)
             if not safe_filename:
                 safe_filename = "attachment.bin"
 

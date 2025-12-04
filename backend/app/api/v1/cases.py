@@ -83,27 +83,44 @@ def get_case_status(
     Lightweight polling endpoint. 
     Optimized to avoid loading heavy relationships.
     """
-    case = db.get(Case, case_id)
-    if not case:
+    # 1. Fetch Case Status Only
+    case_status = db.scalar(
+        select(Case.status).where(Case.id == case_id)
+    )
+    if not case_status:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
             detail="Case not found"
         )
     
-    # Check for processing documents using an EXISTS query (High Performance)
-    # SQLAlchemy 2.0: select(exists().where(...))
-    is_processing_stmt = select(exists().where(
-        Document.case_id == case_id,
-        Document.ai_status.in_(["pending", "processing"])
-    ))
-    has_processing_docs = db.scalar(is_processing_stmt)
+    # 2. Fetch Lightweight Document List (ID + Status Only)
+    # This avoids loading the full Document object (which might have large text fields in future)
+    docs_stmt = (
+        select(Document.id, Document.ai_status, Document.created_at, Document.filename)
+        .where(Document.case_id == case_id)
+    )
+    docs = db.execute(docs_stmt).all()
+    
+    # Map to schema format
+    documents_data = [
+        {
+            "id": row.id, 
+            "ai_status": row.ai_status, 
+            "created_at": row.created_at,
+            "filename": row.filename
+        } 
+        for row in docs
+    ]
 
-    is_generating = (case.status == "generating") or has_processing_docs
+    # 3. Check for processing documents
+    is_generating = (case_status == "generating") or any(
+        d["ai_status"] in ["pending", "processing"] for d in documents_data
+    )
     
     return {
-        "id": case.id,
-        "status": case.status,
-        "documents": case.documents, # Relies on lazy loading or simple fetch
+        "id": case_id,
+        "status": case_status,
+        "documents": documents_data,
         "is_generating": is_generating
     }
 

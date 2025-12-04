@@ -1,163 +1,95 @@
 import asyncio
+import heapq
 import logging
+import weakref
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple, Literal
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Deque, Dict, List, Optional, Protocol, Tuple, Set
 
+# Use pydantic v2
+from pydantic import BaseModel, Field, PrivateAttr, ConfigDict
+from tenacity import (
+    AsyncRetrying,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
+
+# Google GenAI imports (Assumed installed)
 from google import genai
 from google.api_core import exceptions as google_exceptions
-from pydantic import BaseModel, Field
-from tenacity import (
-    retry, 
-    stop_after_attempt, 
-    wait_exponential, 
-    retry_if_exception_type,
-    AsyncRetrying
-)
-
-from app.core.config import settings
-# Assuming these services are refactored to be cleaner dependencies
-from app.services.llm import (
-    cache_service,
-    file_upload_service,
-    generation_service,
-    prompt_builder_service,
-    response_parser_service,
-)
 
 logger = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
-# Cleanup Retry Queue Infrastructure
+# 1. Protocols & Contracts
 # -----------------------------------------------------------------------------
 
-@dataclass
-class CleanupRetryItem:
-    """Represents a file cleanup operation pending retry."""
-    file_names: List[str]
-    attempt: int = 0
-    max_attempts: int = 3
-    next_retry_at: datetime = field(default_factory=datetime.now)
-    first_failed_at: datetime = field(default_factory=datetime.now)
-    last_error: Optional[str] = None
-    
-    def should_retry(self) -> bool:
-        """Check if this item should be retried."""
-        return (
-            self.attempt < self.max_attempts and 
-            datetime.now() >= self.next_retry_at
-        )
-    
-    def calculate_next_retry(self) -> datetime:
-        """Exponential backoff: 2^attempt minutes."""
-        wait_minutes = 2 ** self.attempt  # 1, 2, 4 minutes
-        return datetime.now() + timedelta(minutes=wait_minutes)
+class FileUploadServiceProtocol(Protocol):
+    @dataclass
+    class UploadCandidate:
+        file_path: str
+        mime_type: str
+        display_name: str
+        is_vision_asset: bool
 
-class CleanupRetryQueue:
-    """Manages retry queue for failed Gemini File API cleanup operations."""
-    
-    def __init__(self):
-        self.queue: deque[CleanupRetryItem] = deque()
-        self.dead_letter: List[CleanupRetryItem] = []
-        self._processing = False
-        
-    def enqueue(self, file_names: List[str], error: str):
-        """Add failed cleanup to retry queue."""
-        item = CleanupRetryItem(
-            file_names=file_names,
-            attempt=0,
-            next_retry_at=datetime.now() + timedelta(minutes=1),  # First retry after 1 min
-            last_error=error
-        )
-        self.queue.append(item)
-        logger.info(f"Enqueued {len(file_names)} files for cleanup retry")
-        
-    def move_to_dead_letter(self, item: CleanupRetryItem):
-        """Move persistently failing cleanup to dead letter queue."""
-        self.dead_letter.append(item)
-        logger.error(
-            f"Moved {len(item.file_names)} files to dead-letter queue after {item.attempt} attempts. "
-            f"Files: {item.file_names[:3]}...",
-            extra={
-                "alert": True,
-                "dead_letter_file_count": len(item.file_names),
-                "dead_letter_files": item.file_names,
-                "attempts": item.attempt,
-                "first_failed_at": item.first_failed_at.isoformat(),
-                "last_error": item.last_error
-            }
-        )
-    
-    async def process_queue(self, client: genai.Client):
-        """Process items in the retry queue."""
-        if self._processing:
-            return  # Prevent concurrent processing
-            
-        self._processing = True
-        try:
-            items_to_retry = []
-            
-            # Collect items ready for retry
-            while self.queue:
-                item = self.queue.popleft()
-                if item.should_retry():
-                    items_to_retry.append(item)
-                else:
-                    # Not ready yet, re-enqueue
-                    self.queue.append(item)
-                    break  # Items are ordered by retry time
-            
-            # Process retries
-            for item in items_to_retry:
-                item.attempt += 1
-                logger.info(f"Retrying cleanup attempt {item.attempt}/{item.max_attempts} for {len(item.file_names)} files")
-                
-                try:
-                    # Attempt cleanup
-                    success_count, fail_count = await file_upload_service.cleanup_uploaded_files(
-                        client, item.file_names
-                    )
-                    
-                    if fail_count == 0:
-                        logger.info(f"Retry successful: cleaned up {success_count} files")
-                    else:
-                        # Partial failure - update file list and retry
-                        item.last_error = f"Partial failure: {fail_count}/{len(item.file_names)} failed"
-                        
-                        if item.attempt >= item.max_attempts:
-                            self.move_to_dead_letter(item)
-                        else:
-                            item.next_retry_at = item.calculate_next_retry()
-                            self.queue.append(item)
-                            
-                except Exception as e:
-                    item.last_error = str(e)
-                    
-                    if item.attempt >= item.max_attempts:
-                        self.move_to_dead_letter(item)
-                    else:
-                        item.next_retry_at = item.calculate_next_retry()
-                        self.queue.append(item)
-                        logger.warning(f"Cleanup retry {item.attempt} failed, will retry at {item.next_retry_at}")
-        finally:
-            self._processing = False
+    @dataclass
+    class FileOperationResult:
+        success: bool
+        gemini_file: Any
+        file_name: str
+        error_message: Optional[str]
 
-# Global retry queue instance
-cleanup_retry_queue = CleanupRetryQueue()
+    async def upload_vision_files_batch(
+        self, client: genai.Client, candidates: List[UploadCandidate]
+    ) -> List[FileOperationResult]: ...
+
+    async def cleanup_uploaded_files(
+        self, client: genai.Client, file_names: List[str]
+    ) -> Tuple[int, int]: ...
+
+
+class CacheServiceProtocol(Protocol):
+    def get_or_create_prompt_cache(self, client: genai.Client) -> Optional[str]: ...
+
+
+class PromptBuilderServiceProtocol(Protocol):
+    def build_prompt_parts(
+        self,
+        processed_files: List[Dict[str, Any]],
+        uploaded_file_objects: List[Any],
+        upload_error_messages: List[str],
+        use_cache: bool,
+    ) -> List[Any]: ...
+
+
+class ResponseParserServiceProtocol(Protocol):
+    def parse_llm_response(self, response: Any) -> str: ...
+
+
+class GenerationServiceProtocol(Protocol):
+    def build_generation_config(self, cache_name: Optional[str]) -> Any: ...
+
 
 # -----------------------------------------------------------------------------
-# 1. Strict Typing (Contracts)
+# 2. Data Models
 # -----------------------------------------------------------------------------
+
 class ProcessedFile(BaseModel):
-    """Contract for file inputs to the LLM."""
+    """
+    Contract for file inputs to the LLM.
+    Strict validation prevents passing arbitrary system paths.
+    """
     filename: str
-    file_type: str = Field(alias="type") # Map 'type' from dict to 'file_type'
+    file_type: str = Field(alias="type")
     content: Optional[bytes] = None
     gcs_uri: Optional[str] = None
-    
-    # Allow extra fields for compatibility with existing dicts if needed
-    model_config = {"extra": "ignore", "populate_by_name": True}
+    local_path: Optional[str] = None
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
 
 class TokenUsage(BaseModel):
     prompt_tokens: int = 0
@@ -165,263 +97,415 @@ class TokenUsage(BaseModel):
     total_tokens: int = 0
     cached_tokens: int = 0
 
+
 class ReportResult(BaseModel):
     content: str
     usage: TokenUsage
+
 
 class LLMGenerationError(Exception):
     """Base exception for LLM failures."""
     pass
 
+
+class SecurityError(Exception):
+    """Raised when file path validation fails."""
+    pass
+
+
 # -----------------------------------------------------------------------------
-# 2. The Gemini Service
+# 3. Robust Retry Queue (Memory Safe)
 # -----------------------------------------------------------------------------
-class GeminiReportGenerator:
+
+@dataclass(order=True)
+class CleanupRetryItem:
     """
-    Orchestrates insurance report generation using Google Gemini 2.5.
-    Handles Multimodal inputs, Context Caching, and Resilience patterns.
+    Represents a file cleanup operation pending retry.
+    Ordered by next_retry_at for priority queue efficiency.
+    """
+    next_retry_at: datetime
+    file_names: List[str] = field(compare=False)
+    attempt: int = field(default=0, compare=False)
+    max_attempts: int = field(default=3, compare=False)
+    
+    # Do not compare these fields in the heap
+    first_failed_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc), compare=False
+    )
+    last_error: Optional[str] = field(default=None, compare=False)
+
+    def calculate_next_retry(self) -> datetime:
+        """Exponential backoff: 2^attempt minutes."""
+        wait_minutes = 2 ** self.attempt
+        return datetime.now(timezone.utc) + timedelta(minutes=wait_minutes)
+
+
+class CleanupRetryQueue:
+    """
+    Manages retry queue for failed Gemini File API cleanup operations.
+    Thread-safe and uses WeakSet to track background tasks to prevent GC.
     """
 
-    def __init__(self):
-        if not settings.GEMINI_API_KEY:
-            # raise ValueError("GEMINI_API_KEY is not configured.")
-            # Don't crash on init if key is missing (e.g. during tests), just log
-            logger.error("GEMINI_API_KEY is not configured.")
+    def __init__(self, max_dead_letter_size: int = 100):
+        self._queue: List[CleanupRetryItem] = []  # Heapq structure
+        self._dead_letter: Deque[CleanupRetryItem] = deque(maxlen=max_dead_letter_size)
+        self._lock = asyncio.Lock()
+        # Track background tasks to prevent premature GC
+        self._background_tasks: Set[asyncio.Task] = set()
+
+    async def enqueue(self, file_names: List[str], error: str) -> None:
+        """Add failed cleanup to retry queue."""
+        if not file_names:
+            return
+
+        item = CleanupRetryItem(
+            file_names=file_names,
+            attempt=0,
+            next_retry_at=datetime.now(timezone.utc) + timedelta(minutes=1),
+            last_error=error,
+        )
+        async with self._lock:
+            heapq.heappush(self._queue, item)
         
-        # Initialize client once (Singleton pattern via module instantiation)
-        # Assuming google.genai.Client is thread-safe (it usually is)
-        if settings.GEMINI_API_KEY:
-            self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        # Log count only, avoid leaking PII (filenames)
+        logger.info(f"Enqueued {len(file_names)} files for cleanup retry.")
+
+    async def _move_to_dead_letter(self, item: CleanupRetryItem) -> None:
+        self._dead_letter.append(item)
+        logger.error(
+            f"Moved {len(item.file_names)} files to dead-letter queue. "
+            f"Last error: {item.last_error}",
+            extra={"alert": True}
+        )
+
+    async def process_queue(
+        self, client: genai.Client, file_upload_service: FileUploadServiceProtocol
+    ) -> None:
+        """
+        Process items in the retry queue.
+        Uses a lock to ensure single-consumer behavior per instance.
+        """
+        if self._lock.locked():
+            # If already processing, we skip this trigger.
+            # Ideally, we would set a 'dirty' flag to re-run, but for this
+            # simple implementation, skipping is acceptable as long as
+            # triggers are frequent.
+            return
+
+        async with self._lock:
+            now = datetime.now(timezone.utc)
+            items_to_retry: List[CleanupRetryItem] = []
+
+            # 1. Pop all items ready for retry
+            while self._queue:
+                if self._queue[0].next_retry_at <= now:
+                    items_to_retry.append(heapq.heappop(self._queue))
+                else:
+                    break
+
+        # 2. Process outside the lock
+        # This allows new items to be enqueued while we process current batch
+        for item in items_to_retry:
+            await self._attempt_cleanup(client, file_upload_service, item)
+
+    async def _attempt_cleanup(
+        self,
+        client: genai.Client,
+        service: FileUploadServiceProtocol,
+        item: CleanupRetryItem
+    ) -> None:
+        item.attempt += 1
+        try:
+            _, fail_count = await service.cleanup_uploaded_files(
+                client, item.file_names
+            )
+
+            if fail_count > 0:
+                await self._handle_failure(item, f"Partial failure: {fail_count} failed")
+            else:
+                logger.info(f"Retry successful for {len(item.file_names)} files.")
+
+        except Exception as e:
+            await self._handle_failure(item, str(e))
+
+    async def _handle_failure(self, item: CleanupRetryItem, error_msg: str) -> None:
+        item.last_error = error_msg
+        if item.attempt >= item.max_attempts:
+            await self._move_to_dead_letter(item)
         else:
-            self.client = None
+            item.next_retry_at = item.calculate_next_retry()
+            async with self._lock:
+                heapq.heappush(self._queue, item)
+
+    def create_background_task(self, coro) -> None:
+        """
+        Safe wrapper for fire-and-forget tasks.
+        Keeps a strong reference to the task until completion.
+        """
+        task = asyncio.create_task(coro)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+
+# -----------------------------------------------------------------------------
+# 4. The Gemini Service
+# -----------------------------------------------------------------------------
+
+class GeminiReportGenerator:
+    """
+    Orchestrates insurance report generation using Google Gemini.
+    """
+
+    def __init__(
+        self,
+        client: genai.Client,  # Inject Client directly
+        model_name: str,
+        fallback_model_name: Optional[str],
+        file_upload_service: FileUploadServiceProtocol,
+        cache_service: CacheServiceProtocol,
+        prompt_builder_service: PromptBuilderServiceProtocol,
+        response_parser_service: ResponseParserServiceProtocol,
+        generation_service: GenerationServiceProtocol,
+        retry_queue: CleanupRetryQueue,
+        allowed_file_dirs: Optional[List[Path]] = None,
+    ):
+        self.client = client
+        self.model_name = model_name
+        self.fallback_model_name = fallback_model_name
+
+        self.file_upload_service = file_upload_service
+        self.cache_service = cache_service
+        self.prompt_builder_service = prompt_builder_service
+        self.response_parser_service = response_parser_service
+        self.generation_service = generation_service
+        self.retry_queue = retry_queue
         
-        # Retry policy: Exponential backoff for transient errors
+        # Security: Default to empty list (deny all) if not provided
+        self.allowed_file_dirs = allowed_file_dirs or []
+
         self.retry_policy = AsyncRetrying(
             stop=stop_after_attempt(3),
             wait=wait_exponential(multiplier=1, min=2, max=10),
             retry=retry_if_exception_type((
                 google_exceptions.ServiceUnavailable,
                 google_exceptions.TooManyRequests,
-                google_exceptions.InternalServerError
+                google_exceptions.InternalServerError,
             )),
-            reraise=True
+            reraise=True,
         )
 
-    async def generate(
-        self, 
-        processed_files: List[ProcessedFile]
-    ) -> ReportResult:
-        """
-        Main entry point for report generation.
-        """
-        if not self.client:
-             raise LLMGenerationError("LLM service is not configured (API key missing).")
+    async def generate(self, processed_files: List[ProcessedFile]) -> ReportResult:
+        """Main entry point for report generation."""
+        uploaded_files: List[Any] = []
+        upload_errors: List[str] = []
+        cache_name: Optional[str] = None
 
-        uploaded_files = []
-        uploaded_names = []
-        
         try:
-            # 1. Context Caching (Optimization)
-            # Run in threadpool if cache_service is blocking/heavy
-            cache_name = await asyncio.to_thread(
-                cache_service.get_or_create_prompt_cache, self.client
-            )
-            use_cache = bool(cache_name)
-            
-            logger.info(f"Report Gen Start. Files: {len(processed_files)} | Cache: {use_cache}")
+            # 1. Context Caching
+            # Offload blocking IO to thread if necessary, though genai client is async usually
+            cache_name = self.cache_service.get_or_create_prompt_cache(self.client)
 
-            # 2. Upload Vision Assets (PDFs/Images)
-            # Create UploadCandidate objects for the new service API
-            upload_candidates = [
-                file_upload_service.UploadCandidate(
-                    file_path=f.gcs_uri or f.filename, # Fallback if gcs_uri is missing, though logic might need review
-                    mime_type=f.file_type,
-                    display_name=f.filename,
-                    is_vision_asset=(f.file_type != "application/json") # Simple heuristic, adjust as needed
+            # 2. Upload Vision Assets
+            upload_candidates = self._prepare_upload_candidates(processed_files)
+
+            if upload_candidates:
+                upload_results = await self.file_upload_service.upload_vision_files_batch(
+                    self.client, upload_candidates
                 )
-                for f in processed_files
-            ]
-            
-            # The new API returns a list of FileOperationResult objects
-            upload_results = await file_upload_service.upload_vision_files_batch(
-                self.client, upload_candidates
-            )
+                uploaded_files = [res.gemini_file for res in upload_results if res.success]
+                # Collect errors but do not halt; prompt builder handles missing files
+                upload_errors = [
+                    res.error_message
+                    for res in upload_results
+                    if not res.success and res.error_message
+                ]
 
-            # Process results
-            uploaded_files = [res.gemini_file for res in upload_results if res.success]
-            uploaded_names = [res.file_name for res in upload_results if res.success]
-            upload_errors = [res.error_message for res in upload_results if not res.success]
-
-            # 3. Execute Generation Strategy (The "waterfall")
-            # Convert ProcessedFile back to dict for legacy service support in prompt builder
+            # 3. Execute Generation
             file_dicts = [f.model_dump(by_alias=True) for f in processed_files]
-            
+
             response = await self._execute_generation_strategy(
                 processed_files=file_dicts,
                 uploaded_files=uploaded_files,
                 upload_errors=upload_errors,
-                cache_name=cache_name
+                cache_name=cache_name,
             )
 
-            # 4. Parse Response
-            report_text = response_parser_service.parse_llm_response(response)
-            
-            # 5. Extract Metrics
+            # 4. Parse & Extract
+            report_text = self.response_parser_service.parse_llm_response(response)
             usage = self._extract_usage(response)
-            
+
             return ReportResult(content=report_text, usage=usage)
 
         except Exception as e:
             logger.error(f"LLM Generation Failed: {e}", exc_info=True)
             raise LLMGenerationError(f"Report generation failed: {str(e)}") from e
-            
+
         finally:
-            # 6. Cleanup (Best Effort)
-            # We need the actual file names (resource names) from the uploaded files for deletion
-            # The FileOperationResult.file_name is the display name, but we need the resource name for deletion?
-            # Wait, file_upload_service.delete_single_file takes `file_name`. 
-            # In the old code: `temp_uploaded_file_names_for_api.append(result.name)` which is the resource name (files/...)
-            # In the new code: `FileOperationResult` has `gemini_file` which has `.name`.
+            # 5. Cleanup
+            # We schedule cleanup immediately regardless of success/fail
+            self._schedule_cleanup(uploaded_files)
+
+    def _prepare_upload_candidates(
+        self, processed_files: List[ProcessedFile]
+    ) -> List[FileUploadServiceProtocol.UploadCandidate]:
+        candidates = []
+        for f in processed_files:
+            # Determine path source
+            path_str = f.local_path or f.gcs_uri
             
-            resource_names_to_delete = [
-                f.name for f in uploaded_files if f and f.name
-            ]
-            
-            if resource_names_to_delete:
-                asyncio.create_task(
-                    self._cleanup_files_safely(resource_names_to_delete)
+            if not path_str:
+                continue
+                
+            # SECURITY: Strict path validation
+            if not self._is_safe_path(path_str):
+                logger.warning(
+                    f"Skipping unsafe or unauthorized file path: {path_str}",
+                    extra={"security_event": True}
                 )
+                continue
+
+            # Only upload vision assets (skip JSON/Text that goes into prompt)
+            is_vision = f.file_type != "application/json"
+            
+            candidates.append(
+                self.file_upload_service.UploadCandidate(
+                    file_path=path_str,
+                    mime_type=f.file_type,
+                    display_name=f.filename,
+                    is_vision_asset=is_vision,
+                )
+            )
+        return candidates
+
+    def _is_safe_path(self, path_str: str) -> bool:
+        """
+        Validates that the path is within the allowed directories.
+        Prevents Directory Traversal attacks.
+        """
+        if not self.allowed_file_dirs:
+            # If no dirs are explicitly allowed, fail open safe (deny everything)
+            return False
+
+        try:
+            target_path = Path(path_str).resolve()
+            
+            # Check against whitelist
+            for allowed in self.allowed_file_dirs:
+                # resolve allowed path to ensure we compare absolute paths
+                allowed_abs = allowed.resolve()
+                if target_path.is_relative_to(allowed_abs):
+                     return target_path.exists()
+            
+            return False
+        except Exception:
+            return False
 
     async def _execute_generation_strategy(
         self,
-        processed_files: List[Dict],
+        processed_files: List[Dict[str, Any]],
         uploaded_files: List[Any],
         upload_errors: List[str],
-        cache_name: Optional[str]
+        cache_name: Optional[str],
     ) -> Any:
-        """
-        Implements the fallback waterfall:
-        1. Primary Model + Cache
-        2. Primary Model + No Cache (if Cache Invalid)
-        3. Fallback Model + No Cache (if Primary Overloaded)
-        """
         
-        # Helper to build prompt
-        def get_prompt_parts(use_cache: bool):
-            return prompt_builder_service.build_prompt_parts(
+        # Helper to regenerate prompt parts based on strategy
+        def get_prompt_parts(use_cache: bool) -> List[Any]:
+            return self.prompt_builder_service.build_prompt_parts(
                 processed_files=processed_files,
                 uploaded_file_objects=uploaded_files,
                 upload_error_messages=upload_errors,
-                use_cache=use_cache
+                use_cache=use_cache,
             )
 
-        # --- Attempt 1: Primary + Cache ---
+        # Strategy 1: Primary Model + Cache
         if cache_name:
             try:
-                logger.debug("Attempt 1: Primary Model with Cache")
                 return await self._generate_call(
-                    model_name=settings.LLM_MODEL_NAME,
+                    model_name=self.model_name,
                     contents=get_prompt_parts(use_cache=True),
-                    cache_name=cache_name
+                    cache_name=cache_name,
                 )
             except Exception as e:
-                # Detect Cache Invalidation (400 or specific Google error)
                 if self._is_cache_error(e):
-                    logger.warning(f"Cache invalidated ({e}). Falling back to no-cache.")
+                    logger.warning(f"Cache invalidated ({e}). Retry without cache.")
+                elif self._is_overload_error(e):
+                    logger.warning(f"Primary overloaded ({e}). Fallback strategy.")
+                    return await self._attempt_fallback(get_prompt_parts(False))
                 else:
-                    # If it's an overload/server error, we might want to skip to fallback
-                    if self._is_overload_error(e):
-                         logger.warning(f"Primary model overloaded ({e}). Skipping to fallback.")
-                         return await self._attempt_fallback(get_prompt_parts(False))
-                    raise e # Retrying same config won't help for other errors
+                    raise e
 
-        # --- Attempt 2: Primary + No Cache ---
+        # Strategy 2: Primary Model + No Cache (or cache failed)
         try:
-            logger.debug("Attempt 2: Primary Model without Cache")
             return await self._generate_call(
-                model_name=settings.LLM_MODEL_NAME,
+                model_name=self.model_name,
                 contents=get_prompt_parts(use_cache=False),
-                cache_name=None
+                cache_name=None,
             )
         except Exception as e:
-            if self._is_overload_error(e) and settings.LLM_FALLBACK_MODEL_NAME:
-                logger.warning(f"Primary model overloaded ({e}). Switching to Fallback.")
+            if self._is_overload_error(e) and self.fallback_model_name:
+                logger.warning(f"Primary overloaded ({e}). Fallback strategy.")
                 return await self._attempt_fallback(get_prompt_parts(False))
             raise e
 
     async def _attempt_fallback(self, prompt_parts: List[Any]) -> Any:
-        """Executes the request against the fallback model."""
-        if not settings.LLM_FALLBACK_MODEL_NAME:
+        if not self.fallback_model_name:
             raise LLMGenerationError("Primary model failed and no fallback configured.")
-            
-        logger.info(f"Attempt 3: Fallback Model ({settings.LLM_FALLBACK_MODEL_NAME})")
+
         return await self._generate_call(
-            model_name=settings.LLM_FALLBACK_MODEL_NAME,
+            model_name=self.fallback_model_name,
             contents=prompt_parts,
-            cache_name=None
+            cache_name=None,
         )
 
-    async def _generate_call(self, model_name: str, contents: List[Any], cache_name: Optional[str]) -> Any:
-        """Executes the actual API call wrapped in the retry policy."""
-        config = generation_service.build_generation_config(cache_name)
-        
+    async def _generate_call(
+        self, model_name: str, contents: List[Any], cache_name: Optional[str]
+    ) -> Any:
+        config = self.generation_service.build_generation_config(cache_name)
+
         async for attempt in self.retry_policy:
             with attempt:
+                # Use aio (async) interface explicitly
                 return await self.client.aio.models.generate_content(
                     model=model_name,
                     contents=contents,
-                    config=config
+                    config=config,
                 )
 
-    async def _cleanup_files_safely(self, file_names: List[str]):
-        """
-        Background cleanup task with retry queue and dead-letter handling.
-        
-        CRITICAL: Cleanup failures are a quota/cost risk. The Gemini File API has storage quotas.
-        If cleanup consistently fails, we will hit quota limits and block new uploads.
-        
-        IMPLEMENTATION: Uses exponential backoff retry queue (1min, 2min, 4min)
-        and moves persistent failures to dead-letter queue for manual intervention.
-        """
-        try:
-            success_count, fail_count = await file_upload_service.cleanup_uploaded_files(
-                self.client, file_names
-            )
-            
-            if fail_count == 0:
-                logger.info(f"Successfully cleaned up {len(file_names)} Gemini API files")
-            else:
-                # Partial failure - enqueue failed files for retry
-                error_msg = f"Partial cleanup failure: {fail_count}/{len(file_names)} files failed"
-                logger.warning(error_msg)
-                cleanup_retry_queue.enqueue(file_names, error_msg)
-                
-        except Exception as e:
-            # Complete failure - enqueue all files for retry
-            error_msg = f"Gemini File API cleanup failed: {str(e)}"
-            logger.error(
-                f"CRITICAL: {error_msg} for {len(file_names)} files. "
-                f"Enqueuing for retry. Files: {file_names[:3]}...",
-                exc_info=True,
-                extra={
-                    "alert": True,
-                    "failed_file_count": len(file_names),
-                    "failed_files": file_names,
-                    "error_type": type(e).__name__
-                }
-            )
-            cleanup_retry_queue.enqueue(file_names, error_msg)
-        
-        # Process retry queue in background (non-blocking)
-        asyncio.create_task(cleanup_retry_queue.process_queue(self.client))
+    def _schedule_cleanup(self, uploaded_files: List[Any]) -> None:
+        """Schedules cleanup of uploaded files using the robust queue."""
+        resource_names = [
+            f.name for f in uploaded_files if f and getattr(f, "name", None)
+        ]
+        if not resource_names:
+            return
+
+        async def _cleanup_task():
+            try:
+                # Attempt immediate cleanup
+                _, fail = await self.file_upload_service.cleanup_uploaded_files(
+                    self.client, resource_names
+                )
+                if fail > 0:
+                    # Enqueue partial failures
+                    await self.retry_queue.enqueue(
+                        resource_names, f"Partial failure: {fail} failed"
+                    )
+            except Exception as e:
+                # Enqueue total failures
+                logger.error(f"Initial cleanup failed: {e}")
+                await self.retry_queue.enqueue(resource_names, str(e))
+
+            # Process queue (tries to clear backlog)
+            await self.retry_queue.process_queue(self.client, self.file_upload_service)
+
+        # Use the queue's safe task wrapper
+        self.retry_queue.create_background_task(_cleanup_task())
 
     def _is_cache_error(self, e: Exception) -> bool:
-        """Heuristic to check for 400 Invalid Argument related to cache."""
         s_e = str(e)
         return "INVALID_ARGUMENT" in s_e or "400" in s_e
 
     def _is_overload_error(self, e: Exception) -> bool:
-        """Heuristic to check for 503 or Overloaded."""
         s_e = str(e).lower()
         return "503" in s_e or "overloaded" in s_e
 
@@ -430,7 +514,7 @@ class GeminiReportGenerator:
         meta = getattr(response, "usage_metadata", None)
         if not meta:
             return TokenUsage()
-        
+
         return TokenUsage(
             prompt_tokens=getattr(meta, "prompt_token_count", 0),
             candidate_tokens=getattr(meta, "candidates_token_count", 0),
@@ -438,5 +522,48 @@ class GeminiReportGenerator:
             cached_tokens=getattr(meta, "cached_content_token_count", 0),
         )
 
-# Singleton Instance (Optional, depending on DI framework)
-gemini_generator = GeminiReportGenerator()
+# -----------------------------------------------------------------------------
+# 5. Dependency Injection & Singleton Factory (Compatibility Layer)
+# -----------------------------------------------------------------------------
+
+try:
+    from app.core.config import settings
+    from app.services.llm import (
+        cache_service,
+        file_upload_service,
+        generation_service,
+        prompt_builder_service,
+        response_parser_service,
+    )
+
+    # Global retry queue instance
+    cleanup_retry_queue = CleanupRetryQueue()
+
+    # Singleton Instance
+    # We construct it with the concrete services from the app
+    # AND inject the client and allowed dirs
+    
+    _client = None
+    if settings.GEMINI_API_KEY:
+        _client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    else:
+        logger.error("GEMINI_API_KEY is not configured. LLM features will fail.")
+
+    gemini_generator = GeminiReportGenerator(
+        client=_client,
+        model_name=settings.LLM_MODEL_NAME,
+        fallback_model_name=settings.LLM_FALLBACK_MODEL_NAME,
+        file_upload_service=file_upload_service,
+        cache_service=cache_service,
+        prompt_builder_service=prompt_builder_service,
+        response_parser_service=response_parser_service,
+        generation_service=generation_service,
+        retry_queue=cleanup_retry_queue,
+        allowed_file_dirs=[Path(settings.UPLOAD_FOLDER), Path("/tmp")]
+    )
+
+except ImportError:
+    # Fallback for isolation
+    logger.warning("Could not import app services. Singleton 'gemini_generator' not initialized.")
+    cleanup_retry_queue = CleanupRetryQueue()
+    gemini_generator = None

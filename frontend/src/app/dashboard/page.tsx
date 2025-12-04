@@ -1,68 +1,16 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
-import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Folder, Plus, Calendar, ArrowRight, AlertCircle, RefreshCw } from "lucide-react";
-import { CaseSummary } from "@/types";
-import { toast } from "sonner";
-import axios from "axios";
-import { api, ApiError } from "@/lib/api";
-import { cn } from "@/lib/utils";
-
-// --- Hooks ---
-import { useInterval } from "@/hooks/useInterval";
+import { Folder, Plus, AlertCircle, RefreshCw } from "lucide-react";
+import { useCases } from "@/hooks/useCases";
+import { CaseCard } from "@/components/dashboard/CaseCard";
 
 export default function DashboardPage() {
-    const { getToken } = useAuth();
-    const [cases, setCases] = useState<CaseSummary[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const { cases, isLoading, isError, mutate } = useCases();
 
-    // ...
-
-    const fetchCases = useCallback(async (isPolling = false) => {
-        if (!isPolling) {
-            setLoading(true);
-            setError(null);
-        }
-        try {
-            const token = await getToken();
-            if (!token) return;
-
-            const data = await api.cases.list(token);
-            setCases(data);
-
-        } catch (error: unknown) {
-            if (!isPolling) {
-                console.error("Failed to fetch cases", error);
-                if (error instanceof ApiError) {
-                    setError(error.message);
-                    if (error.status === 401) toast.error("Sessione scaduta.");
-                } else {
-                    setError("Impossibile caricare i fascicoli.");
-                    toast.error("Errore nel caricamento dei dati.");
-                }
-            }
-        } finally {
-            if (!isPolling) setLoading(false);
-        }
-    }, [getToken]);
-
-    // Initial Fetch
-    useEffect(() => {
-        fetchCases();
-    }, [fetchCases]);
-
-    // Polling every 5 seconds to keep status updated
-    useInterval(() => {
-        fetchCases(true);
-    }, 5000);
-
-    if (loading) {
+    if (isLoading) {
         return (
             <div className="space-y-4 max-w-5xl mx-auto">
                 <div className="flex justify-between items-center">
@@ -78,13 +26,13 @@ export default function DashboardPage() {
         );
     }
 
-    if (error) {
+    if (isError) {
         return (
             <div className="flex flex-col items-center justify-center h-64 text-center space-y-4">
                 <AlertCircle className="h-12 w-12 text-destructive" />
                 <h3 className="text-lg font-semibold">Qualcosa è andato storto</h3>
-                <p className="text-muted-foreground">{error}</p>
-                <Button onClick={() => fetchCases()} variant="outline">
+                <p className="text-muted-foreground">Impossibile caricare i fascicoli.</p>
+                <Button onClick={() => mutate()} variant="outline">
                     <RefreshCw className="h-4 w-4 mr-2" />
                     Riprova
                 </Button>
@@ -92,7 +40,6 @@ export default function DashboardPage() {
         );
     }
 
-    // Guard Rails
     const safeCases = cases || [];
 
     return (
@@ -129,58 +76,7 @@ export default function DashboardPage() {
                 <div className="@container">
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 auto-rows-[minmax(180px,auto)] grid-flow-dense">
                         {safeCases.map((c, i) => (
-                            <Card
-                                key={c.id}
-                                onMouseMove={(e) => {
-                                    const { currentTarget, clientX, clientY } = e;
-                                    const { left, top } = currentTarget.getBoundingClientRect();
-                                    const x = clientX - left;
-                                    const y = clientY - top;
-                                    currentTarget.style.setProperty("--x", `${x}px`);
-                                    currentTarget.style.setProperty("--y", `${y}px`);
-                                }}
-                                className={cn(
-                                    "overflow-hidden transition-all hover:shadow-md hover:border-primary/20 group relative",
-                                    i === 0 ? "@lg:col-span-2 @lg:row-span-2" : "col-span-1"
-                                )}
-                            >
-                                <div
-                                    className="pointer-events-none absolute -inset-px opacity-0 transition duration-300 group-hover:opacity-100"
-                                    style={{
-                                        background: `radial-gradient(600px circle at var(--x) var(--y), var(--glass-highlight), transparent 40%)`
-                                    }}
-                                />
-                                <div className="p-6 flex flex-col justify-between h-full gap-4 relative z-10">
-                                    <div className="space-y-1">
-                                        <div className="flex items-center gap-3">
-                                            <h3 className="font-semibold text-lg flex items-center gap-2 group-hover:text-primary transition-colors">
-                                                <Folder className="h-4 w-4 text-primary" />
-                                                {c.reference_code}
-                                            </h3>
-                                            <Badge variant={c.status === "open" ? "default" : "secondary"}>
-                                                {c.status.toUpperCase()}
-                                            </Badge>
-                                        </div>
-                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                            <span className="font-medium text-foreground">{c.client_name || "Cliente non specificato"}</span>
-                                            <span>•</span>
-                                            <Calendar className="h-3.5 w-3.5" />
-                                            <span>{new Date(c.created_at).toLocaleDateString("it-IT", {
-                                                day: 'numeric', month: 'short', year: 'numeric'
-                                            })}</span>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-2 mt-auto">
-                                        <Link href={`/dashboard/cases/${c.id}`} className="w-full">
-                                            <Button variant="ghost" className="w-full justify-between group-hover:bg-primary/5">
-                                                Apri Fascicolo
-                                                <ArrowRight className="h-4 w-4" />
-                                            </Button>
-                                        </Link>
-                                    </div>
-                                </div>
-                            </Card>
+                            <CaseCard key={c.id} caseItem={c} index={i} />
                         ))}
                     </div>
                 </div>

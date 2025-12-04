@@ -69,7 +69,8 @@ engine: Engine = create_engine(
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+# Base is now imported from app.models.base to avoid circular imports
+from app.models.base import Base
 
 # -----------------------------------------------------------------------------
 # 4. FastAPI Dependency
