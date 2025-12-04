@@ -103,7 +103,7 @@ async def process_case_logic(case_id: str, organization_id: str, db: AsyncSessio
     # 3. Dispatch Tasks
     all_processed = True
     for doc in documents:
-        if doc.ai_status == "processed":
+        if doc.ai_status == ExtractionStatus.SUCCESS:
             continue
             
         all_processed = False
@@ -232,18 +232,12 @@ async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSes
         return
 
     processed_count = sum(1 for d in all_docs if d.ai_status == ExtractionStatus.SUCCESS.value)
-    error_count = sum(1 for d in all_docs if d.ai_status == "error")
+    error_count = sum(1 for d in all_docs if d.ai_status == ExtractionStatus.ERROR)
     logger.info(f"Starting generation for case {case_id} with {processed_count} processed and {error_count} failed documents.")
     
     # CRITICAL FIX: Release the lock before starting long-running AI operations.
     # This prevents DB connection starvation and deadlocks.
     await db.commit()
-    # -----------------------
-
-    # CRITICAL FIX: Release the lock before starting long-running AI operations.
-    # This prevents DB connection starvation and deadlocks.
-    await db.commit()
-    # -----------------------
 
     processed_data_for_llm = []
     failed_docs = []  # Track failed documents for user visibility
@@ -301,7 +295,7 @@ async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSes
                             item["error"] = "Missing GCS source path"
                 
                 processed_data_for_llm.extend(data)
-            elif doc.ai_status == "error":
+            elif doc.ai_status == ExtractionStatus.ERROR:
                 # Track failed docs with reason
                 failed_docs.append({
                     "id": str(doc.id),
@@ -371,7 +365,7 @@ async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSes
              logger.error(f"Case {case_id} disappeared during generation.")
              return
              
-        if case.status == "error":
+        if case.status == CaseStatus.ERROR:
              logger.warning("Case marked as error by another process during generation. Overwriting with success.")
         
         result = await db.execute(

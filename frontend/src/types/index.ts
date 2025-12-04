@@ -5,7 +5,7 @@ import { z } from "zod";
 export const DocumentSchema = z.object({
     id: z.string().uuid(),
     filename: z.string(),
-    ai_status: z.enum(["PENDING", "PROCESSING", "SUCCESS", "ERROR"]),
+    ai_status: z.enum(["PENDING", "PROCESSING", "SUCCESS", "ERROR", "SKIPPED"]),
     created_at: z.string().datetime()
 });
 export type Document = z.infer<typeof DocumentSchema>;
