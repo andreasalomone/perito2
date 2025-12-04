@@ -1,8 +1,7 @@
 import os
 import copy
 import uuid
-import shutil
-import tempfile
+
 import pathlib
 import asyncio
 import logging
@@ -202,7 +201,11 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
     db.commit()
     # -----------------------
 
-    tmp_dir = tempfile.mkdtemp()
+    # CRITICAL FIX: Release the lock before starting long-running AI operations.
+    # This prevents DB connection starvation and deadlocks.
+    db.commit()
+    # -----------------------
+
     processed_data_for_llm = []
     failed_docs = []  # Track failed documents for user visibility
     
@@ -215,43 +218,28 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
         for doc in documents:
             if doc.ai_status == ExtractionStatus.SUCCESS.value and doc.ai_extracted_data:
                 # FIX: Deep copy the data to prevent mutating the SQLAlchemy object
-                # and accidentally committing /tmp paths to the database.
                 data = copy.deepcopy(doc.ai_extracted_data)
                 if isinstance(data, dict):
                     data = [data]
                 
-                # Re-download files if needed (Vision API needs local files)
-                # We do this here to ensure the file exists in the temp dir of THIS worker
+                # Update items with GCS URI for on-demand processing
                 for item in data:
                     if item.get("type") == "vision":
-                        # We need to re-download the file because the original temp file 
-                        # from extraction might be gone (different worker / time passed)
-                        # Construct local path in current tmp_dir
-                        original_filename = item.get("filename", "unknown_file")
-                        safe_filename = f"gen_{doc.id}_{original_filename}"
-                        local_path = os.path.join(tmp_dir, safe_filename)
-                        
                         # Check if this specific item has its own GCS path (Artifact)
                         # Fallback to the Document's main GCS path (Original)
                         target_gcs_path = item.get("item_gcs_path") or doc.gcs_path
 
                         if target_gcs_path:
-                            try:
-                                logger.info(f"Re-downloading {target_gcs_path} for generation...")
-                                async with download_semaphore:
-                                    # Use the helper that handles gs:// parsing
-                                    await asyncio.to_thread(download_file_to_temp, target_gcs_path, local_path)
-                                
-                                # Update the path to point to the fresh local copy
-                                item["path"] = local_path
-                                # Explicitly set local_path for ProcessedFile
-                                item["local_path"] = local_path
-                            except Exception as e:
-                                logger.error(f"Failed to re-download {target_gcs_path}: {e}")
-                                item["type"] = "error"
-                                item["error"] = f"Failed to download source: {e}"
+                            # Pass the GCS URI to the LLM handler.
+                            # The file_upload_service will handle downloading it on-demand
+                            # to a temp file, uploading to Gemini, and cleaning up.
+                            # This prevents loading all files into disk/RAM at once.
+                            item["gcs_uri"] = target_gcs_path
+                            item["local_path"] = None # Ensure we don't rely on stale local paths
                         else:
-                            logger.warning(f"Item {original_filename} has no GCS source.")
+                            logger.warning(f"Item {item.get('filename', 'unknown')} has no GCS source.")
+                            item["type"] = "error"
+                            item["error"] = "Missing GCS source path"
                 
                 processed_data_for_llm.extend(data)
             elif doc.ai_status == "error":
@@ -368,9 +356,7 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
         # but usually we want to raise so Cloud Tasks might retry (if transient)
         # For logic errors, maybe don't retry.
         # Let's raise for now.
-        raise e 
-    finally:
-        shutil.rmtree(tmp_dir)
+        raise e
 
 async def generate_docx_variant(
     version_id: str, 

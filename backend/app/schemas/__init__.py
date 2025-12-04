@@ -5,19 +5,15 @@ from uuid import UUID
 from enum import Enum
 
 # --- ENUMS ---
-class AIStatus(str, Enum):
-    PENDING = "PENDING"
-    PROCESSING = "PROCESSING"
-    COMPLETED = "COMPLETED"
-    ERROR = "ERROR"
+from app.schemas.enums import CaseStatus, ExtractionStatus
 
-class CaseStatus(str, Enum):
-    OPEN = "OPEN"
-    CLOSED = "CLOSED"
-    ARCHIVED = "ARCHIVED"
-    GENERATING = "GENERATING"
-    PROCESSING = "PROCESSING"
-    ERROR = "ERROR"
+# --- DOCUMENTS ---
+class DocumentRead(BaseModel):
+    id: UUID
+    filename: str
+    ai_status: ExtractionStatus
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
 
 # --- BASE ---
 class CaseBase(BaseModel):
@@ -56,16 +52,18 @@ class CaseSummary(CaseBase):
                 'created_at': data.created_at,
                 'client_name': client_name
             }
+
+            # FIX: If the target model (cls) has these fields, we must include them
+            # otherwise they get stripped by this manual dict construction.
+            if 'documents' in cls.model_fields:
+                data_dict['documents'] = getattr(data, 'documents', [])
+            
+            if 'report_versions' in cls.model_fields:
+                data_dict['report_versions'] = getattr(data, 'report_versions', [])
             return data_dict
         return data
 
-# --- DOCUMENTS ---
-class DocumentRead(BaseModel):
-    id: UUID
-    filename: str
-    ai_status: AIStatus
-    created_at: datetime
-    model_config = ConfigDict(from_attributes=True)
+
 
 # --- VERSIONS ---
 class VersionRead(BaseModel):

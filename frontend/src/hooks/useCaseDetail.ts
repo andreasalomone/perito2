@@ -37,7 +37,7 @@ export function useCaseDetail(id: string | undefined) {
     // Reset local generating state when we see completion
     useEffect(() => {
         if (data && isGenerating) {
-            const allDone = data.documents.every(d => ["COMPLETED", "ERROR"].includes(d.ai_status));
+            const allDone = data.documents.every(d => ["SUCCESS", "ERROR"].includes(d.ai_status));
             if (allDone) {
                 setIsGenerating(false);
             }

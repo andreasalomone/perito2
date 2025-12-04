@@ -34,6 +34,7 @@ class FileUploadServiceProtocol(Protocol):
         mime_type: str
         display_name: str
         is_vision_asset: bool
+        gcs_uri: Optional[str] = None
 
     @dataclass
     class FileOperationResult:
@@ -351,15 +352,16 @@ class GeminiReportGenerator:
         candidates = []
         for f in processed_files:
             # Determine path source
-            path_str = f.local_path or f.gcs_uri
+            local_path = f.local_path
+            gcs_uri = f.gcs_uri
             
-            if not path_str:
+            if not local_path and not gcs_uri:
                 continue
                 
-            # SECURITY: Strict path validation
-            if not self._is_safe_path(path_str):
+            # SECURITY: Strict path validation for local files
+            if local_path and not self._is_safe_path(local_path):
                 logger.warning(
-                    f"Skipping unsafe or unauthorized file path: {path_str}",
+                    f"Skipping unsafe or unauthorized file path: {local_path}",
                     extra={"security_event": True}
                 )
                 continue
@@ -369,10 +371,11 @@ class GeminiReportGenerator:
             
             candidates.append(
                 self.file_upload_service.UploadCandidate(
-                    file_path=path_str,
+                    file_path=local_path or gcs_uri, # Use GCS URI as path identifier if local missing
                     mime_type=f.file_type,
                     display_name=f.filename,
                     is_vision_asset=is_vision,
+                    gcs_uri=gcs_uri
                 )
             )
         return candidates
@@ -526,44 +529,37 @@ class GeminiReportGenerator:
 # 5. Dependency Injection & Singleton Factory (Compatibility Layer)
 # -----------------------------------------------------------------------------
 
-try:
-    from app.core.config import settings
-    from app.services.llm import (
-        cache_service,
-        file_upload_service,
-        generation_service,
-        prompt_builder_service,
-        response_parser_service,
-    )
+from app.core.config import settings
+from app.services.llm import (
+    cache_service,
+    file_upload_service,
+    generation_service,
+    prompt_builder_service,
+    response_parser_service,
+)
 
-    # Global retry queue instance
-    cleanup_retry_queue = CleanupRetryQueue()
+# Global retry queue instance
+cleanup_retry_queue = CleanupRetryQueue()
 
-    # Singleton Instance
-    # We construct it with the concrete services from the app
-    # AND inject the client and allowed dirs
-    
-    _client = None
-    if settings.GEMINI_API_KEY:
-        _client = genai.Client(api_key=settings.GEMINI_API_KEY)
-    else:
-        logger.error("GEMINI_API_KEY is not configured. LLM features will fail.")
+# Singleton Instance
+# We construct it with the concrete services from the app
+# AND inject the client and allowed dirs
 
-    gemini_generator = GeminiReportGenerator(
-        client=_client,
-        model_name=settings.LLM_MODEL_NAME,
-        fallback_model_name=settings.LLM_FALLBACK_MODEL_NAME,
-        file_upload_service=file_upload_service,
-        cache_service=cache_service,
-        prompt_builder_service=prompt_builder_service,
-        response_parser_service=response_parser_service,
-        generation_service=generation_service,
-        retry_queue=cleanup_retry_queue,
-        allowed_file_dirs=[Path(settings.UPLOAD_FOLDER), Path("/tmp")]
-    )
+if not settings.GEMINI_API_KEY:
+    # Fail fast at startup as requested
+    raise ValueError("GEMINI_API_KEY is not configured. Application cannot start.")
 
-except ImportError:
-    # Fallback for isolation
-    logger.warning("Could not import app services. Singleton 'gemini_generator' not initialized.")
-    cleanup_retry_queue = CleanupRetryQueue()
-    gemini_generator = None
+_client = genai.Client(api_key=settings.GEMINI_API_KEY)
+
+gemini_generator = GeminiReportGenerator(
+    client=_client,
+    model_name=settings.LLM_MODEL_NAME,
+    fallback_model_name=settings.LLM_FALLBACK_MODEL_NAME,
+    file_upload_service=file_upload_service,
+    cache_service=cache_service,
+    prompt_builder_service=prompt_builder_service,
+    response_parser_service=response_parser_service,
+    generation_service=generation_service,
+    retry_queue=cleanup_retry_queue,
+    allowed_file_dirs=[Path(settings.UPLOAD_FOLDER), Path("/tmp")]
+)

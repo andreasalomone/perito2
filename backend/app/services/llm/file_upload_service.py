@@ -9,6 +9,7 @@ robust error handling.
 import asyncio
 import logging
 import os
+import tempfile
 from dataclasses import dataclass
 from typing import List, Optional, Sequence
 
@@ -24,6 +25,7 @@ from tenacity import (
 )
 
 from app.core.config import settings
+from app.services.gcs_service import download_file_to_temp
 
 # Configure Module Logger
 logger = logging.getLogger(__name__)
@@ -52,6 +54,7 @@ class UploadCandidate:
     mime_type: str
     display_name: str
     is_vision_asset: bool = True
+    gcs_uri: Optional[str] = None
 
 @dataclass(frozen=True)
 class FileOperationResult:
@@ -100,6 +103,7 @@ async def upload_single_file(
 ) -> FileOperationResult:
     """
     Uploads a single file to Gemini with concurrency control.
+    Handles on-demand downloading from GCS if local file is missing but GCS URI is provided.
 
     Args:
         client: The Gemini API client.
@@ -110,9 +114,25 @@ async def upload_single_file(
         FileOperationResult indicating success or failure.
     """
     safe_name = _sanitize_path(candidate.file_path)
+    temp_file_path = None
     
     async with semaphore:
         try:
+            target_path = candidate.file_path
+            
+            # If local path doesn't exist but we have a GCS URI, download it
+            if not os.path.exists(target_path) and candidate.gcs_uri:
+                logger.debug(f"Local file missing for {safe_name}. Downloading from {candidate.gcs_uri}...")
+                
+                # Create a temp file
+                # We use mkstemp to ensure we have a valid path, but close the handle immediately
+                fd, temp_file_path = tempfile.mkstemp(suffix=f"_{safe_name}")
+                os.close(fd)
+                
+                await asyncio.to_thread(download_file_to_temp, candidate.gcs_uri, temp_file_path)
+                target_path = temp_file_path
+                logger.debug(f"Downloaded {safe_name} to {temp_file_path}")
+
             logger.debug(f"Starting upload for: {candidate.display_name} ({safe_name})")
             
             upload_config = types.UploadFileConfig(
@@ -124,7 +144,7 @@ async def upload_single_file(
             uploaded_file = await asyncio.to_thread(
                 _execute_blocking_upload, 
                 client, 
-                candidate.file_path, 
+                target_path, 
                 upload_config
             )
 
@@ -145,6 +165,14 @@ async def upload_single_file(
                 success=False,
                 error_message=error_msg
             )
+        finally:
+            # Cleanup temp file if we created one
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.remove(temp_file_path)
+                    logger.debug(f"Cleaned up temp file: {temp_file_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to cleanup temp file {temp_file_path}: {e}")
 
 async def upload_vision_files_batch(
     client: genai.Client, 
@@ -165,10 +193,11 @@ async def upload_vision_files_batch(
 
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_UPLOADS)
     
-    # Filter only vision assets if mixed types are passed, strictly checking existence
+    # Filter only vision assets if mixed types are passed
+    # We relax the check: either file exists OR gcs_uri is present
     valid_candidates = [
         f for f in files 
-        if f.is_vision_asset and os.path.exists(f.file_path)
+        if f.is_vision_asset and (os.path.exists(f.file_path) or f.gcs_uri)
     ]
     
     if len(valid_candidates) < len(files):

@@ -55,7 +55,11 @@ export default function CaseWorkspace() {
 
             // 3. Register & Update State Locally
             await axios.post<Document>(`${API_URL}/api/cases/${caseId}/documents/register`,
-                { filename: file.name, gcs_path: signRes.data.gcs_path },
+                {
+                    filename: file.name,
+                    gcs_path: signRes.data.gcs_path,
+                    mime_type: file.type
+                },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
 
@@ -183,7 +187,7 @@ export default function CaseWorkspace() {
                                 ref={docInputRef}
                                 onChange={handleFileUpload}
                                 className="hidden"
-                                accept=".pdf,.doc,.docx,.txt"
+                                accept=".pdf,.docx,.xlsx,.txt,.eml,.png,.jpg,.jpeg,.webp,.gif"
                             />
                             <Button
                                 size="sm"

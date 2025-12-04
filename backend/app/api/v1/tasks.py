@@ -1,5 +1,6 @@
 import logging
 from typing import Annotated, Literal
+import asyncio
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from google.auth.transport import requests as google_requests
@@ -75,7 +76,13 @@ def verify_cloud_tasks_auth(
     # Service Account Whitelist Check
     # Prevents other GCP services in your project from invoking these webhooks
     expected_sa = settings.CLOUD_TASKS_SA_EMAIL
-    if expected_sa and id_info.get("email") != expected_sa:
+    
+    if not expected_sa:
+        # FAIL SECURE: Do not allow requests if configuration is missing
+        logger.critical("Security Misconfiguration: CLOUD_TASKS_SA_EMAIL is missing.")
+        raise HTTPException(status_code=500, detail="Server Configuration Error")
+
+    if id_info.get("email") != expected_sa:
         logger.critical(
             f"⛔ Security Alert: Unauthorized Service Account detected. "
             f"Expected: {expected_sa}, Got: {id_info.get('email')}"
@@ -116,7 +123,7 @@ def set_rls_context(db: Session, organization_id: str) -> None:
     status_code=status.HTTP_202_ACCEPTED,
     summary="Process Case Logic"
 )
-async def process_case(
+def process_case(
     payload: CaseTaskPayload,
     db: Session = Depends(get_db),
     _: bool = Depends(verify_cloud_tasks_auth)
@@ -138,11 +145,11 @@ async def process_case(
 
     # 3. Execute Business Logic
     try:
-        await report_generation_service.process_case_logic(
+        asyncio.run(report_generation_service.process_case_logic(
             case_id=str(payload.case_id),
             organization_id=str(payload.organization_id),
             db=db
-        )
+        ))
     except Exception as e:
         logger.error(f"❌ Task Failure: {e}", exc_info=True)
         # Return 500 to trigger Cloud Tasks retry policy (exponential backoff)
@@ -156,7 +163,7 @@ async def process_case(
     status_code=status.HTTP_202_ACCEPTED,
     summary="Process Document Extraction"
 )
-async def process_document(
+def process_document(
     payload: DocumentTaskPayload,
     db: Session = Depends(get_db),
     _: bool = Depends(verify_cloud_tasks_auth)
@@ -174,11 +181,11 @@ async def process_document(
         return {"status": "skipped", "reason": "not_found"}
 
     try:
-        await case_service.process_document_extraction(
+        asyncio.run(case_service.process_document_extraction(
             doc_id=doc.id, 
             org_id=str(payload.organization_id), 
             db=db
-        )
+        ))
     except Exception as e:
         logger.error(f"❌ Extraction Task Failure: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Extraction failed")
@@ -191,7 +198,7 @@ async def process_document(
     status_code=status.HTTP_202_ACCEPTED,
     summary="Generate DOCX Report"
 )
-async def generate_report(
+def generate_report(
     payload: CaseTaskPayload,
     db: Session = Depends(get_db),
     _: bool = Depends(verify_cloud_tasks_auth)
@@ -204,11 +211,11 @@ async def generate_report(
     set_rls_context(db, str(payload.organization_id))
 
     try:
-        await report_generation_service.generate_report_logic(
+        asyncio.run(report_generation_service.generate_report_logic(
             case_id=str(payload.case_id),
             organization_id=str(payload.organization_id),
             db=db
-        )
+        ))
     except Exception as e:
         logger.error(f"❌ Report Generation Failure: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Generation failed")
@@ -217,11 +224,11 @@ async def generate_report(
 
 
 @router.post("/flush-outbox")
-async def flush_outbox_endpoint(db: Session = Depends(get_db)):
+def flush_outbox_endpoint(db: Session = Depends(get_db)):
     """
     Trigger processing of pending outbox messages.
     Called by Cloud Scheduler every minute.
     """
     from app.services.outbox_processor import process_outbox_batch
-    await process_outbox_batch(db)
+    asyncio.run(process_outbox_batch(db))
     return {"status": "ok"}
