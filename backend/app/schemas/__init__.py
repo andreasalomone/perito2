@@ -97,3 +97,4 @@ class DownloadVariantPayload(BaseModel):
 class DocumentRegisterPayload(BaseModel):
     filename: str
     gcs_path: str
+    mime_type: str

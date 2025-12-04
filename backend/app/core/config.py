@@ -50,7 +50,22 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_MB: int = 50
     MAX_TOTAL_UPLOAD_SIZE_MB: int = 200
     MAX_EXTRACTED_TEXT_LENGTH: int = 4000000
-    ALLOWED_EXTENSIONS: set = {"png", "jpg", "jpeg", "xlsx", "pdf", "docx", "txt", "eml"}
+
+    
+    # Map extensions to MIME types (Source of Truth for Uploads)
+    ALLOWED_MIME_TYPES: dict = {
+        ".pdf": "application/pdf",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".txt": "text/plain",
+        ".eml": "message/rfc822",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+    }
+    
     UPLOAD_FOLDER: str = "/tmp"
 
     # LLM Configuration

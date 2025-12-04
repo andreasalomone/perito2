@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 def allowed_file(filename: str) -> bool:
     return (
         "." in filename
-        and filename.rsplit(".", 1)[1].lower() in settings.ALLOWED_EXTENSIONS
+        and f".{filename.rsplit('.', 1)[1].lower()}" in settings.ALLOWED_MIME_TYPES
     )
 
 

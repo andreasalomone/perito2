@@ -15,7 +15,7 @@ from google.cloud import tasks_v2
 from sqlalchemy.exc import IntegrityError
 
 from app.models import Case, Document, ReportVersion
-from app.schemas.enums import ExtractionStatus
+from app.schemas.enums import ExtractionStatus, CaseStatus
 from app.services.gcs_service import get_storage_client, download_file_to_temp
 from app.core.config import settings
 from app.services import document_processor, llm_handler, docx_generator, case_service
@@ -57,12 +57,12 @@ async def process_case_logic(case_id: str, organization_id: str, db: Session):
         return
 
     # DUPLICATE PREVENTION: Check if already processing (now atomic with lock)
-    if case.status == "processing":
+    if case.status == CaseStatus.PROCESSING:
         logger.warning(f"Case {case_id} already processing, skipping duplicate dispatch")
         return
 
     # Update status to processing
-    case.status = "processing"
+    case.status = CaseStatus.PROCESSING
     db.commit()
 
     # 2. Fetch Documents
@@ -164,13 +164,13 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
     if existing_report:
         logger.info(f"Report for case {case_id} already exists. Aborting duplicate generation.")
         # Ensure status is correct
-        if case.status != "open":
-            case.status = "open"
+        if case.status != CaseStatus.OPEN:
+            case.status = CaseStatus.OPEN
             db.commit()
         return
 
     # Set granular status
-    case.status = "generating"
+    case.status = CaseStatus.GENERATING
     db.commit()
 
     # --- INVARIANT CHECK ---
@@ -187,7 +187,7 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
     has_completed_docs = any(d.ai_status == ExtractionStatus.SUCCESS.value for d in all_docs)
     if not has_completed_docs:
         logger.error(f"Cannot generate report for case {case_id}: No successfully processed documents found (all failed or empty).")
-        case.status = "error"
+        case.status = CaseStatus.ERROR
         db.commit()
         # STOP RETRIES: Return gracefully as this is an unrecoverable data state.
         # Raising an error would cause Cloud Tasks to retry indefinitely.
@@ -343,7 +343,7 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
             v1.docx_storage_path = final_docx_path
             v1.ai_raw_output = report_text
             
-        case.status = "open"
+        case.status = CaseStatus.OPEN
         try:
             db.commit()
             logger.info("✅ Case processing completed successfully. Version 1 created.")
@@ -358,7 +358,7 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
         try:
             case = db.query(Case).filter(Case.id == case_id).with_for_update().first()
             if case:
-                case.status = "error"
+                case.status = CaseStatus.ERROR
                 db.commit()
         except Exception as db_e:
             logger.error(f"Failed to update case status to error: {db_e}")

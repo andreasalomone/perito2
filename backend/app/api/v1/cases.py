@@ -12,6 +12,7 @@ from app import schemas
 from app.api.dependencies import get_current_user_token, get_db
 from app.core.config import settings
 from app.models import Case, Client, Document, ReportVersion, User
+from app.schemas.enums import CaseStatus, ExtractionStatus
 from app.services import case_service, gcs_service
 # In a real scenario, we assume report_generation_service is refactored 
 # to create its own DB session, not accept one as an arg.
@@ -25,19 +26,6 @@ router = APIRouter()
 # -----------------------------------------------------------------------------
 # Constants & Configuration
 # -----------------------------------------------------------------------------
-ALLOWED_EXTENSIONS = {
-    ".pdf": "application/pdf",
-    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    ".txt": "text/plain",
-    ".eml": "message/rfc822",
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".webp": "image/webp",
-    ".gif": "image/gif",
-}
-
 # Regex for safe filenames (alphanumeric, dashes, underscores, spaces)
 SAFE_FILENAME_REGEX = re.compile(r"^[a-zA-Z0-9_\-\. ]+$")
 
@@ -113,8 +101,8 @@ def get_case_status(
     ]
 
     # 3. Check for processing documents
-    is_generating = (case_status == "generating") or any(
-        d["ai_status"] in ["pending", "processing"] for d in documents_data
+    is_generating = (case_status == CaseStatus.GENERATING) or any(
+        d["ai_status"] in [ExtractionStatus.PENDING, ExtractionStatus.PROCESSING] for d in documents_data
     )
     
     return {
@@ -127,7 +115,7 @@ def get_case_status(
 
 @router.post(
     "/", 
-    response_model=schemas.CaseSummary, 
+    response_model=schemas.CaseDetail, 
     status_code=status.HTTP_201_CREATED,
     summary="Create Case"
 )
@@ -160,7 +148,7 @@ def create_case(
         reference_code=case_in.reference_code,
         organization_id=org_id,
         client_id=client_id,
-        status="open"
+        status=CaseStatus.OPEN
     )
     db.add(new_case)
     db.commit()
@@ -213,13 +201,13 @@ def get_doc_upload_url(
 
     # 2. Validate Extension & MIME
     ext = Path(clean_filename).suffix.lower()
-    if ext not in ALLOWED_EXTENSIONS:
+    if ext not in settings.ALLOWED_MIME_TYPES:
         raise HTTPException(status_code=400, detail=f"Unsupported file extension: {ext}")
     
-    if content_type != ALLOWED_EXTENSIONS[ext]:
+    if content_type != settings.ALLOWED_MIME_TYPES[ext]:
         raise HTTPException(
             status_code=400,
-            detail=f"MIME type mismatch. Expected {ALLOWED_EXTENSIONS[ext]}."
+            detail=f"MIME type mismatch. Expected {settings.ALLOWED_MIME_TYPES[ext]}."
         )
 
     # 3. Generate URL
@@ -272,7 +260,7 @@ def register_document(
         filename=payload.filename,
         gcs_path=clean_path,
         mime_type=payload.mime_type,
-        ai_status="pending"
+        ai_status=ExtractionStatus.PENDING
     )
     db.add(new_doc)
     db.commit()
