@@ -1,4 +1,5 @@
 import os
+import tempfile
 import copy
 import uuid
 
@@ -43,6 +44,23 @@ async def run_generation_task(case_id: str, organization_id: str):
         )
         
         await generate_report_logic(case_id, organization_id, db)
+    finally:
+        db.close()
+
+async def run_process_case_logic_standalone(case_id: str, organization_id: str):
+    """
+    Wrapper for background execution that manages its own DB session.
+    Used by Cloud Tasks to process cases safely without sharing sessions across threads.
+    """
+    db = SessionLocal()
+    try:
+        # FIX: Manually set RLS context for the background session
+        db.execute(
+            text("SELECT set_config('app.current_org_id', :org_id, false)"), 
+            {"org_id": organization_id}
+        )
+        
+        await process_case_logic(case_id, organization_id, db)
     finally:
         db.close()
 
@@ -242,6 +260,12 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
                                 logger.info(f"Re-downloading {target_gcs_path} for generation...")
                                 with download_semaphore:
                                     # Use the helper that handles gs:// parsing
+                                    # [FIX] Generate a valid temp path
+                                    fd, local_path = tempfile.mkstemp(suffix=f"_{item.get('filename', 'asset')}")
+                                    os.close(fd) # Close the file descriptor immediately
+                                    
+                                    item["local_path"] = local_path # Update the dict
+                                    
                                     await asyncio.to_thread(download_file_to_temp, target_gcs_path, local_path)
                             except Exception as e:
                                 logger.error(f"Failed to re-download {target_gcs_path} for generation: {e}")

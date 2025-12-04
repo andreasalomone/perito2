@@ -101,6 +101,12 @@ def prepare_pdf_for_llm(pdf_path: str) -> List[Dict[str, Any]]:
             })
     except Exception as e:
         logger.warning(f"Could not extract text from PDF: {e}")
+        # Return an error object so the failure is visible in the extracted data
+        parts.append({
+            "type": "error",
+            "filename": f"{sanitize_filename(os.path.basename(pdf_path))} (text extraction)",
+            "message": f"Text extraction failed: {e}",
+        })
 
     return parts
 

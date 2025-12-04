@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 import asyncio
 
-def process_message(message_id, db: Session):
+async def process_message(message_id, db: Session):
     """
     Process a single message by ID. 
     Used for immediate dispatch optimization.
@@ -30,10 +30,10 @@ def process_message(message_id, db: Session):
 
     try:
         if msg.topic == "generate_report":
-            asyncio.run(report_generation_service.trigger_generation_task(
+            await report_generation_service.trigger_generation_task(
                 case_id=msg.payload["case_id"],
                 organization_id=msg.payload["organization_id"]
-            ))
+            )
         
         msg.status = "PROCESSED"
         msg.processed_at = datetime.utcnow()
@@ -65,16 +65,10 @@ def process_outbox_batch(db: Session, batch_size: int = 10):
 
     for msg in messages:
         try:
-            if msg.topic == "generate_report":
-                # Call the original Cloud Task logic
-                asyncio.run(report_generation_service.trigger_generation_task(
-                    case_id=msg.payload["case_id"],
-                    organization_id=msg.payload["organization_id"]
-                ))
-            
-            # Mark as processed
-            msg.status = "PROCESSED"
-            msg.processed_at = datetime.utcnow()
+            # Call the async process_message function for each message
+            # process_message expects message_id and db.
+            # It also handles status updates and commits.
+            asyncio.run(process_message(msg.id, db))
             
         except Exception as e:
             logger.error(f"Failed to process outbox message {msg.id}: {e}")

@@ -125,7 +125,6 @@ def set_rls_context(db: Session, organization_id: str) -> None:
 )
 def process_case(
     payload: CaseTaskPayload,
-    db: Session = Depends(get_db),
     _: bool = Depends(verify_cloud_tasks_auth)
 ):
     """
@@ -133,22 +132,11 @@ def process_case(
     """
     logger.info(f"🚀 Processing Case: {payload.case_id}")
     
-    # 1. Apply Security Context
-    set_rls_context(db, str(payload.organization_id))
-    
-    # 2. Validation
-    case = db.get(Case, payload.case_id)
-    if not case:
-        logger.error(f"❌ Case not found: {payload.case_id}")
-        # Return 200 to stop Cloud Tasks from retrying infinitely on 404s
-        return {"status": "skipped", "reason": "not_found"}
-
     # 3. Execute Business Logic
     try:
-        asyncio.run(report_generation_service.process_case_logic(
+        asyncio.run(report_generation_service.run_process_case_logic_standalone(
             case_id=str(payload.case_id),
-            organization_id=str(payload.organization_id),
-            db=db
+            organization_id=str(payload.organization_id)
         ))
     except Exception as e:
         logger.error(f"❌ Task Failure: {e}", exc_info=True)
@@ -165,7 +153,6 @@ def process_case(
 )
 def process_document(
     payload: DocumentTaskPayload,
-    db: Session = Depends(get_db),
     _: bool = Depends(verify_cloud_tasks_auth)
 ):
     """
@@ -173,18 +160,10 @@ def process_document(
     """
     logger.info(f"🚀 Processing Document: {payload.document_id}")
     
-    set_rls_context(db, str(payload.organization_id))
-
-    doc = db.get(Document, payload.document_id)
-    if not doc:
-        logger.error(f"❌ Document not found: {payload.document_id}")
-        return {"status": "skipped", "reason": "not_found"}
-
     try:
-        asyncio.run(case_service.process_document_extraction(
-            doc_id=doc.id, 
-            org_id=str(payload.organization_id), 
-            db=db
+        asyncio.run(case_service.run_process_document_extraction_standalone(
+            doc_id=payload.document_id, 
+            org_id=str(payload.organization_id)
         ))
     except Exception as e:
         logger.error(f"❌ Extraction Task Failure: {e}", exc_info=True)
@@ -200,7 +179,6 @@ def process_document(
 )
 def generate_report(
     payload: CaseTaskPayload,
-    db: Session = Depends(get_db),
     _: bool = Depends(verify_cloud_tasks_auth)
 ):
     """
@@ -208,13 +186,10 @@ def generate_report(
     """
     logger.info(f"🚀 Generating Report for Case: {payload.case_id}")
     
-    set_rls_context(db, str(payload.organization_id))
-
     try:
-        asyncio.run(report_generation_service.generate_report_logic(
+        asyncio.run(report_generation_service.run_generation_task(
             case_id=str(payload.case_id),
-            organization_id=str(payload.organization_id),
-            db=db
+            organization_id=str(payload.organization_id)
         ))
     except Exception as e:
         logger.error(f"❌ Report Generation Failure: {e}", exc_info=True)

@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 from sqlalchemy.exc import IntegrityError
+from app.db.database import SessionLocal
 
 def get_or_create_client(db: Session, name: str, organization_id: UUID) -> Client:
     # 1. Try to find existing within this organization
@@ -217,9 +218,25 @@ def trigger_case_processing_task(case_id: str, org_id: str):
         logger.info(f"Task created: {response.name}")
         
     except Exception as e:
-        logger.error(f"Failed to enqueue case processing task for case {case_id}: {e}")
         # Re-raise to propagate error to caller (API endpoint returns HTTP error)
         raise
+
+async def run_process_document_extraction_standalone(doc_id: UUID, org_id: str):
+    """
+    Wrapper for background execution that manages its own DB session.
+    Used by Cloud Tasks to process documents safely without sharing sessions across threads.
+    """
+    db = SessionLocal()
+    try:
+        # FIX: Manually set RLS context for the background session
+        db.execute(
+            text("SELECT set_config('app.current_org_id', :org_id, false)"), 
+            {"org_id": org_id}
+        )
+        
+        await process_document_extraction(doc_id, org_id, db)
+    finally:
+        db.close()
 
 async def process_document_extraction(doc_id: UUID, org_id: str, db: Session):
     """
