@@ -3,6 +3,7 @@ import functools
 import logging
 import mimetypes
 import os
+import io
 import pathlib
 from typing import Any, Callable, Dict, List, TypeVar, Union, cast
 
@@ -228,6 +229,29 @@ def process_eml_file(eml_path: str, upload_folder: str, depth: int = 0) -> List[
                     payload += "=" * (4 - missing_padding)
 
             decoded_payload = base64.b64decode(payload)
+            
+            # --- TINY IMAGE FILTER (Signatures/Icons) ---
+            # 1. Check File Size (< 5KB)
+            if len(decoded_payload) < 5 * 1024:
+                # Potential signature/icon. Check dimensions if it's an image.
+                if ext in [".png", ".jpg", ".jpeg", ".gif", ".webp"]:
+                    try:
+                        # We need to peek at dimensions without saving if possible, 
+                        # or just save and check. Saving is safer/easier since we have the bytes.
+                        # But let's try to be efficient and check bytes if possible, 
+                        # or just rely on size for now? 
+                        # User asked for "Option 1" which implies size AND dimensions.
+                        
+                        # Let's use PIL to check dimensions from bytes
+                        with Image.open(io.BytesIO(decoded_payload)) as img:
+                            width, height = img.size
+                            if width < 100 and height < 100:
+                                logger.info(f"Skipping tiny image attachment '{original_filename}' ({width}x{height}, {len(decoded_payload)} bytes) in {eml_path}")
+                                continue
+                    except Exception as e:
+                        # If we can't parse it as an image, just proceed (safe failure)
+                        logger.warning(f"Could not check dimensions of small image {original_filename}: {e}")
+            # --------------------------------------------
             
             # Use the robust sanitize_filename utility
             safe_filename = sanitize_filename(original_filename)
