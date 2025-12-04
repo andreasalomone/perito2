@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_current_user_token
 from app.db.database import get_db
 from app.models import AllowedEmail, User
+from app.schemas.enums import UserRole
 
 # Configure Structured Logging
 logger = logging.getLogger("app.api.invites")
@@ -20,10 +21,6 @@ router = APIRouter()
 # -----------------------------------------------------------------------------
 # 1. Strict Types & Enums
 # -----------------------------------------------------------------------------
-class UserRole(str, Enum):
-    ADMIN = "admin"
-    SURVEYOR = "surveyor"  # Domain specific context
-    MEMBER = "member"
 
 class InviteUserRequest(BaseModel):
     email: EmailStr

@@ -12,17 +12,12 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.api.dependencies import get_superadmin_user
 from app.models import User, Organization, AllowedEmail
+from app.schemas.enums import UserRole
 
 # Configure Structured Logging
 logger = logging.getLogger("app.admin.orgs")
 
 router = APIRouter()
-
-# ============= Enums =============
-
-class UserRole(str, Enum):
-    ADMIN = "admin"
-    MEMBER = "member"
 
 # ============= Request/Response Models =============
 

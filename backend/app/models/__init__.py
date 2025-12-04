@@ -4,6 +4,7 @@ from sqlalchemy import Column, DateTime, String, Boolean, ForeignKey, Integer, T
 from sqlalchemy.orm import relationship
 from app.db.database import Base
 from app.schemas.enums import UserRole, ExtractionStatus, CaseStatus
+from app.models.outbox import OutboxMessage
 
 # --- TENANCY & CRM ---
 
@@ -23,7 +24,7 @@ class User(Base):
     id = Column(String(128), primary_key=True) # Firebase UID
     organization_id = Column(Uuid, ForeignKey("organizations.id"), nullable=False)
     email = Column(String(255), nullable=False)
-    role = Column(String(50), default="member")
+    role = Column(SAEnum(UserRole), default=UserRole.MEMBER, nullable=False)
     
     organization = relationship("Organization", back_populates="users")
 
