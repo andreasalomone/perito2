@@ -117,7 +117,7 @@ def get_db(
     # This allows the 'user_self_access' RLS policy to let us read our own record.
     try:
         db.execute(
-            text("SELECT set_config('app.current_user_uid', :uid, true)"), 
+            text("SELECT set_config('app.current_user_uid', :uid, false)"), 
             {"uid": uid}
         )
     except Exception as e:
@@ -141,12 +141,37 @@ def get_db(
     # If RLS is on, Postgres now filters everything automatically.
     try:
         db.execute(
-            text("SELECT set_config('app.current_org_id', :org_id, true)"), 
+            text("SELECT set_config('app.current_org_id', :org_id, false)"), 
             {"org_id": org_id}
         )
     except Exception as e:
         logger.error(f"Failed to set app.current_org_id: {e}")
         raise HTTPException(status_code=500, detail="Database session initialization failed")
+    
+    yield db
+
+# -----------------------------------------------------------------------------
+# 3b. Registration Database Session (Permissive)
+# -----------------------------------------------------------------------------
+def get_registration_db(
+    current_user_token: dict[str, Any] = Depends(get_current_user_token),
+    db: Session = Depends(get_raw_db)
+) -> Generator[Session, None, None]:
+    """
+    Permissive Dependency for the /sync endpoint.
+    Sets the User UID context (for RLS 'user_self_access') but DOES NOT require
+    the user to exist in the User table yet. This allows first-time registration.
+    """
+    uid = current_user_token['uid']
+    
+    try:
+        db.execute(
+            text("SELECT set_config('app.current_user_uid', :uid, false)"),
+            {"uid": uid}
+        )
+    except Exception as e:
+        logger.error(f"Failed to set app.current_user_uid for registration: {e}")
+        raise HTTPException(status_code=500, detail="Database context initialization failed")
     
     yield db
 

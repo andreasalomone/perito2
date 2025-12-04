@@ -9,8 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_user_token
-from app.api.dependencies import get_db
+from app.api.dependencies import get_current_user_token, get_registration_db
 from app.models import AllowedEmail, User
 from app.schemas.enums import UserRole
 
@@ -47,7 +46,7 @@ class UserRead(BaseModel):
 )
 def sync_user(
     token: Dict[str, Any] = Depends(get_current_user_token),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_registration_db)  # Permissive: doesn't require User to exist
 ) -> User:
     """
     Synchronizes the authenticated Firebase user with the local database.
