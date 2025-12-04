@@ -354,6 +354,7 @@ async def _check_and_trigger_generation(db: Session, case_id: UUID, org_id: str,
                 from app.models.outbox import OutboxMessage
                 outbox_entry = OutboxMessage(
                     topic="generate_report",
+                    organization_id=str(org_id),  # For tenant isolation
                     payload={
                         "case_id": str(case_id),
                         "organization_id": str(org_id)

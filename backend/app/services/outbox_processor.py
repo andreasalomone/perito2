@@ -63,20 +63,23 @@ def process_outbox_batch(db: Session, batch_size: int = 10):
         OutboxMessage.created_at.asc()
     ).with_for_update(skip_locked=True).limit(batch_size).all()
 
-    for msg in messages:
-        try:
-            # Call the async process_message function for each message
-            # process_message expects message_id and db.
-            # It also handles status updates and commits.
-            asyncio.run(process_message(msg.id, db))
-            
-        except Exception as e:
-            logger.error(f"Failed to process outbox message {msg.id}: {e}")
-            msg.retry_count += 1
-            msg.error_log = str(e)
-            if msg.retry_count > 5:
-                msg.status = "FAILED"
-        
-        # Commit per message (or per batch) to save progress
-        # Committing inside loop is safer for partial progress
-        db.commit()
+    if not messages:
+        return
+
+    async def _process_batch_async():
+        """Process all messages in a single event loop to avoid thrashing."""
+        for msg in messages:
+            try:
+                await process_message(msg.id, db)
+            except Exception as e:
+                logger.error(f"Failed to process outbox message {msg.id}: {e}")
+                msg.retry_count += 1
+                msg.error_log = str(e)
+                if msg.retry_count > 5:
+                    msg.status = "FAILED"
+                # Commit per message to save progress
+                db.commit()
+    
+    # Run entire batch in a single event loop (avoids loop creation/destruction overhead)
+    asyncio.run(_process_batch_async())
+

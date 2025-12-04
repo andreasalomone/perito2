@@ -228,6 +228,7 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
 
     processed_data_for_llm = []
     failed_docs = []  # Track failed documents for user visibility
+    temp_files_to_cleanup: list[str] = []  # Track temp files for cleanup
     
     try:
         # 1. Fetch Processed Data (Re-query as we released the session)
@@ -263,6 +264,7 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
                                     # [FIX] Generate a valid temp path
                                     fd, local_path = tempfile.mkstemp(suffix=f"_{item.get('filename', 'asset')}")
                                     os.close(fd) # Close the file descriptor immediately
+                                    temp_files_to_cleanup.append(local_path)  # Track for cleanup
                                     
                                     item["local_path"] = local_path # Update the dict
                                     
@@ -387,11 +389,20 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
             logger.error(f"Failed to update case status to error: {db_e}")
             
         # Don't raise if we want to swallow the error in the task worker,
-        # Don't raise if we want to swallow the error in the task worker, 
         # but usually we want to raise so Cloud Tasks might retry (if transient)
         # For logic errors, maybe don't retry.
         # Let's raise for now.
         raise e
+    finally:
+        # CRITICAL: Clean up temp files to prevent memory exhaustion on Cloud Run
+        # On Cloud Run Gen 2, /tmp is an in-memory filesystem (tmpfs)
+        for temp_path in temp_files_to_cleanup:
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                    logger.debug(f"Cleaned up temp file: {temp_path}")
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to cleanup temp file {temp_path}: {cleanup_error}")
 
 async def generate_docx_variant(
     version_id: str, 

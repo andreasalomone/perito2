@@ -11,6 +11,7 @@ class OutboxMessage(Base):
     topic = Column(String(50), nullable=False) # e.g., "generate_report"
     payload = Column(JSONB, nullable=False) # The data needed for the task
     status = Column(String(20), default="PENDING", nullable=False) # PENDING, PROCESSED, FAILED
+    organization_id = Column(String(36), nullable=True)  # For tenant isolation
     retry_count = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     processed_at = Column(DateTime(timezone=True), nullable=True)
@@ -18,4 +19,6 @@ class OutboxMessage(Base):
 
     __table_args__ = (
         Index('idx_outbox_pending_fifo', 'created_at', postgresql_where=text("status = 'PENDING'")),
+        Index('idx_outbox_org_pending', 'organization_id', 'created_at', postgresql_where=text("status = 'PENDING'")),
     )
+

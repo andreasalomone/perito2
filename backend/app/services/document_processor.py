@@ -153,9 +153,9 @@ def extract_text_from_xlsx(xlsx_path: str) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.warning(f"Failed to read XLSX file {xlsx_path}: {e}")
         return [{
-            "type": "text",
-            "content": f"[ERROR: Could not read Excel file content: {str(e)}]",
-            "filename": os.path.basename(xlsx_path),
+            "type": "error",
+            "filename": sanitize_filename(os.path.basename(xlsx_path)),
+            "message": f"Could not read Excel file content: {str(e)}",
         }]
 
     return [{
