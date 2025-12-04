@@ -166,6 +166,17 @@ def extract_text_from_xlsx(xlsx_path: str) -> List[Dict[str, Any]]:
 
 @handle_extraction_errors()
 def extract_text_from_txt(txt_path: str) -> List[Dict[str, Any]]:
+    # Prevent OOM on maliciously large text files
+    MAX_TXT_SIZE = 10 * 1024 * 1024  # 10MB
+    file_size = os.path.getsize(txt_path)
+    if file_size > MAX_TXT_SIZE:
+        logger.warning(f"Text file {txt_path} is too large ({file_size} bytes). Skipping.")
+        return [{
+            "type": "error",
+            "filename": sanitize_filename(os.path.basename(txt_path)),
+            "message": f"File too large ({file_size:,} bytes, max {MAX_TXT_SIZE:,} bytes)",
+        }]
+    
     with open(txt_path, "r", encoding="utf-8") as f:
         content = f.read()
     return [{

@@ -20,6 +20,29 @@ logger = logging.getLogger("app.tasks")
 router = APIRouter()
 
 # -----------------------------------------------------------------------------
+# 0. Defensive Check for Sync/Async Safety
+# -----------------------------------------------------------------------------
+def _assert_sync_context() -> None:
+    """
+    Defensive check to prevent accidental conversion of sync endpoints to async def.
+    If this endpoint is ever changed to 'async def', asyncio.run() inside would fail.
+    This check makes the failure explicit and early.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+        # If we get here, there's an active event loop = we're in async context = BAD
+        raise RuntimeError(
+            "FATAL: This endpoint must be synchronous! "
+            "It uses asyncio.run() internally, which cannot be called from async context. "
+            "Do NOT change 'def' to 'async def' for task worker endpoints."
+        )
+    except RuntimeError as e:
+        if "no running event loop" in str(e):
+            pass  # Good - we're in sync context
+        else:
+            raise  # Re-raise our custom error or other RuntimeErrors
+
+# -----------------------------------------------------------------------------
 # 1. Strict Pydantic Models
 # -----------------------------------------------------------------------------
 class TaskBase(BaseModel):
@@ -130,6 +153,7 @@ def process_case(
     """
     Worker endpoint to process case logic (e.g., status updates, initial checks).
     """
+    _assert_sync_context()
     logger.info(f"🚀 Processing Case: {payload.case_id}")
     
     # 3. Execute Business Logic
@@ -158,6 +182,7 @@ def process_document(
     """
     Worker endpoint to run Gemini AI extraction on a document.
     """
+    _assert_sync_context()
     logger.info(f"🚀 Processing Document: {payload.document_id}")
     
     try:
@@ -184,6 +209,7 @@ def generate_report(
     """
     Worker endpoint to compile the final DOCX report.
     """
+    _assert_sync_context()
     logger.info(f"🚀 Generating Report for Case: {payload.case_id}")
     
     try:
