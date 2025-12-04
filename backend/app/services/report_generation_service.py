@@ -1,4 +1,5 @@
 import os
+import copy
 import uuid
 import shutil
 import tempfile
@@ -14,6 +15,7 @@ from google.cloud import tasks_v2
 from sqlalchemy.exc import IntegrityError
 
 from app.models import Case, Document, ReportVersion
+from app.schemas.enums import ExtractionStatus
 from app.services.gcs_service import get_storage_client, download_file_to_temp
 from app.core.config import settings
 from app.services import document_processor, llm_handler, docx_generator, case_service
@@ -176,13 +178,13 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
     all_docs = db.query(Document).filter(Document.case_id == case_id).all()
     
     # Check if all documents are processed
-    pending_docs = [d for d in all_docs if d.ai_status not in ["processed", "error"]]
+    pending_docs = [d for d in all_docs if d.ai_status not in [ExtractionStatus.SUCCESS.value, ExtractionStatus.ERROR.value, ExtractionStatus.SKIPPED.value]]
     if pending_docs:
         logger.info(f"Case {case_id} has pending documents: {[d.id for d in pending_docs]}. Skipping generation.")
         return
     
     # Check if we have at least one processed document
-    has_completed_docs = any(d.ai_status == "processed" for d in all_docs)
+    has_completed_docs = any(d.ai_status == ExtractionStatus.SUCCESS.value for d in all_docs)
     if not has_completed_docs:
         logger.error(f"Cannot generate report for case {case_id}: No successfully processed documents found (all failed or empty).")
         case.status = "error"
@@ -191,7 +193,7 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
         # Raising an error would cause Cloud Tasks to retry indefinitely.
         return
 
-    processed_count = sum(1 for d in all_docs if d.ai_status == "processed")
+    processed_count = sum(1 for d in all_docs if d.ai_status == ExtractionStatus.SUCCESS.value)
     error_count = sum(1 for d in all_docs if d.ai_status == "error")
     logger.info(f"Starting generation for case {case_id} with {processed_count} processed and {error_count} failed documents.")
     # -----------------------
@@ -206,8 +208,10 @@ async def generate_report_logic(case_id: str, organization_id: str, db: Session)
         if documents:
              pass
         for doc in documents:
-            if doc.ai_status == "processed" and doc.ai_extracted_data:
-                data = doc.ai_extracted_data
+            if doc.ai_status == ExtractionStatus.SUCCESS.value and doc.ai_extracted_data:
+                # FIX: Deep copy the data to prevent mutating the SQLAlchemy object
+                # and accidentally committing /tmp paths to the database.
+                data = copy.deepcopy(doc.ai_extracted_data)
                 if isinstance(data, dict):
                     data = [data]
                 

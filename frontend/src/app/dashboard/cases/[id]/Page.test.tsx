@@ -25,11 +25,11 @@ const mockCase = {
     id: "123",
     reference_code: "REF-TEST",
     client_name: "Test Client",
-    status: "open",
+    status: "OPEN",
     created_at: "2023-01-01T00:00:00Z", // Added missing field
     documents: [
-        { id: "d1", filename: "doc1.pdf", ai_status: "completed", created_at: "2023-01-01T00:00:00Z" }, // Added missing field
-        { id: "d2", filename: "doc2.pdf", ai_status: "processing", created_at: "2023-01-01T00:00:00Z" }  // Added missing field
+        { id: "d1", filename: "doc1.pdf", ai_status: "COMPLETED", created_at: "2023-01-01T00:00:00Z" }, // Added missing field
+        { id: "d2", filename: "doc2.pdf", ai_status: "PROCESSING", created_at: "2023-01-01T00:00:00Z" }  // Added missing field
     ],
     report_versions: [
         { id: "v1", version_number: 1, is_final: false, created_at: "2023-01-01T00:00:00Z" } // Added missing field

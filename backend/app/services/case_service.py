@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from uuid import UUID
 from app.models import Case, ReportVersion, MLTrainingPair, Document, Client
+from app.schemas.enums import ExtractionStatus, CaseStatus
 from app.core.config import settings
 import logging
 import json
@@ -230,7 +231,7 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: Session):
     
     # FIX: Idempotency Check - Skip extraction if already processed
     # This prevents expensive re-downloads and re-extractions on Cloud Tasks retries
-    if doc.ai_status == ExtractionStatus.PROCESSING:
+    if doc.ai_status == ExtractionStatus.SUCCESS:
         logger.info(f"Document {doc.id} already processed. Skipping extraction, proceeding to Fan-In check.")
         # Skip to Fan-In check at the end of this function
     else:
@@ -242,7 +243,7 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: Session):
                 await asyncio.to_thread(_perform_extraction_logic, doc, tmp_dir)
                 
             # 3. Save to DB
-            doc.ai_status = ExtractionStatus.PROCESSING
+            doc.ai_status = ExtractionStatus.SUCCESS
             db.commit()
             logger.info(f"Extraction complete for {doc.id}")
             
@@ -314,7 +315,8 @@ async def _check_and_trigger_generation(db: Session, case_id: UUID, org_id: str,
         # Re-query all docs inside this locked transaction
         all_docs = db.query(Document).filter(Document.case_id == case_id).all()
         
-        pending_docs = [d for d in all_docs if d.ai_status not in [ExtractionStatus.PROCESSING, ExtractionStatus.ERROR]]
+        # Check if all documents are processed (SUCCESS, ERROR, or SKIPPED)
+        pending_docs = [d for d in all_docs if d.ai_status not in [ExtractionStatus.SUCCESS, ExtractionStatus.ERROR, ExtractionStatus.SKIPPED]]
         
         if not pending_docs:
             logger.info(f"All documents for case {case_id} finished. Triggering generation.")

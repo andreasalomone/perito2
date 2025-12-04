@@ -12,6 +12,7 @@ import openpyxl
 from docx import Document as DocxDocument
 from PIL import Image
 import re
+import uuid
 
 def sanitize_filename(filename: str) -> str:
     """
@@ -232,6 +233,11 @@ def process_eml_file(eml_path: str, upload_folder: str, depth: int = 0) -> List[
             safe_filename = sanitize_filename(original_filename)
             if not safe_filename:
                 safe_filename = "attachment.bin"
+
+            # FIX: Prevent filename collisions in recursive processing
+            # Prepend a short UUID to ensure uniqueness in the flat upload folder
+            unique_prefix = uuid.uuid4().hex[:8]
+            safe_filename = f"{unique_prefix}_{safe_filename}"
 
             # Save to local temp folder for recursive processing
             # This ensures we can read it back with fitz/openpyxl/etc.
