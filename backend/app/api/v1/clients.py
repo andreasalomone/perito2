@@ -31,7 +31,7 @@ class ClientSimple(BaseModel):
 def search_clients(
     current_user: Annotated[dict, Depends(get_current_user_token)],
     db: Annotated[Session, Depends(get_db)],
-    q: str = Query(None, min_length=1, description="Search query for client name"),
+    q: str = Query(None, description="Search query for client name (optional, returns all if empty)"),
     limit: int = 10
 ) -> List[Client]:
     """

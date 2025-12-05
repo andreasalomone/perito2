@@ -113,7 +113,7 @@ export const api = {
                 `${getBaseUrl()}/api/v1/clients/`,
                 token,
                 z.array(ClientSchema),
-                { params: { q: query } }
+                { params: query ? { q: query } : {} }
             )
     },
     admin: {

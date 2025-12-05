@@ -117,6 +117,7 @@ export function ClientCombobox({ value, onChange, disabled }: ClientComboboxProp
                                     key={client.id}
                                     value={client.name}
                                     onSelect={handleSelect}
+                                    className="cursor-pointer"
                                 >
                                     <Check
                                         className={cn(
