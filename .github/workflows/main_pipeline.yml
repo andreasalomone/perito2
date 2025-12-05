@@ -60,17 +60,21 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      # Build & Push
-      - name: Build Backend with Cloud Build
+      # FIX 1: Build with SHA tag, then tag 'latest' separately
+      - name: Build Backend Container
         run: |
           gcloud builds submit backend \
             --region ${{ env.REGION }} \
             --tag ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:${{ github.sha }} \
-            --tag ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:latest \
             --timeout=20m
 
+      - name: Tag Backend as Latest
+        run: |
+          gcloud artifacts docker tags add \
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:${{ github.sha }} \
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:latest
+
       # Security Gate: Vulnerability Scanning
-      # Blocks deployment if Critical vulnerabilities are found
       - name: Run Trivy Vulnerability Scanner
         uses: aquasecurity/trivy-action@master
         with:
@@ -87,7 +91,7 @@ jobs:
       # Database Migrations (Robust Logic)
       - name: Run Database Migrations
         run: |
-          # Define configuration flags to ensure consistency across create/update
+          # Variable for repeated flags to ensure consistency
           JOB_FLAGS="--image ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:${{ github.sha }} \
             --set-cloudsql-instances perito-479708:europe-west1:robotperizia-db \
             --set-env-vars DB_USER=report_user,DB_NAME=perizia_db \
@@ -96,7 +100,7 @@ jobs:
             --max-retries 3 \
             --task-timeout 10m"
 
-          # Check if job exists, then update or create
+          # Idempotent Create or Update
           if gcloud run jobs describe migrate-db-job --region ${{ env.REGION }} > /dev/null 2>&1; then
             echo "Updating existing migration job..."
             gcloud run jobs update migrate-db-job $JOB_FLAGS
@@ -105,7 +109,7 @@ jobs:
             gcloud run jobs create migrate-db-job --command python --args "-m,alembic,upgrade,head" $JOB_FLAGS
           fi
           
-          # Execute and wait (blocks pipeline on failure)
+          # Block deployment if migration fails
           gcloud run jobs execute migrate-db-job --wait --region ${{ env.REGION }}
 
       # Deploy with canary strategy (0% traffic initially)
@@ -134,26 +138,26 @@ jobs:
             CLOUD_TASKS_SA_EMAIL=cloud-tasks-sa-email:latest
             SUPERADMIN_EMAILS=SUPERADMIN_EMAILS:latest
 
-      # Smoke Test (Robust URL Logic)
+      # FIX 2: Get the exact Canary URL directly from Cloud Run API (No sed hacking)
       - name: Verify Canary Health
         run: |
-          # 1. Force retrieval of the default.run.app URL (ignoring custom domains)
-          # status.address.url usually points to the internal default URL
-          DEFAULT_URL=$(gcloud run services describe ${{ env.BACKEND_SERVICE }} \
+          echo "🔍 Retrieving Canary URL..."
+          
+          # This filter asks Cloud Run: "Look at traffic tags, find the one named 'green', give me its URL"
+          CANARY_URL=$(gcloud run services describe ${{ env.BACKEND_SERVICE }} \
             --region ${{ env.REGION }} \
-            --format 'value(status.address.url)')
+            --format 'value(status.traffic.first(tag=green).url)')
           
-          # 2. Construct the tagged URL manually
-          # e.g. https://robot-backend.run.app -> https://green---robot-backend.run.app
-          CANARY_URL=$(echo "$DEFAULT_URL" | sed 's|https://|https://green---|')
-          
+          if [ -z "$CANARY_URL" ]; then
+            echo "❌ Could not find a URL for tag 'green'. Deployment might have failed."
+            exit 1
+          fi
+
           echo "🧪 Smoke Testing Canary at: $CANARY_URL/health"
           
-          # 3. Retry loop for cold starts (5 attempts, 5s delay)
+          # Retry loop
           for i in {1..5}; do
-            # Capture HTTP status code
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$CANARY_URL/health")
-            
             if [ "$HTTP_CODE" = "200" ]; then
               echo "✅ Canary is healthy (HTTP 200)!"
               exit 0
@@ -198,6 +202,13 @@ jobs:
             --region ${{ env.REGION }} \
             --tag ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/frontend:${{ github.sha }} \
             --timeout=20m
+
+      # Explicitly tag latest for frontend too
+      - name: Tag Frontend as Latest
+        run: |
+          gcloud artifacts docker tags add \
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/frontend:${{ github.sha }} \
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/frontend:latest
 
       - name: Deploy Frontend to Cloud Run
         uses: google-github-actions/deploy-cloudrun@v2
