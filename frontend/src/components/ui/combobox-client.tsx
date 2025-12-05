@@ -107,34 +107,40 @@ export function ClientCombobox({ value, onChange, disabled }: ClientComboboxProp
                             </div>
                         )}
 
-                        {!loading && clients.length === 0 && (
+                        {!loading && clients.length === 0 && !query && (
                             <CommandEmpty>Nessun cliente trovato.</CommandEmpty>
                         )}
 
-                        <CommandGroup heading="Clienti Esistenti">
-                            {clients.map((client) => (
-                                <CommandItem
-                                    key={client.id}
-                                    value={client.name}
-                                    onSelect={handleSelect}
-                                    className="cursor-pointer"
-                                >
-                                    <Check
-                                        className={cn(
-                                            "mr-2 h-4 w-4",
-                                            value === client.name ? "opacity-100" : "opacity-0"
-                                        )}
-                                    />
-                                    {client.name}
-                                </CommandItem>
-                            ))}
-                        </CommandGroup>
+                        {!loading && clients.length > 0 && (
+                            <CommandGroup heading="Clienti Esistenti">
+                                {clients.map((client) => (
+                                    <CommandItem
+                                        key={client.id}
+                                        value={`existing:${client.id}`}
+                                        onSelect={() => handleSelect(client.name)}
+                                        className="cursor-pointer"
+                                    >
+                                        <Check
+                                            className={cn(
+                                                "mr-2 h-4 w-4",
+                                                value === client.name ? "opacity-100" : "opacity-0"
+                                            )}
+                                        />
+                                        {client.name}
+                                    </CommandItem>
+                                ))}
+                            </CommandGroup>
+                        )}
 
                         {query && !clients.find(c => c.name.toLowerCase() === query.toLowerCase()) && (
                             <>
                                 <CommandSeparator />
                                 <CommandGroup heading="Nuovo">
-                                    <CommandItem value={query} onSelect={handleSelect} className="text-blue-500 cursor-pointer">
+                                    <CommandItem
+                                        value={`new:${query}`}
+                                        onSelect={() => handleSelect(query)}
+                                        className="text-blue-500 cursor-pointer"
+                                    >
                                         <Plus className="mr-2 h-4 w-4" />
                                         Crea "{query}"
                                     </CommandItem>
