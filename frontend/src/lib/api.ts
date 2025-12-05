@@ -78,6 +78,7 @@ export const api = {
             search?: string;
             client_id?: string;
             status?: string;
+            scope?: string;
         } = {}) =>
             fetchWithValidation<CaseSummary[]>(
                 `${API_URL}/api/v1/cases/`,

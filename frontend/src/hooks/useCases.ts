@@ -7,6 +7,7 @@ export function useCases(params: {
     search?: string;
     client_id?: string;
     status?: string;
+    scope?: string;
 } = {}) {
     const { user, getToken } = useAuth();
 

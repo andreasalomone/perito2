@@ -48,6 +48,7 @@ export const CaseSummarySchema = z.object({
     status: CaseStatusEnum,
     created_at: z.string(),
     client_name: z.string().optional().nullable(), // Helper from backend
+    creator_email: z.string().optional().nullable(), // New field
 });
 export type CaseSummary = z.infer<typeof CaseSummarySchema>;
 

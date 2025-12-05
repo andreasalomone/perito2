@@ -15,10 +15,12 @@ import { ClientGroupedList } from "@/components/dashboard/views/ClientGroupedLis
 export default function DashboardPage() {
     const [viewMode, setViewMode] = useState<ViewMode>("grid");
     const [searchQuery, setSearchQuery] = useState("");
+    const [scope, setScope] = useState<"all" | "mine">("mine"); // Default to 'mine' for focus
 
     // Pass search params to hook
     const { cases, isLoading, isError, mutate } = useCases({
-        search: searchQuery
+        search: searchQuery,
+        scope: scope
     });
 
     if (isLoading) {
@@ -102,6 +104,29 @@ export default function DashboardPage() {
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
             />
+
+            <div className="flex justify-start">
+                <div className="inline-flex items-center p-1 rounded-lg bg-muted/50 border border-border">
+                    <button
+                        onClick={() => setScope("mine")}
+                        className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${scope === "mine"
+                                ? "bg-background text-foreground shadow-sm ring-1 ring-border"
+                                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                            }`}
+                    >
+                        I miei casi
+                    </button>
+                    <button
+                        onClick={() => setScope("all")}
+                        className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${scope === "all"
+                                ? "bg-background text-foreground shadow-sm ring-1 ring-border"
+                                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                            }`}
+                    >
+                        Tutti
+                    </button>
+                </div>
+            </div>
 
             <div className="min-h-[500px] animate-in fade-in slide-in-from-bottom-2 duration-500">
                 {renderContent()}

@@ -46,6 +46,8 @@ def list_cases(
     search: Optional[str] = Query(None, description="Search by reference code or client name"),
     client_id: Optional[UUID] = Query(None, description="Filter by specific client"),
     status: Optional[CaseStatus] = Query(None, description="Filter by case status"),
+    scope: str = Query("all", description="Filter scope: 'all' or 'mine'"),
+    current_user: dict = Depends(get_current_user_token), # Need user info for 'mine' scope
 ) -> List[Case]:
     """
     Fetches cases using SQLAlchemy 2.0 syntax.
@@ -53,10 +55,18 @@ def list_cases(
     """
     stmt = (
         select(Case)
-        .options(selectinload(Case.client)) # efficient for collections
+        .options(
+            selectinload(Case.client),
+            selectinload(Case.creator) # Eager load creator for email display
+        ) 
         .order_by(Case.created_at.desc())
     )
     
+    # 0. Scope Filter ("My Cases")
+    if scope == "mine":
+        # Filter by creator_id matching current user's UID
+        stmt = stmt.where(Case.creator_id == current_user["uid"])
+
     # 1. Text Search (Reference Code OR Client Name)
     if search:
         # Join with Client to search by client name
@@ -175,6 +185,7 @@ def create_case(
             reference_code=case_in.reference_code,
             organization_id=org_id,
             client_id=client_id,
+            creator_id=current_user["uid"], # Save creator
             status=CaseStatus.OPEN
         )
         db.add(new_case)
@@ -206,7 +217,8 @@ def get_case_detail(
         select(Case)
         .options(
             selectinload(Case.documents), 
-            selectinload(Case.report_versions)
+            selectinload(Case.report_versions),
+            selectinload(Case.creator)
         )
         .where(Case.id == case_id)
     )

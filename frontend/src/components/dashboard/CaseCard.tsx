@@ -78,7 +78,19 @@ export const CaseCard = memo(function CaseCard({ caseItem: c, index }: CaseCardP
                             {c.status.toUpperCase()}
                         </Badge>
                     </div>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+
+                    {/* Creator Badge (Neon Style) */}
+                    {c.creator_email && (
+                        <div className="flex justify-start pt-1">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium 
+                                bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 
+                                shadow-[0_0_8px_rgba(6,182,212,0.2)] tracking-wide uppercase">
+                                {c.creator_email}
+                            </span>
+                        </div>
+                    )}
+
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground pt-1">
                         <span className="font-medium text-foreground">{c.client_name || "Cliente non specificato"}</span>
                         <span>•</span>
                         <Calendar className="h-3.5 w-3.5" />

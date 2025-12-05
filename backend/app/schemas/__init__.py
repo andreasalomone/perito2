@@ -45,6 +45,18 @@ class CaseSummary(CaseBase):
             return self.client.name
         return None
 
+    @computed_field
+    @property
+    def creator_email(self) -> Optional[str]:
+        """
+        Extracts creator email from relationship.
+        """
+        # Note: We access the ORM relationship 'creator' defined on the model
+        # We need to ensure eager loading in the query options to avoid N+1
+        if hasattr(self, 'creator') and self.creator:
+            return self.creator.email
+        return None
+
 
 
 # --- VERSIONS ---
