@@ -4,18 +4,20 @@ import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Folder, AlertCircle, RefreshCw, Plus } from "lucide-react";
+import { Folder, AlertCircle, RefreshCw, EyeOff } from "lucide-react";
 import { useCases } from "@/hooks/useCases";
 import { CaseCard } from "@/components/dashboard/CaseCard";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { ViewMode } from "@/components/dashboard/ViewSwitcher";
 import { KanbanBoard } from "@/components/dashboard/views/KanbanBoard";
 import { ClientGroupedList } from "@/components/dashboard/views/ClientGroupedList";
+import { Toggle } from "@/components/ui/toggle";
 
 export default function DashboardPage() {
     const [viewMode, setViewMode] = useState<ViewMode>("grid");
     const [searchQuery, setSearchQuery] = useState("");
     const [scope, setScope] = useState<"all" | "mine">("mine"); // Default to 'mine' for focus
+    const [hideClosed, setHideClosed] = useState(false);
 
     // Pass search params to hook
     const { cases, isLoading, isError, mutate } = useCases({
@@ -50,11 +52,15 @@ export default function DashboardPage() {
         );
     }
 
-    const safeCases = cases || [];
+    // Apply client-side filters
+    const allCases = cases || [];
+    const safeCases = hideClosed
+        ? allCases.filter(c => c.status !== "CLOSED")
+        : allCases;
 
     // View Rendering Logic
     const renderContent = () => {
-        if (safeCases.length === 0) {
+        if (allCases.length === 0) {
             return (
                 <Card className="border-dashed border-2 bg-muted/10 mt-8">
                     <CardContent className="flex flex-col items-center justify-center py-16 text-center">
@@ -76,6 +82,22 @@ export default function DashboardPage() {
                         </Link>
                     </CardContent>
                 </Card>
+            );
+        }
+
+        if (safeCases.length === 0 && hideClosed) {
+            return (
+                <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+                    <Folder className="h-12 w-12 mb-4 opacity-50" />
+                    <p>Tutti i casi trovati sono chiusi e al momento nascosti.</p>
+                    <Button
+                        variant="link"
+                        onClick={() => setHideClosed(false)}
+                        className="mt-2"
+                    >
+                        Mostra casi chiusi
+                    </Button>
+                </div>
             );
         }
 
@@ -105,13 +127,13 @@ export default function DashboardPage() {
                 onViewModeChange={setViewMode}
             />
 
-            <div className="flex justify-start">
+            <div className="flex flex-wrap items-center gap-4">
                 <div className="inline-flex items-center p-1 rounded-lg bg-muted/50 border border-border">
                     <button
                         onClick={() => setScope("mine")}
                         className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${scope === "mine"
-                                ? "bg-background text-foreground shadow-sm ring-1 ring-border"
-                                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                            ? "bg-background text-foreground shadow-sm ring-1 ring-border"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted"
                             }`}
                     >
                         I miei casi
@@ -119,13 +141,26 @@ export default function DashboardPage() {
                     <button
                         onClick={() => setScope("all")}
                         className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${scope === "all"
-                                ? "bg-background text-foreground shadow-sm ring-1 ring-border"
-                                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                            ? "bg-background text-foreground shadow-sm ring-1 ring-border"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted"
                             }`}
                     >
                         Tutti
                     </button>
                 </div>
+
+                <div className="h-6 w-px bg-border hidden sm:block" />
+
+                <Toggle
+                    pressed={hideClosed}
+                    onPressedChange={setHideClosed}
+                    variant="outline"
+                    aria-label="Nascondi casi chiusi"
+                    className="gap-2 data-[state=on]:bg-muted data-[state=on]:text-foreground"
+                >
+                    <EyeOff className="h-4 w-4" />
+                    <span className="hidden sm:inline">Nascondi Casi Chiusi</span>
+                </Toggle>
             </div>
 
             <div className="min-h-[500px] animate-in fade-in slide-in-from-bottom-2 duration-500">

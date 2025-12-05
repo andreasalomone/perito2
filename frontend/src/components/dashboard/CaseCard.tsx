@@ -17,11 +17,11 @@ interface CaseCardProps {
 export const CaseCard = memo(function CaseCard({ caseItem: c, index }: CaseCardProps) {
     const cardRef = useRef<HTMLDivElement>(null);
     const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-    const rafRef = useRef<number>();
+    const rafRef = useRef<number | null>(null);
 
     const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
         // Cancel previous RAF if still pending
-        if (rafRef.current) {
+        if (rafRef.current !== null) {
             cancelAnimationFrame(rafRef.current);
         }
 
@@ -40,7 +40,7 @@ export const CaseCard = memo(function CaseCard({ caseItem: c, index }: CaseCardP
     // Cleanup RAF on unmount
     useEffect(() => {
         return () => {
-            if (rafRef.current) {
+            if (rafRef.current !== null) {
                 cancelAnimationFrame(rafRef.current);
             }
         };

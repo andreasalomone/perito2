@@ -107,7 +107,7 @@ jobs:
             gcloud run jobs update migrate-db-job $JOB_FLAGS
           else
             echo "Creating new migration job..."
-            gcloud run jobs create migrate-db-job --command python --args "-m,alembic,upgrade,head" $JOB_FLAGS
+            gcloud run jobs create migrate-db-job --command python --args="-m,alembic,upgrade,head" $JOB_FLAGS
           fi
           
           # Block deployment if migration fails
