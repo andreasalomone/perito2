@@ -228,12 +228,12 @@ def get_doc_upload_url(
         )
 
     # 3. Generate URL
-    # Path: uploads/{org_id}/{case_id}/{clean_filename}
+    # Path: uploads/{organization_id}/{case_id}/{clean_filename}
     return gcs_service.generate_upload_signed_url(
-        org_id=str(case.organization_id),
-        case_id=str(case.id),
         filename=clean_filename,
-        content_type=content_type
+        content_type=content_type,
+        organization_id=str(case.organization_id),
+        case_id=str(case.id)
     )
 
 
