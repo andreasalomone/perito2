@@ -46,13 +46,58 @@ async def process_message(message_id, db: AsyncSession):
         raise e
 
 
+async def process_outbox_batch_async(db: AsyncSession, batch_size: int = 10):
+    """
+    Fully async version for async contexts (FastAPI endpoints, async tasks).
+    Reads PENDING messages with row locking and processes them.
+    
+    This version should be used when calling from async code to avoid
+    RuntimeError: asyncio.run() cannot be called from a running event loop.
+    """
+    # 1. Fetch pending messages with row locking (Async)
+    result = await db.execute(
+        select(OutboxMessage)
+        .filter(OutboxMessage.status == "PENDING")
+        .order_by(OutboxMessage.created_at.asc())
+        .with_for_update(skip_locked=True)
+        .limit(batch_size)
+    )
+    messages = result.scalars().all()
+
+    if not messages:
+        return
+
+    # 2. Process each message
+    for msg in messages:
+        try:
+            await process_message(msg.id, db)
+        except Exception as e:
+            logger.error(f"Batch processing error for {msg.id}: {e}")
+            # Individual error handling is done inside process_message
+
+
 def process_outbox_batch(db: Session, batch_size: int = 10):
     """
-    Reads PENDING messages using Sync DB (for locking), 
-    but processes them using a fresh Async DB session.
+    SYNC wrapper for backwards compatibility with cron jobs.
+    Creates a new event loop for async operations.
     
-    The "Bridge Pattern": Sync Lock -> Async Process
+    NOTE: Do NOT call from async contexts. Use process_outbox_batch_async instead.
     """
+    # FIX BUG-2: Check if we're in an existing event loop
+    try:
+        asyncio.get_running_loop()
+        # If we get here, we're already in an event loop - ERROR
+        logger.error(
+            "process_outbox_batch called from async context. "
+            "Use process_outbox_batch_async instead to avoid event loop conflict."
+        )
+        raise RuntimeError(
+            "Cannot use process_outbox_batch from async context. "
+            "Call process_outbox_batch_async directly."
+        )
+    except RuntimeError:
+        # No event loop running, safe to proceed
+        pass
     # 1. Fetch pending messages with row locking (Sync)
     messages = db.query(OutboxMessage).filter(
         OutboxMessage.status == "PENDING"

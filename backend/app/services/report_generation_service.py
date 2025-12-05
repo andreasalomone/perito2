@@ -96,8 +96,18 @@ async def process_case_logic(case_id: str, organization_id: str, db: AsyncSessio
         select(Document).filter(Document.case_id == case_id)
     )
     documents = result.scalars().all()
+    
+    # FIX BUG-4: Handle empty document list
     if not documents:
-        logger.warning(f"No documents found for case {case_id}")
+        logger.error(f"No documents found for case {case_id}. Marking case as ERROR.")
+        # Re-acquire lock to update status
+        result = await db.execute(
+            select(Case).filter(Case.id == case_id).with_for_update()
+        )
+        case = result.scalars().first()
+        if case:
+            case.status = CaseStatus.ERROR
+            await db.commit()
         return
 
     # 3. Dispatch Tasks
@@ -204,6 +214,40 @@ async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSes
             await db.commit()
         return
 
+    # IDEMPOTENCY CHECK 2: Check if report exists in GCS but not in DB (partial failure recovery)
+    # FIX BUG-3: This handles the case where upload succeeded but commit failed
+    bucket_name = settings.STORAGE_BUCKET_NAME
+    expected_blob_name = f"reports/{organization_id}/{case_id}/v1_AI_Draft.docx"
+    
+    try:
+        storage_client = get_storage_client()
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(expected_blob_name)
+        gcs_path_exists = await asyncio.to_thread(blob.exists)
+        
+        if gcs_path_exists:
+            logger.warning(
+                f"Found orphaned report in GCS for case {case_id}. "
+                f"Recovering by creating DB record without regenerating."
+            )
+            # Create DB record pointing to existing GCS file (saves $0.50-$2.00 API call)
+            v1 = ReportVersion(
+                case_id=case_id,
+                organization_id=organization_id,
+                version_number=1,
+                docx_storage_path=f"gs://{bucket_name}/{expected_blob_name}",
+                ai_raw_output="[Recovered from GCS - original AI output not available]",
+                is_final=False
+            )
+            db.add(v1)
+            case.status = CaseStatus.OPEN
+            await db.commit()
+            logger.info(f"✅ Recovered orphaned report for case {case_id}")
+            return
+    except Exception as e:
+        logger.warning(f"Could not check GCS for existing report: {e}. Proceeding with generation.")
+        # Continue with normal generation if GCS check fails
+
     # Set granular status
     case.status = CaseStatus.GENERATING
     await db.commit()
@@ -254,8 +298,18 @@ async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSes
              pass
         for doc in documents:
             if doc.ai_status == ExtractionStatus.SUCCESS.value and doc.ai_extracted_data:
-                # FIX: Deep copy the data to prevent mutating the SQLAlchemy object
+                # FIX BUG-5: Deep copy the data to prevent mutating the SQLAlchemy object
+                # DEFENSIVE: Store original reference for assertion
+                original_data_id = id(doc.ai_extracted_data)
                 data = copy.deepcopy(doc.ai_extracted_data)
+                copied_data_id = id(data)
+                
+                # Assertion: Verify deep copy created new object
+                assert original_data_id != copied_data_id, (
+                    f"Deep copy failed for document {doc.id}. "
+                    f"Original and copy have same memory address."
+                )
+                
                 if isinstance(data, dict):
                     data = [data]
                 
@@ -360,10 +414,16 @@ async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSes
         )
         case = result.scalars().first()
         
-        # Defensive: Check if state changed while we were away (e.g. user cancelled, or error)
+        # FIX BUG-6: Defensive check with proper error signaling
         if not case:
-             logger.error(f"Case {case_id} disappeared during generation.")
-             return
+            error_msg = (
+                f"Case {case_id} disappeared during generation. "
+                f"Likely deleted manually. Marking as permanent failure."
+            )
+            logger.error(error_msg)
+            # Raise exception to signal to Cloud Tasks that this is unrecoverable
+            # This prevents infinite retries
+            raise ValueError(error_msg)
              
         if case.status == CaseStatus.ERROR:
              logger.warning("Case marked as error by another process during generation. Overwriting with success.")

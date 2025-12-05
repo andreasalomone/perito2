@@ -123,13 +123,14 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
         logger.error(f"IntegrityError creating final version {next_version} for case {case_id}")
         raise
     
-    # 2. Find the original AI Draft
-    # FIX: Don't hardcode version_number == 1, as it may be missing if regenerated or pre-draft exists
-    # Instead, find the earliest non-final version
+    # 2. Find the LATEST AI Draft (not the earliest)
+    # FIX: Use the most recent non-final version as it represents the last successful generation
+    # This handles cases where earlier versions failed or were regenerated
     ai_version = db.query(ReportVersion).filter(
         ReportVersion.case_id == case_id,
-        ReportVersion.is_final == False
-    ).order_by(ReportVersion.version_number.asc()).first()
+        ReportVersion.is_final == False,
+        ReportVersion.ai_raw_output != None  # Ensure it has AI content
+    ).order_by(ReportVersion.version_number.desc()).first()  # Changed from .asc() to .desc()
     
     if ai_version:
         # 3. THE GOLD MINE: Create Training Pair
@@ -139,6 +140,7 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
             final_version_id=final_version.id
         )
         db.add(pair)
+        logger.info(f"Created ML training pair: AI version {ai_version.version_number} -> Final version {next_version}")
     else:
         logger.warning(f"No AI draft version found for case {case_id}. ML training pair not created.")
         
