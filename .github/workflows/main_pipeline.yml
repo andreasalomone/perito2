@@ -134,24 +134,26 @@ jobs:
             CLOUD_TASKS_SA_EMAIL=cloud-tasks-sa-email:latest
             SUPERADMIN_EMAILS=SUPERADMIN_EMAILS:latest
 
-      # Smoke Test (Corrected URL Logic)
+      # Smoke Test (Robust URL Logic)
       - name: Verify Canary Health
         run: |
-          # 1. Get the default run.app URL (status.address.url), ignoring custom domains
-          # Custom domains (status.url) often don't support the 'green---' prefix logic.
+          # 1. Force retrieval of the default.run.app URL (ignoring custom domains)
+          # status.address.url usually points to the internal default URL
           DEFAULT_URL=$(gcloud run services describe ${{ env.BACKEND_SERVICE }} \
             --region ${{ env.REGION }} \
             --format 'value(status.address.url)')
           
           # 2. Construct the tagged URL manually
-          # Replaces https:// with https://green---
+          # e.g. https://robot-backend.run.app -> https://green---robot-backend.run.app
           CANARY_URL=$(echo "$DEFAULT_URL" | sed 's|https://|https://green---|')
           
           echo "🧪 Smoke Testing Canary at: $CANARY_URL/health"
           
-          # 3. Retry loop for cold starts
+          # 3. Retry loop for cold starts (5 attempts, 5s delay)
           for i in {1..5}; do
+            # Capture HTTP status code
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$CANARY_URL/health")
+            
             if [ "$HTTP_CODE" = "200" ]; then
               echo "✅ Canary is healthy (HTTP 200)!"
               exit 0
@@ -160,7 +162,7 @@ jobs:
             sleep 5
           done
           
-          echo "❌ Canary health check failed."
+          echo "❌ Canary health check failed with HTTP $HTTP_CODE"
           exit 1
 
       # Promotion (Safe Route)
