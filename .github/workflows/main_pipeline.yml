@@ -1,0 +1,220 @@
+name: PeritoAI Supply Chain Orchestration
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+  id-token: write # Required for WIF
+
+env:
+  PROJECT_ID: perito-479708
+  PROJECT_NUMBER: 738291935960
+  REGION: europe-west1
+  ARTIFACT_REGISTRY: europe-west1-docker.pkg.dev
+  BACKEND_SERVICE: robotperizia-backend
+  FRONTEND_SERVICE: robotperizia-frontend
+  WIF_PROVIDER: projects/738291935960/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+  WIF_SERVICE_ACCOUNT: robotperizia-sa@perito-479708.iam.gserviceaccount.com
+
+jobs:
+  # JOB 1: Smart Change Detection
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'shared/**'
+              - '.github/workflows/**'
+            frontend:
+              - 'frontend/**'
+              - 'shared/**'
+
+  # JOB 2: Backend Delivery (Build → Migrate → Deploy)
+  backend-delivery:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # Build using Cloud Build (faster, better caching, no GitHub Actions minutes consumed)
+      - name: Build Backend with Cloud Build
+        run: |
+          gcloud builds submit backend \
+            --tag ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:${{ github.sha }} \
+            --timeout=20m
+
+      # Tag as latest for reuse
+      - name: Tag Backend as Latest
+        run: |
+          gcloud artifacts docker tags add \
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:${{ github.sha }} \
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:latest
+
+      # Security Gate: Vulnerability Scanning
+      # Blocks deployment if Critical vulnerabilities are found
+      - name: Run Trivy Vulnerability Scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:${{ github.sha }}'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+        env:
+          TRIVY_USERNAME: oauth2accesstoken
+          TRIVY_PASSWORD: ${{ steps.auth.outputs.access_token }}
+
+      # CRITICAL: Run migrations BEFORE deploying (prevents race conditions)
+      - name: Run Database Migrations
+        run: |
+          # Update the migration job to use the newly built image
+          gcloud run jobs update migrate-db-job \
+            --image ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:${{ github.sha }} \
+            --region ${{ env.REGION }} || \
+          # Create the job if it doesn't exist
+          gcloud run jobs create migrate-db-job \
+            --image ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:${{ github.sha }} \
+            --region ${{ env.REGION }} \
+            --command python \
+            --args "-m,alembic,upgrade,head" \
+            --set-cloudsql-instances perito-479708:europe-west1:robotperizia-db \
+            --set-env-vars DB_USER=report_user \
+            --set-env-vars DB_NAME=perizia_db \
+            --set-secrets DB_PASS=database-password:latest \
+            --max-retries 3 \
+            --task-timeout 10m
+          
+          # Execute and wait for completion (blocks deployment if migration fails)
+          gcloud run jobs execute migrate-db-job --wait --region ${{ env.REGION }}
+
+      # Deploy with canary strategy (0% traffic initially)
+      - name: Deploy Backend to Cloud Run (Canary)
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.BACKEND_SERVICE }}
+          image: ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:${{ github.sha }}
+          region: ${{ env.REGION }}
+          tag: green  # Deploy to 'green' revision tag
+          no_traffic: true  # Don't route traffic yet
+          env_vars: |
+            GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }}
+            GOOGLE_CLOUD_REGION=${{ env.REGION }}
+            CLOUD_SQL_CONNECTION_NAME=perito-479708:europe-west1:robotperizia-db
+            DB_USER=report_user
+            DB_NAME=perizia_db
+            STORAGE_BUCKET_NAME=robotperizia-uploads-roberto
+            CLOUD_TASKS_QUEUE_PATH=projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/queues/report-processing-queue
+            BACKEND_URL=https://api.perito.my
+          secrets: |
+            /secrets/service-account.json=firebase-creds:latest
+            DB_PASS=database-password:latest
+            GEMINI_API_KEY=gemini-api-key:latest
+            CLOUD_TASKS_SA_EMAIL=cloud-tasks-sa-email:latest
+            SUPERADMIN_EMAILS=SUPERADMIN_EMAILS:latest
+
+      # Smoke Test: Verify canary is healthy before promoting
+      - name: Verify Canary Health
+        run: |
+          # Construct the tagged canary URL
+          BASE_URL=$(gcloud run services describe ${{ env.BACKEND_SERVICE }} \
+            --region ${{ env.REGION }} \
+            --format 'value(status.url)')
+          CANARY_URL=$(echo $BASE_URL | sed 's|https://|https://green---|')
+          
+          echo "🧪 Smoke Testing Canary at: $CANARY_URL/health"
+          
+          # Retry curl 5 times with 5-second delay to allow cold start
+          for i in {1..5}; do
+            if curl --fail --silent --show-error "$CANARY_URL/health"; then
+              echo "✅ Canary is healthy!"
+              exit 0
+            fi
+            echo "⏳ Attempt $i failed, retrying in 5 seconds..."
+            sleep 5
+          done
+          
+          echo "❌ Canary health check failed after 5 attempts"
+          exit 1
+
+      # Promote canary to production (only runs if smoke test passed)
+      - name: Promote Canary to 100%
+        run: |
+          echo "🚀 Promoting green revision to 100% traffic..."
+          gcloud run services update-traffic ${{ env.BACKEND_SERVICE }} \
+            --region ${{ env.REGION }} \
+            --to-tags green=100
+
+  # JOB 3: Frontend Delivery
+  frontend-delivery:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # Build using Cloud Build (faster and more efficient)
+      - name: Build Frontend with Cloud Build
+        run: |
+          gcloud builds submit frontend \
+            --tag ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/frontend:${{ github.sha }} \
+            --timeout=20m
+
+      - name: Tag Frontend as Latest
+        run: |
+          gcloud artifacts docker tags add \
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/frontend:${{ github.sha }} \
+            ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/frontend:latest
+
+      - name: Deploy Frontend to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.FRONTEND_SERVICE }}
+          image: ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/frontend:${{ github.sha }}
+          region: ${{ env.REGION }}
+          env_vars: |
+            NEXT_PUBLIC_API_URL=https://api.perito.my
+          secrets: |
+            NEXT_PUBLIC_FIREBASE_API_KEY=next-public-firebase-api-key:latest
+            NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=next-public-firebase-auth-domain:latest
+            NEXT_PUBLIC_FIREBASE_PROJECT_ID=next-public-firebase-project-id:latest
+            NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=next-public-firebase-storage-bucket:latest
+            NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=next-public-firebase-messaging-sender-id:latest
+            NEXT_PUBLIC_FIREBASE_APP_ID=next-public-firebase-app-id:latest
+            NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=next-public-firebase-measurement-id:latest
