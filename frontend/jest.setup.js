@@ -2,7 +2,7 @@ import '@testing-library/jest-dom'
 import { TextEncoder, TextDecoder } from 'util'
 
 // Mock environment variables for tests
-process.env.NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.test.local';
+process.env.API_URL = process.env.API_URL || 'https://api.test.local';
 
 // Mock Next.js router
 jest.mock('next/navigation', () => require('next-router-mock'))

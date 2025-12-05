@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useEffect } from "react";
+import { createContext, useContext } from "react";
 
 interface ConfigContextType {
     apiUrl: string;
@@ -20,10 +20,11 @@ export const setGlobalApiUrl = (url: string) => {
 export const getApiUrl = () => globalApiUrl;
 
 export function ConfigProvider({ children, apiUrl }: ConfigProviderProps) {
-    // Set global API URL for non-React contexts (like api.ts)
-    useEffect(() => {
+    // Set global API URL synchronously for non-React contexts (like api.ts)
+    // This ensures it's available immediately, not after a useEffect tick
+    if (globalApiUrl !== apiUrl) {
         setGlobalApiUrl(apiUrl);
-    }, [apiUrl]);
+    }
 
     return (
         <ConfigContext.Provider value={{ apiUrl }}>
