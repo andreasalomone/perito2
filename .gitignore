@@ -1,8 +1,7 @@
 docs/
 .env
 **/.env
-.DS_Store
-*.log
+
 
 # Python
 __pycache__/
@@ -41,6 +40,7 @@ backend/service-account.json
 # Local/Temp files
 cloudsql_instance_settings.json
 project_iam_policy.json
+verify_indexes.py
 database_info.md
 audit_report.md
 ux_integration_audit.md
@@ -53,10 +53,7 @@ tests/
 deploy.sh
 backend/sql/database_schema.sql
 perizia_db_schema.sql
-start_db_and_migrate.sh
 dump_schema.sh
 generate_migration.sh
-frontend/src/app/dashboard/cases/\[id]/Page.test.tsx
-frontend/src/app/dashboard/cases/\[id]/Page.test.tsx
 frontend/src/app/dashboard/cases/\[id]/Page.test.tsx
 backend/scripts/check_rls.py

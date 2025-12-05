@@ -112,6 +112,9 @@ def get_db(
     4. Returns the secured session.
     """
     uid = current_user_token['uid']
+    email = current_user_token.get('email', 'unknown')
+    
+    logger.info(f"get_db: Processing request for user {uid} ({email})")
     
     # 1. Set the User UID session variable FIRST
     # This allows the 'user_self_access' RLS policy to let us read our own record.
@@ -120,22 +123,29 @@ def get_db(
             text("SELECT set_config('app.current_user_uid', :uid, false)"), 
             {"uid": uid}
         )
+        logger.debug(f"get_db: Set app.current_user_uid to {uid}")
     except Exception as e:
-        logger.error(f"Failed to set app.current_user_uid: {e}")
+        logger.error(f"get_db: Failed to set app.current_user_uid for {uid}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Database session initialization failed")
     
     # 2. Now we can safely query the User table
-    user_record = db.query(User).filter(User.id == uid).first()
+    try:
+        user_record = db.query(User).filter(User.id == uid).first()
+        logger.debug(f"get_db: User query result for {uid}: {user_record is not None}")
+    except Exception as e:
+        logger.error(f"get_db: Failed to query user {uid}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to query user record")
     
     if not user_record:
         # Phantom User Race Condition: User authenticated in Firebase but not yet synced to DB
-        logger.warning(f"User {uid} authenticated but not found in database.")
+        logger.warning(f"get_db: User {uid} ({email}) authenticated but not found in database.")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account not initialized. Please complete registration first."
         )
 
     org_id = str(user_record.organization_id)
+    logger.info(f"get_db: User {uid} belongs to organization {org_id}")
     
     # 3. Set the Organization ID session variable
     # If RLS is on, Postgres now filters everything automatically.
@@ -144,10 +154,12 @@ def get_db(
             text("SELECT set_config('app.current_org_id', :org_id, false)"), 
             {"org_id": org_id}
         )
+        logger.debug(f"get_db: Set app.current_org_id to {org_id}")
     except Exception as e:
-        logger.error(f"Failed to set app.current_org_id: {e}")
+        logger.error(f"get_db: Failed to set app.current_org_id for {uid}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Database session initialization failed")
     
+    logger.info(f"get_db: Successfully initialized session for user {uid} in org {org_id}")
     yield db
 
 # -----------------------------------------------------------------------------

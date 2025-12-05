@@ -127,33 +127,50 @@ def create_case(
     """
     Creates a new case. Handles optional client creation via CRM service.
     """
-    # Strict Type Parsing
-    # Fetch User from DB to get Organization ID (Reliable Source of Truth)
-    # Note: get_db dependency already ensures the user exists via RLS/Session setup,
-    # but we need the actual ORM object here to access the relationship/field.
-    user = db.get(User, current_user["uid"])
-    if not user:
-        # Should be caught by get_db, but safe guard
-        raise HTTPException(status_code=403, detail="User account not found.")
+    try:
+        logger.info(f"Creating case for user {current_user.get('uid')} with data: {case_in.model_dump()}")
         
-    org_id = user.organization_id
+        # Strict Type Parsing
+        # Fetch User from DB to get Organization ID (Reliable Source of Truth)
+        # Note: get_db dependency already ensures the user exists via RLS/Session setup,
+        # but we need the actual ORM object here to access the relationship/field.
+        user = db.get(User, current_user["uid"])
+        if not user:
+            # Should be caught by get_db, but safe guard
+            logger.error(f"User {current_user['uid']} not found in database despite passing get_db")
+            raise HTTPException(status_code=403, detail="User account not found.")
+            
+        org_id = user.organization_id
+        logger.info(f"User {current_user['uid']} belongs to organization {org_id}")
 
-    # CRM Logic
-    client_id: Optional[UUID] = None
-    if case_in.client_name:
-        client = case_service.get_or_create_client(db, case_in.client_name, org_id)
-        client_id = client.id
+        # CRM Logic
+        client_id: Optional[UUID] = None
+        if case_in.client_name:
+            logger.info(f"Creating/fetching client: {case_in.client_name}")
+            client = case_service.get_or_create_client(db, case_in.client_name, org_id)
+            client_id = client.id
 
-    new_case = Case(
-        reference_code=case_in.reference_code,
-        organization_id=org_id,
-        client_id=client_id,
-        status=CaseStatus.OPEN
-    )
-    db.add(new_case)
-    db.commit()
-    db.refresh(new_case)
-    return new_case
+        new_case = Case(
+            reference_code=case_in.reference_code,
+            organization_id=org_id,
+            client_id=client_id,
+            status=CaseStatus.OPEN
+        )
+        db.add(new_case)
+        db.commit()
+        db.refresh(new_case)
+        logger.info(f"Successfully created case {new_case.id} for organization {org_id}")
+        return new_case
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        logger.error(f"Error creating case: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create case: {str(e)}"
+        )
 
 
 @router.get("/{case_id}", response_model=schemas.CaseDetail)
