@@ -301,6 +301,13 @@ class GeminiReportGenerator:
 
     async def generate(self, processed_files: List[ProcessedFile]) -> ReportResult:
         """Main entry point for report generation."""
+        # Cost Safeguard: Limit concurrent executions
+        # We access the global semaphore defined at module level
+        async with llm_generation_semaphore:
+             return await self._generate_internal(processed_files)
+
+    async def _generate_internal(self, processed_files: List[ProcessedFile]) -> ReportResult:
+        """Internal generation logic (protected by semaphore)."""
         uploaded_files: List[Any] = []
         upload_errors: List[str] = []
         cache_name: Optional[str] = None
@@ -567,3 +574,25 @@ gemini_generator = GeminiReportGenerator(
     retry_queue=cleanup_retry_queue,
     allowed_file_dirs=[Path(settings.UPLOAD_FOLDER), Path("/tmp")]
 )
+
+# -----------------------------------------------------------------------------
+# 6. Concurrency Control (Cost Safeguard)
+# -----------------------------------------------------------------------------
+# Limit concurrent LLM API calls to 5 to prevent cost spikes and API overload.
+# We apply this at the module level or service level to be shared.
+# Since GeminiReportGenerator is a singleton here, we can add it to the instance 
+# or wrap the call. 
+# 
+# For simplicity and effectiveness, we monkey-patch the generate method 
+# or wrap it in the service definition.
+# A cleaner way is to use the semaphore inside the generate method of the class.
+# But since the class is defined above, let's modify the class definition in the next step
+# or just re-assign the method if we want to avoid large file edits.
+#
+# BETTER: We will modify the GeminiReportGenerator class processing logic 
+# to acquire this semaphore. Since we can't easily modify the class in-place 
+# without rewriting the whole file in this tool, we will use a global semaphore 
+# and modify the `generate` method in the class via a separate `replace_file_content` call.
+#
+# Defining it here for now.
+llm_generation_semaphore = asyncio.Semaphore(5)

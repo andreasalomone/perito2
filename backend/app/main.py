@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.db.database import lifespan
 from app.core.config import settings
 # Import routers
-from app.api.v1 import cases, tasks, auth, users, admin
+from app.api.v1 import cases, tasks, auth, users, admin, clients
 
 app = FastAPI(
     title="RobotPerizia API",
@@ -40,3 +40,4 @@ app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["Cloud Tasks"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
+app.include_router(clients.router, prefix="/api/v1/clients", tags=["Clients"])

@@ -6,7 +6,9 @@ import {
     CaseStatusSchema,
     CaseSummary,
     CaseDetail,
-    CaseStatus
+    CaseStatus,
+    ClientSchema,
+    Client
 } from "@/types";
 
 
@@ -37,13 +39,14 @@ async function fetchWithValidation<T>(
     url: string,
     token: string,
     schema: z.ZodType<T>,
-    options: { method?: string; data?: any } = {}
+    options: { method?: string; data?: any; params?: any } = {}
 ): Promise<T> {
     try {
         const res = await axios({
             method: options.method || "GET",
             url,
             data: options.data,
+            params: options.params,
             headers: { Authorization: `Bearer ${token}` }
         });
 
@@ -69,11 +72,18 @@ async function fetchWithValidation<T>(
 
 export const api = {
     cases: {
-        list: (token: string) =>
+        list: (token: string, params: {
+            skip?: number;
+            limit?: number;
+            search?: string;
+            client_id?: string;
+            status?: string;
+        } = {}) =>
             fetchWithValidation<CaseSummary[]>(
                 `${API_URL}/api/v1/cases/`,
                 token,
-                z.array(CaseSummarySchema)
+                z.array(CaseSummarySchema),
+                { params }
             ),
 
         get: (token: string, id: string) =>
@@ -99,6 +109,15 @@ export const api = {
                 `${API_URL}/api/v1/cases/${id}/status`,
                 token,
                 CaseStatusSchema
+            )
+    },
+    clients: {
+        search: (token: string, query: string) =>
+            fetchWithValidation<Client[]>(
+                `${API_URL}/api/v1/clients/`,
+                token,
+                z.array(ClientSchema),
+                { params: { q: query } }
             )
     }
 };

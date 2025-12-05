@@ -10,6 +10,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { handleApiError } from "@/lib/error";
 import { api } from "@/lib/api";
+import { ClientCombobox } from "@/components/ui/combobox-client";
 
 export default function CreateCasePage() {
     const { getToken } = useAuth();
@@ -81,13 +82,15 @@ export default function CreateCasePage() {
                             <label htmlFor="clientName" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                                 Cliente (Opzionale)
                             </label>
-                            <Input
-                                id="clientName"
+                            {/* Replaced simple Input with Smart Autocomplete */}
+                            <ClientCombobox
                                 value={clientName}
-                                onChange={(e) => setClientName(e.target.value)}
-                                placeholder="Es. Generali Italia"
+                                onChange={setClientName}
                                 disabled={loading}
                             />
+                            <p className="text-[0.8rem] text-muted-foreground">
+                                Cerca un cliente esistente o digitane uno nuovo per crearlo.
+                            </p>
                         </div>
                         <Button type="submit" className="w-full" disabled={loading}>
                             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}

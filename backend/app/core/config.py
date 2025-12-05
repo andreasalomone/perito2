@@ -77,7 +77,7 @@ class Settings(BaseSettings):
     LLM_FALLBACK_MODEL_NAME: str = "gemini-2.5-flash-lite"
     LLM_TEMPERATURE: float = 0.5
     LLM_MAX_TOKENS: int = 64000
-    LLM_API_RETRY_ATTEMPTS: int = 3
+    LLM_API_RETRY_ATTEMPTS: int = 2
     LLM_API_RETRY_WAIT_SECONDS: int = 2
     LLM_API_TIMEOUT_SECONDS: int = 600
 

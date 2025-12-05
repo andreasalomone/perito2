@@ -18,6 +18,16 @@ export const ReportVersionSchema = z.object({
 });
 export type ReportVersion = z.infer<typeof ReportVersionSchema>;
 
+// Client Types
+export const ClientSchema = z.object({
+    id: z.string(),
+    name: z.string(),
+});
+export type Client = z.infer<typeof ClientSchema>;
+
+export const CaseStatusEnum = z.enum(["OPEN", "GENERATING", "ERROR", "CLOSED"]);
+export type CaseStatusType = z.infer<typeof CaseStatusEnum>;
+
 // Base Case Schema
 export const CaseBaseSchema = z.object({
     id: z.string().uuid(),
@@ -29,7 +39,16 @@ export const CaseBaseSchema = z.object({
 });
 
 // 1. Summary (List View) - NO documents/versions
-export const CaseSummarySchema = CaseBaseSchema;
+export const CaseSummarySchema = z.object({
+    id: z.string(),
+    reference_code: z.string(),
+    organization_id: z.string(),
+    client_id: z.string().optional().nullable(),
+    client: ClientSchema.optional().nullable(),
+    status: CaseStatusEnum,
+    created_at: z.string(),
+    client_name: z.string().optional().nullable(), // Helper from backend
+});
 export type CaseSummary = z.infer<typeof CaseSummarySchema>;
 
 // 2. Detail (Workspace View) - HAS documents/versions

@@ -463,6 +463,10 @@ async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSes
         logger.error(f"❌ Error during generation: {e}", exc_info=True)
         # Re-acquire lock to set error state
         try:
+            # FIX: Rollback any failed transaction state before starting new query
+            # This ensures we can update the status even if the error was a DB error
+            await db.rollback() 
+            
             result = await db.execute(
                 select(Case).filter(Case.id == case_id).with_for_update()
             )
@@ -476,8 +480,14 @@ async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSes
         # Don't raise if we want to swallow the error in the task worker,
         # but usually we want to raise so Cloud Tasks might retry (if transient)
         # For logic errors, maybe don't retry.
-        # Let's raise for now.
-        raise e
+        #
+        # [COST SAFEGUARD] MANUAL RETRY WORKFLOW
+        # We explicitly catch and swallow the error here to STOP Cloud Tasks from 
+        # retrying indefinitely (or up to 100 times).
+        # The user must manually click "Retry" in the UI.
+        
+        logger.critical(f"🛑 Stopping Cloud Task retry loop for case {case_id} due to error: {e}")
+        return # Return success to Cloud Tasks so it marks the task as completed.
     finally:
         # CRITICAL: Clean up temp files to prevent memory exhaustion on Cloud Run
         # On Cloud Run Gen 2, /tmp is an in-memory filesystem (tmpfs)

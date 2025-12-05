@@ -37,12 +37,15 @@ SAFE_FILENAME_REGEX = re.compile(r"^[a-zA-Z0-9_\-\. ]+$")
     "/",
     response_model=List[schemas.CaseSummary],
     summary="List Cases",
-    description="Retrieve a paginated list of cases for the authenticated organization."
+    description="Retrieve a paginated list of cases for the authenticated organization with optional filtering."
 )
 def list_cases(
     db: Annotated[Session, Depends(get_db)],
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(50, ge=1, le=100, description="Max records to return"),
+    search: Optional[str] = Query(None, description="Search by reference code or client name"),
+    client_id: Optional[UUID] = Query(None, description="Filter by specific client"),
+    status: Optional[CaseStatus] = Query(None, description="Filter by case status"),
 ) -> List[Case]:
     """
     Fetches cases using SQLAlchemy 2.0 syntax.
@@ -52,9 +55,27 @@ def list_cases(
         select(Case)
         .options(selectinload(Case.client)) # efficient for collections
         .order_by(Case.created_at.desc())
-        .offset(skip)
-        .limit(limit)
     )
+    
+    # 1. Text Search (Reference Code OR Client Name)
+    if search:
+        # Join with Client to search by client name
+        stmt = stmt.join(Case.client, isouter=True).where(
+            (Case.reference_code.ilike(f"%{search}%")) |
+            (Client.name.ilike(f"%{search}%"))
+        )
+    
+    # 2. Filter by Client ID
+    if client_id:
+        stmt = stmt.where(Case.client_id == client_id)
+        
+    # 3. Filter by Status
+    if status:
+        stmt = stmt.where(Case.status == status)
+
+    # 4. Pagination
+    stmt = stmt.offset(skip).limit(limit)
+    
     return list(db.scalars(stmt).all())
 
 
