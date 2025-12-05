@@ -95,8 +95,8 @@ jobs:
           # Variable for repeated flags to ensure consistency
           JOB_FLAGS="--image ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:${{ github.sha }} \
             --set-cloudsql-instances perito-479708:europe-west1:robotperizia-db \
-            --set-env-vars DB_USER=report_user,DB_NAME=perizia_db \
-            --set-secrets DB_PASS=database-password:latest \
+            --set-env-vars DB_USER=report_user,DB_NAME=perizia_db,GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},CLOUD_SQL_CONNECTION_NAME=perito-479708:europe-west1:robotperizia-db,STORAGE_BUCKET_NAME=robotperizia-uploads-roberto,CLOUD_TASKS_QUEUE_PATH=projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/queues/report-processing-queue,BACKEND_URL=https://api.perito.my \
+            --set-secrets DB_PASS=database-password:latest,GEMINI_API_KEY=gemini-api-key:latest,CLOUD_TASKS_SA_EMAIL=cloud-tasks-sa-email:latest,SUPERADMIN_EMAILS=SUPERADMIN_EMAILS:latest \
             --region ${{ env.REGION }} \
             --max-retries 3 \
             --task-timeout 10m"
