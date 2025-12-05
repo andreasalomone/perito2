@@ -123,6 +123,7 @@ jobs:
           region: ${{ env.REGION }}
           tag: green  # Deploy to 'green' revision tag
           no_traffic: true  # Don't route traffic yet
+          timeout: 720s  # 12 min: LLM (600s) + processing buffer (120s) - prevents timeout dead zone
           env_vars: |
             GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }}
             GOOGLE_CLOUD_REGION=${{ env.REGION }}

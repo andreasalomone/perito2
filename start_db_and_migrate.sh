@@ -19,8 +19,16 @@ cleanup() {
 # Set trap to call cleanup on script exit
 trap cleanup EXIT
 
-echo "Waiting for Cloud SQL Proxy to initialize (5 seconds)..."
-sleep 5
+echo "Waiting for Cloud SQL Proxy to initialize..."
+MAX_RETRIES=10
+for i in $(seq 1 $MAX_RETRIES); do
+    if nc -z localhost 5432 2>/dev/null; then
+        echo "Cloud SQL Proxy is ready!"
+        break
+    fi
+    echo "Retry $i/$MAX_RETRIES..."
+    sleep 1
+done
 
 echo "Running Alembic Migration..."
 cd "$BACKEND_DIR" || exit 1

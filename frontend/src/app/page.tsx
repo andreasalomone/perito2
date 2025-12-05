@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@/context/AuthContext";
+import { FirebaseError } from "firebase/app";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -27,9 +28,19 @@ function LandingPage() {
     setIsLoggingIn(true);
     try {
       await login();
-    } catch (error: any) {
+    } catch (error) {
       console.error("Login failed", error);
-      toast.error("Accesso Google fallito. Riprova.");
+
+      if (error instanceof FirebaseError) {
+        const errorMessages: Record<string, string> = {
+          'auth/popup-closed-by-user': 'Accesso annullato',
+          'auth/cancelled-popup-request': 'Richiesta annullata',
+        };
+        toast.error(errorMessages[error.code] || 'Accesso Google fallito. Riprova.');
+      } else {
+        toast.error('Errore imprevisto. Riprova.');
+      }
+
       setIsLoggingIn(false);
     }
   };
@@ -55,15 +66,22 @@ function LandingPage() {
         setIsLoggingIn(false);
         return;
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("Auth failed", error);
-      let msg = "Operazione fallita.";
-      if (error.code === "auth/invalid-credential") msg = "Credenziali non valide.";
-      if (error.code === "auth/user-not-found") msg = "Utente non trovato.";
-      if (error.code === "auth/wrong-password") msg = "Password errata.";
-      if (error.code === "auth/email-already-in-use") msg = "Email già registrata.";
-      if (error.code === "auth/weak-password") msg = "Password troppo debole.";
-      toast.error(msg);
+
+      if (error instanceof FirebaseError) {
+        const errorMessages: Record<string, string> = {
+          'auth/invalid-credential': 'Credenziali non valide.',
+          'auth/user-not-found': 'Utente non trovato.',
+          'auth/wrong-password': 'Password errata.',
+          'auth/email-already-in-use': 'Email già registrata.',
+          'auth/weak-password': 'Password troppo debole.',
+        };
+        toast.error(errorMessages[error.code] || 'Operazione fallita.');
+      } else {
+        toast.error('Operazione fallita.');
+      }
+
       setIsLoggingIn(false);
     }
   };

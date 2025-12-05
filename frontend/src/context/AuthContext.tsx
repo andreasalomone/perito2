@@ -28,6 +28,7 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
     const [user, setUser] = useState<User | null>(null);
     const [dbUser, setDbUser] = useState<DBUser | null>(null);
     const [loading, setLoading] = useState(true);
+    const [isSynced, setIsSynced] = useState(false); // Track backend sync completion
     const authRef = useRef<Auth | null>(null);
     const initialized = useRef(false);
 
@@ -52,6 +53,7 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
                 // Set cookie for middleware
                 document.cookie = "auth_session=1; path=/; max-age=86400; SameSite=Lax";
 
+                setIsSynced(false); // Mark as not synced while we wait
                 try {
                     const token = await firebaseUser.getIdToken();
                     const response = await axios.post(
@@ -65,14 +67,17 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
                     );
 
                     setDbUser(response.data);
+                    setIsSynced(true); // Backend successfully knows who we are
                 } catch (error) {
                     console.error("Error syncing user:", error);
                     setDbUser(null);
+                    setIsSynced(false);
                 }
             } else {
                 // Remove cookie
                 document.cookie = "auth_session=; path=/; max-age=0; SameSite=Lax";
                 setDbUser(null);
+                setIsSynced(true); // Guest mode is technically "synced" (no user)
             }
 
             setLoading(false);
@@ -117,9 +122,20 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
         return user?.getIdToken();
     };
 
+    // PREVENT "ZOMBIE REQUESTS":
+    // Do not render children until we know the Backend DB knows who we are.
+    if (loading || (user && !isSynced)) {
+        return <div className="flex items-center justify-center min-h-screen">
+            <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p className="text-gray-600">Synchronizing Profile...</p>
+            </div>
+        </div>;
+    }
+
     return (
         <AuthContext.Provider value={{ user, dbUser, loading, login, signupWithEmail, loginWithEmail, resetPassword, logout, getToken }}>
-            {!loading && children}
+            {children}
         </AuthContext.Provider>
     );
 }

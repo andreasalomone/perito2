@@ -283,6 +283,14 @@ def register_document(
     db.commit()
     db.refresh(new_doc)
     
+    # 2.5. Tag blob as finalized to prevent lifecycle deletion
+    # This protects successfully registered files from the 24h cleanup policy
+    try:
+        gcs_service.tag_blob_as_finalized(clean_path)
+    except Exception as e:
+        # Log but don't fail the request - metadata tagging is defensive
+        logger.warning(f"Failed to tag blob {clean_path} as finalized: {e}")
+    
     # 3. Trigger Async Processing
     # Note: We do NOT pass 'db' here.
     case_service.trigger_extraction_task(new_doc.id, str(case.organization_id))

@@ -1,14 +1,20 @@
 import useSWR from 'swr';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/lib/api';
-import { CaseDetail } from '@/types';
+import { CaseDetail, CaseStatus } from '@/types';
 import { useState, useEffect } from 'react';
 
 export function useCaseDetail(id: string | undefined) {
     const { user, getToken } = useAuth();
-    const [isGenerating, setIsGenerating] = useState(false);
+    const [shouldPoll, setShouldPoll] = useState(false);
 
-    const { data, error, isLoading, mutate } = useSWR<CaseDetail>(
+    // 1. Main Data Fetch (Full Payload) - Only fetches on mount or manual mutate
+    const {
+        data: caseData,
+        error: caseError,
+        isLoading,
+        mutate: mutateCase
+    } = useSWR<CaseDetail>(
         user && id ? ['case', id] : null,
         async () => {
             const token = await getToken();
@@ -16,40 +22,53 @@ export function useCaseDetail(id: string | undefined) {
             return api.cases.get(token, id!);
         },
         {
-            refreshInterval: (data) => {
-                // Poll if locally generating OR backend says generating OR docs are processing
-                const isProcessing = data?.documents.some(d => ["PROCESSING", "PENDING"].includes(d.ai_status));
-
-                // Note: We don't have 'is_generating' on CaseDetail usually, but the previous code 
-                // inferred it or fetched it from a separate status endpoint. 
-                // The original code merged `statusData` which had `is_generating`.
-                // Let's assume we rely on document status for now, or we need to update the type/API if `is_generating` is critical.
-                // For now, we poll if documents are processing or if we explicitly started generation.
-
-                if (isGenerating || isProcessing) return 3000;
-                return 0;
-            },
-            revalidateOnFocus: true,
-            shouldRetryOnError: false,
+            revalidateOnFocus: true, // Re-fetch full data when tab focused
+            refreshInterval: 0       // DO NOT POLL HEAVY DATA
         }
     );
 
-    // Reset local generating state when we see completion
+    // 2. Determine if we need to poll based on case state
     useEffect(() => {
-        if (data && isGenerating) {
-            const allDone = data.documents.every(d => ["SUCCESS", "ERROR"].includes(d.ai_status));
-            if (allDone) {
-                setIsGenerating(false);
+        if (!caseData) return;
+        const isBusy =
+            caseData.status === "GENERATING" ||
+            caseData.status === "PROCESSING" ||
+            caseData.documents.some(d => ["PROCESSING", "PENDING"].includes(d.ai_status));
+
+        setShouldPoll(isBusy);
+    }, [caseData]);
+
+    // 3. Lightweight Polling (Status Only)
+    const { data: statusData } = useSWR<CaseStatus>(
+        shouldPoll && user && id ? ['case-status', id] : null,
+        async () => {
+            const token = await getToken();
+            if (!token) throw new Error("No token available");
+            return api.cases.getStatus(token, id!);
+        },
+        {
+            refreshInterval: 3000, // Poll light endpoint every 3s
+            onSuccess: (newStatus) => {
+                // If status changed to a "finished" state, trigger full re-fetch
+                if (newStatus.status === "OPEN" || newStatus.status === "ERROR") {
+                    setShouldPoll(false);
+                    mutateCase(); // Re-fetch full details (documents, versions)
+                }
             }
         }
-    }, [data, isGenerating]);
+    );
+
+    // Merge logic: If we have newer status data, overlay it on caseData for UI feedback
+    const displayData = caseData && statusData
+        ? { ...caseData, status: statusData.status, documents: statusData.documents }
+        : caseData;
 
     return {
-        caseData: data,
+        caseData: displayData,
         isLoading,
-        isError: error,
-        mutate,
-        isGenerating,
-        setIsGenerating
+        isError: caseError,
+        mutate: mutateCase,
+        isGenerating: shouldPoll,
+        setIsGenerating: setShouldPoll // Allow manual trigger from UI
     };
 }

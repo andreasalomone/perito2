@@ -88,3 +88,26 @@ def generate_download_signed_url(gcs_path: str) -> str:
     )
     
     return url
+
+def tag_blob_as_finalized(gcs_path: str):
+    """
+    Tags a blob with metadata to prevent lifecycle policy deletion.
+    
+    This marks successfully registered files as 'finalized', protecting them
+    from automatic cleanup by the GCS lifecycle policy that removes orphaned
+    uploads after 24 hours.
+    
+    Args:
+        gcs_path: Full GCS path (e.g., "uploads/org_id/case_id/file.pdf")
+    """
+    client = get_storage_client()
+    bucket = client.bucket(settings.STORAGE_BUCKET_NAME)
+    
+    # Clean path: remove gs://bucket/ prefix if present
+    clean_path = gcs_path.replace(f"gs://{settings.STORAGE_BUCKET_NAME}/", "")
+    
+    blob = bucket.blob(clean_path)
+    
+    # Set metadata to mark as registered/finalized
+    blob.metadata = {"status": "finalized"}
+    blob.patch()  # Update only metadata without re-uploading the file
