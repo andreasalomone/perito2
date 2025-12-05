@@ -4,6 +4,7 @@ import { onAuthStateChanged, User, signInWithPopup, signOut, Auth, createUserWit
 import { initFirebase, googleProvider, getFirebaseAuth } from "@/lib/firebase";
 import { DBUser } from "@/types";
 import axios from "axios";
+import { useConfig } from "@/context/ConfigContext";
 
 interface AuthContextType {
     user: User | null;
@@ -25,6 +26,7 @@ interface AuthProviderProps {
 }
 
 export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
+    const { apiUrl } = useConfig();
     const [user, setUser] = useState<User | null>(null);
     const [dbUser, setDbUser] = useState<DBUser | null>(null);
     const [loading, setLoading] = useState(true);
@@ -64,7 +66,7 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
                 try {
                     const token = await firebaseUser.getIdToken();
                     const response = await axios.post(
-                        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/sync`,
+                        `${apiUrl}/api/v1/auth/sync`,
                         {},
                         {
                             headers: {

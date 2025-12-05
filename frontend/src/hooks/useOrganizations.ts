@@ -1,8 +1,7 @@
 import useSWR from 'swr';
 import { useAuth } from '@/context/AuthContext';
+import { useConfig } from '@/context/ConfigContext';
 import axios from 'axios';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export interface Organization {
     id: string;
@@ -12,6 +11,7 @@ export interface Organization {
 
 export function useOrganizations() {
     const { user, getToken } = useAuth();
+    const { apiUrl } = useConfig();
 
     const { data, error, isLoading, mutate } = useSWR<Organization[]>(
         user ? ['organizations'] : null,
@@ -19,7 +19,7 @@ export function useOrganizations() {
             const token = await getToken();
             if (!token) throw new Error("No token available");
             const response = await axios.get(
-                `${API_URL}/api/v1/admin/organizations`,
+                `${apiUrl}/api/v1/admin/organizations`,
                 { headers: { Authorization: `Bearer ${token}` } }
             );
             return response.data;

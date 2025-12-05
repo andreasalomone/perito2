@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/context/AuthContext";
-import Script from "next/script";
+import { ConfigProvider } from "@/context/ConfigContext";
 import { CommandMenu } from "@/components/CommandMenu";
 
 export default function RootLayout({
@@ -39,6 +39,9 @@ export default function RootLayout({
     measurementId: process.env.FIREBASE_MEASUREMENT_ID,
   };
 
+  // API URL for backend communication
+  const apiUrl = process.env.API_URL || "";
+
   return (
     <html lang="it">
       <body
@@ -48,11 +51,13 @@ export default function RootLayout({
           className="fixed inset-0 z-50 pointer-events-none opacity-[0.03] mix-blend-overlay"
           style={{ backgroundImage: 'url("/noise.svg")' }}
         />
-        <AuthProvider firebaseConfig={firebaseConfig}>
-          {children}
-          <CommandMenu />
-          <Toaster />
-        </AuthProvider>
+        <ConfigProvider apiUrl={apiUrl}>
+          <AuthProvider firebaseConfig={firebaseConfig}>
+            {children}
+            <CommandMenu />
+            <Toaster />
+          </AuthProvider>
+        </ConfigProvider>
       </body>
     </html>
   );

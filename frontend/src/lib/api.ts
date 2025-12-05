@@ -10,23 +10,17 @@ import {
     ClientSchema,
     Client
 } from "@/types";
+import { getApiUrl } from "@/context/ConfigContext";
 
-
-
-
-// BUILD-TIME VALIDATION: Ensure HTTPS enforcement
-const rawApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim() || "";
-
-if (!rawApiUrl) {
-    throw new Error('[CONFIG ERROR] NEXT_PUBLIC_API_URL is not defined');
-}
-
-if (!rawApiUrl.startsWith('https://') && process.env.NODE_ENV === 'production') {
-    throw new Error('[SECURITY] NEXT_PUBLIC_API_URL must use HTTPS in production. Got: ' + rawApiUrl);
-}
-
-// Clean up URL
-export const API_URL = rawApiUrl.replace(/\/$/, "");
+// Dynamic API URL getter - reads from ConfigContext at runtime
+const getBaseUrl = () => {
+    const url = getApiUrl();
+    if (!url) {
+        console.warn('[CONFIG] API_URL not yet initialized');
+        return '';
+    }
+    return url.replace(/\/$/, "");
+};
 
 export class ApiError extends Error {
     constructor(message: string, public status?: number) {
@@ -81,7 +75,7 @@ export const api = {
             scope?: string;
         } = {}) =>
             fetchWithValidation<CaseSummary[]>(
-                `${API_URL}/api/v1/cases/`,
+                `${getBaseUrl()}/api/v1/cases/`,
                 token,
                 z.array(CaseSummarySchema),
                 { params }
@@ -89,14 +83,14 @@ export const api = {
 
         get: (token: string, id: string) =>
             fetchWithValidation<CaseDetail>(
-                `${API_URL}/api/v1/cases/${id}`,
+                `${getBaseUrl()}/api/v1/cases/${id}`,
                 token,
                 CaseDetailSchema
             ),
 
         create: (token: string, data: { reference_code: string; client_name?: string }) =>
             fetchWithValidation<CaseDetail>(
-                `${API_URL}/api/v1/cases/`,
+                `${getBaseUrl()}/api/v1/cases/`,
                 token,
                 CaseDetailSchema,
                 {
@@ -107,7 +101,7 @@ export const api = {
 
         getStatus: (token: string, id: string) =>
             fetchWithValidation<CaseStatus>(
-                `${API_URL}/api/v1/cases/${id}/status`,
+                `${getBaseUrl()}/api/v1/cases/${id}/status`,
                 token,
                 CaseStatusSchema
             )
@@ -115,7 +109,7 @@ export const api = {
     clients: {
         search: (token: string, query: string) =>
             fetchWithValidation<Client[]>(
-                `${API_URL}/api/v1/clients/`,
+                `${getBaseUrl()}/api/v1/clients/`,
                 token,
                 z.array(ClientSchema),
                 { params: { q: query } }

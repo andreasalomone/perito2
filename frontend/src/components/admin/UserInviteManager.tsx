@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/context/AuthContext";
+import { useConfig } from "@/context/ConfigContext";
 import axios from "axios";
 import { toast } from "sonner";
 import { Loader2, UserPlus, Trash2, Users } from "lucide-react";
@@ -18,6 +19,7 @@ interface Props {
 
 export default function UserInviteManager({ selectedOrgId }: Props) {
     const { getToken } = useAuth();
+    const { apiUrl } = useConfig();
     const { invites, isLoading: loading, mutate } = useInvites(selectedOrgId);
     const [inviting, setInviting] = useState(false);
     const [newEmail, setNewEmail] = useState("");
@@ -38,7 +40,7 @@ export default function UserInviteManager({ selectedOrgId }: Props) {
         try {
             const token = await getToken();
             await axios.post(
-                `${process.env.NEXT_PUBLIC_API_URL}/api/v1/admin/organizations/${selectedOrgId}/users/invite`,
+                `${apiUrl}/api/v1/admin/organizations/${selectedOrgId}/users/invite`,
                 { email: newEmail, role: newRole },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
@@ -58,7 +60,7 @@ export default function UserInviteManager({ selectedOrgId }: Props) {
         try {
             const token = await getToken();
             await axios.delete(
-                `${process.env.NEXT_PUBLIC_API_URL}/api/v1/admin/invites/${inviteId}`,
+                `${apiUrl}/api/v1/admin/invites/${inviteId}`,
                 { headers: { Authorization: `Bearer ${token}` } }
             );
             toast.success(`Removed ${email}`);

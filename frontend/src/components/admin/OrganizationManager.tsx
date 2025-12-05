@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/context/AuthContext";
+import { useConfig } from "@/context/ConfigContext";
 import axios from "axios";
 import { toast } from "sonner";
 import { Loader2, Building2, Plus } from "lucide-react";
@@ -17,6 +18,7 @@ interface Props {
 
 export default function OrganizationManager({ onSelectOrganization }: Props) {
     const { getToken } = useAuth();
+    const { apiUrl } = useConfig();
     const { organizations, isLoading: loading, mutate } = useOrganizations();
     const [creating, setCreating] = useState(false);
     const [newOrgName, setNewOrgName] = useState("");
@@ -32,7 +34,7 @@ export default function OrganizationManager({ onSelectOrganization }: Props) {
         try {
             const token = await getToken();
             await axios.post(
-                `${process.env.NEXT_PUBLIC_API_URL}/api/v1/admin/organizations`,
+                `${apiUrl}/api/v1/admin/organizations`,
                 { name: newOrgName },
                 { headers: { Authorization: `Bearer ${token}` } }
             );

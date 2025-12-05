@@ -219,7 +219,7 @@ jobs:
           image: ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/frontend:${{ github.sha }}
           region: ${{ env.REGION }}
           env_vars: |
-            NEXT_PUBLIC_API_URL=https://api.perito.my
+            API_URL=https://api.perito.my
           secrets: |
             FIREBASE_API_KEY=next-public-firebase-api-key:latest
             FIREBASE_AUTH_DOMAIN=next-public-firebase-auth-domain:latest

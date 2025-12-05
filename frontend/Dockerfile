@@ -22,10 +22,8 @@ COPY . .
 # Disable Next.js telemetry during build
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Note: Firebase config is now read at runtime (not build time)
-# Only NEXT_PUBLIC_API_URL is kept as a build-time argument if needed elsewhere
-ARG NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+# Note: All config (Firebase, API_URL) is now read at runtime (not build time)
+# No build args needed - "Build Once, Deploy Anywhere"
 
 RUN npm run build
 
