@@ -60,20 +60,14 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      # Build using Cloud Build (faster, better caching, no GitHub Actions minutes consumed)
+      # Build & Push
       - name: Build Backend with Cloud Build
         run: |
           gcloud builds submit backend \
             --region ${{ env.REGION }} \
             --tag ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:${{ github.sha }} \
+            --tag ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:latest \
             --timeout=20m
-
-      # Tag as latest for reuse
-      - name: Tag Backend as Latest
-        run: |
-          gcloud artifacts docker tags add \
-            ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:${{ github.sha }} \
-            ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:latest
 
       # Security Gate: Vulnerability Scanning
       # Blocks deployment if Critical vulnerabilities are found
@@ -90,27 +84,28 @@ jobs:
           TRIVY_USERNAME: oauth2accesstoken
           TRIVY_PASSWORD: ${{ steps.auth.outputs.access_token }}
 
-      # CRITICAL: Run migrations BEFORE deploying (prevents race conditions)
+      # Database Migrations (Robust Logic)
       - name: Run Database Migrations
         run: |
-          # Update the migration job to use the newly built image
-          gcloud run jobs update migrate-db-job \
-            --image ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:${{ github.sha }} \
-            --region ${{ env.REGION }} || \
-          # Create the job if it doesn't exist
-          gcloud run jobs create migrate-db-job \
-            --image ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:${{ github.sha }} \
-            --region ${{ env.REGION }} \
-            --command python \
-            --args "-m,alembic,upgrade,head" \
+          # Define configuration flags to ensure consistency across create/update
+          JOB_FLAGS="--image ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:${{ github.sha }} \
             --set-cloudsql-instances perito-479708:europe-west1:robotperizia-db \
-            --set-env-vars DB_USER=report_user \
-            --set-env-vars DB_NAME=perizia_db \
+            --set-env-vars DB_USER=report_user,DB_NAME=perizia_db \
             --set-secrets DB_PASS=database-password:latest \
+            --region ${{ env.REGION }} \
             --max-retries 3 \
-            --task-timeout 10m
+            --task-timeout 10m"
+
+          # Check if job exists, then update or create
+          if gcloud run jobs describe migrate-db-job --region ${{ env.REGION }} > /dev/null 2>&1; then
+            echo "Updating existing migration job..."
+            gcloud run jobs update migrate-db-job $JOB_FLAGS
+          else
+            echo "Creating new migration job..."
+            gcloud run jobs create migrate-db-job --command python --args "-m,alembic,upgrade,head" $JOB_FLAGS
+          fi
           
-          # Execute and wait for completion (blocks deployment if migration fails)
+          # Execute and wait (blocks pipeline on failure)
           gcloud run jobs execute migrate-db-job --wait --region ${{ env.REGION }}
 
       # Deploy with canary strategy (0% traffic initially)
@@ -139,37 +134,42 @@ jobs:
             CLOUD_TASKS_SA_EMAIL=cloud-tasks-sa-email:latest
             SUPERADMIN_EMAILS=SUPERADMIN_EMAILS:latest
 
-      # Smoke Test: Verify canary is healthy before promoting
+      # Smoke Test (Corrected URL Logic)
       - name: Verify Canary Health
         run: |
-          # Construct the tagged canary URL
-          BASE_URL=$(gcloud run services describe ${{ env.BACKEND_SERVICE }} \
+          # 1. Get the default run.app URL (status.address.url), ignoring custom domains
+          # Custom domains (status.url) often don't support the 'green---' prefix logic.
+          DEFAULT_URL=$(gcloud run services describe ${{ env.BACKEND_SERVICE }} \
             --region ${{ env.REGION }} \
-            --format 'value(status.url)')
-          CANARY_URL=$(echo $BASE_URL | sed 's|https://|https://green---|')
+            --format 'value(status.address.url)')
+          
+          # 2. Construct the tagged URL manually
+          # Replaces https:// with https://green---
+          CANARY_URL=$(echo "$DEFAULT_URL" | sed 's|https://|https://green---|')
           
           echo "🧪 Smoke Testing Canary at: $CANARY_URL/health"
           
-          # Retry curl 5 times with 5-second delay to allow cold start
+          # 3. Retry loop for cold starts
           for i in {1..5}; do
-            if curl --fail --silent --show-error "$CANARY_URL/health"; then
-              echo "✅ Canary is healthy!"
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$CANARY_URL/health")
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✅ Canary is healthy (HTTP 200)!"
               exit 0
             fi
-            echo "⏳ Attempt $i failed, retrying in 5 seconds..."
+            echo "⏳ Attempt $i: Got HTTP $HTTP_CODE. Retrying in 5s..."
             sleep 5
           done
           
-          echo "❌ Canary health check failed after 5 attempts"
+          echo "❌ Canary health check failed."
           exit 1
 
-      # Promote canary to production (only runs if smoke test passed)
+      # Promotion (Safe Route)
       - name: Promote Canary to 100%
         run: |
-          echo "🚀 Promoting green revision to 100% traffic..."
+          echo "🚀 Smoke test passed. Routing 100% traffic to the new revision (LATEST)."
           gcloud run services update-traffic ${{ env.BACKEND_SERVICE }} \
             --region ${{ env.REGION }} \
-            --to-tags green=100
+            --to-latest
 
   # JOB 3: Frontend Delivery
   frontend-delivery:
@@ -190,19 +190,12 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      # Build using Cloud Build (faster and more efficient)
       - name: Build Frontend with Cloud Build
         run: |
           gcloud builds submit frontend \
             --region ${{ env.REGION }} \
             --tag ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/frontend:${{ github.sha }} \
             --timeout=20m
-
-      - name: Tag Frontend as Latest
-        run: |
-          gcloud artifacts docker tags add \
-            ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/frontend:${{ github.sha }} \
-            ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/frontend:latest
 
       - name: Deploy Frontend to Cloud Run
         uses: google-github-actions/deploy-cloudrun@v2
