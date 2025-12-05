@@ -25,6 +25,7 @@ class CaseCreate(CaseBase):
 class CaseSummary(CaseBase):
     id: UUID
     organization_id: UUID
+    client_id: Optional[UUID] = None  # Required by frontend for filtering
     status: CaseStatus
     created_at: datetime
     

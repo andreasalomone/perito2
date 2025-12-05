@@ -10,6 +10,7 @@ import {
     ClientSchema,
     Client
 } from "@/types";
+import { OrganizationSchema, AllowedEmailSchema, Organization, AllowedEmail } from "@/types/admin";
 import { getApiUrl } from "@/context/ConfigContext";
 
 // Dynamic API URL getter - reads from ConfigContext at runtime
@@ -113,6 +114,45 @@ export const api = {
                 token,
                 z.array(ClientSchema),
                 { params: { q: query } }
+            )
+    },
+    admin: {
+        listOrganizations: (token: string) =>
+            fetchWithValidation<Organization[]>(
+                `${getBaseUrl()}/api/v1/admin/organizations`,
+                token,
+                z.array(OrganizationSchema)
+            ),
+
+        createOrganization: (token: string, name: string) =>
+            fetchWithValidation<Organization>(
+                `${getBaseUrl()}/api/v1/admin/organizations`,
+                token,
+                OrganizationSchema,
+                { method: "POST", data: { name } }
+            ),
+
+        listInvites: (token: string, orgId: string) =>
+            fetchWithValidation<AllowedEmail[]>(
+                `${getBaseUrl()}/api/v1/admin/organizations/${orgId}/invites`,
+                token,
+                z.array(AllowedEmailSchema)
+            ),
+
+        inviteUser: (token: string, orgId: string, email: string, role: string) =>
+            fetchWithValidation<{ message: string }>(
+                `${getBaseUrl()}/api/v1/admin/organizations/${orgId}/users/invite`,
+                token,
+                z.object({ message: z.string() }),
+                { method: "POST", data: { email, role } }
+            ),
+
+        deleteInvite: (token: string, inviteId: string) =>
+            fetchWithValidation<{ message: string }>(
+                `${getBaseUrl()}/api/v1/admin/invites/${inviteId}`,
+                token,
+                z.object({ message: z.string() }),
+                { method: "DELETE" }
             )
     }
 };

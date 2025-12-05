@@ -6,8 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/context/AuthContext";
-import { useConfig } from "@/context/ConfigContext";
-import axios from "axios";
+import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { Loader2, Building2, Plus } from "lucide-react";
 import { useOrganizations } from "@/hooks/useOrganizations";
@@ -18,7 +17,6 @@ interface Props {
 
 export default function OrganizationManager({ onSelectOrganization }: Props) {
     const { getToken } = useAuth();
-    const { apiUrl } = useConfig();
     const { organizations, isLoading: loading, mutate } = useOrganizations();
     const [creating, setCreating] = useState(false);
     const [newOrgName, setNewOrgName] = useState("");
@@ -33,17 +31,14 @@ export default function OrganizationManager({ onSelectOrganization }: Props) {
         setCreating(true);
         try {
             const token = await getToken();
-            await axios.post(
-                `${apiUrl}/api/v1/admin/organizations`,
-                { name: newOrgName },
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
+            if (!token) throw new Error("No token available");
+            await api.admin.createOrganization(token, newOrgName.trim());
             toast.success("Organization created successfully");
             setNewOrgName("");
             mutate(); // Refresh list
         } catch (error: any) {
             console.error("Error creating organization:", error);
-            toast.error(error.response?.data?.detail || "Failed to create organization");
+            toast.error(error.message || "Failed to create organization");
         } finally {
             setCreating(false);
         }

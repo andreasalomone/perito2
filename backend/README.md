@@ -32,8 +32,14 @@ Create a `.env` file in the `backend` directory. You can use `.env.example` as a
 ```env
 # Example variables (adjust as needed)
 PORT=8080
-DATABASE_URL=...
 GOOGLE_CLOUD_PROJECT=...
+CLOUD_SQL_CONNECTION_NAME=...
+DB_USER=report_user
+DB_PASS=...
+DB_NAME=perizia_db
+STORAGE_BUCKET_NAME=...
+CLOUD_TASKS_QUEUE_PATH=...
+GEMINI_API_KEY=...
 ```
 
 ### Running Locally
@@ -64,9 +70,12 @@ To build and run the backend using Docker:
 
 ## 🛠️ Key Technologies
 
-*   **FastAPI:** High-performance web framework for building APIs.
-*   **Cloud Tasks:** Asynchronous task execution.
-*   **Cloud SQL (PostgreSQL):** Managed relational database.
-*   **Vertex AI (Gemini 2.5):** AI-powered document analysis and report generation.
-*   **SQLAlchemy:** ORM for database interactions.
+*   **FastAPI:** High-performance async web framework for building APIs.
+*   **Cloud Tasks:** Asynchronous task execution for report generation.
+*   **Cloud SQL (PostgreSQL):** Managed relational database with Row Level Security (RLS).
+*   **Gemini API (`google-genai`):** AI-powered document analysis using `gemini-2.5-pro` (primary) and `gemini-2.5-flash-lite` (fallback).
+*   **SQLAlchemy:** Async ORM for database interactions.
 *   **Pydantic:** Data validation and settings management.
+*   **Alembic:** Database migrations.
+*   **Firebase Admin:** Server-side token verification for authentication.
+*   **Tenacity:** Retry logic with exponential backoff for LLM API calls.

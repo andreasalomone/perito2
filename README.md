@@ -1,6 +1,6 @@
-# PeritoAI v2.0.1
+# PeritoAI v2.1.0
 
-**PeritoAI** is an advanced, AI-powered **Case Management System** designed to streamline the workflow of insurance surveyors, legal experts, and claims adjusters. By leveraging the power of **Google's Gemini 2.5 LLM via Vertex AI**, it automates the extraction of critical information from uploaded documents and generates comprehensive, professionally formatted reports (DOCX).
+**PeritoAI** is an advanced, AI-powered **Case Management System** designed to streamline the workflow of insurance surveyors, legal experts, and claims adjusters. By leveraging the power of **Google's Gemini 2.5 LLM via the Gemini API**, it automates the extraction of critical information from uploaded documents and generates comprehensive, professionally formatted reports (DOCX).
 
 ## 🎯 Target Audience
 
@@ -12,12 +12,12 @@ This application is specifically built for:
 ## ✨ Key Features
 
 *   **End-to-End Case Management:** Create cases, track status, and manage document lifecycles from a unified dashboard.
-*   **AI-Driven Analysis:** Utilizes **Vertex AI (Gemini 2.5)** for deep semantic understanding of documents and accurate data extraction.
+*   **AI-Driven Analysis:** Utilizes **Gemini API (Gemini 2.5 Pro/Flash)** for deep semantic understanding of documents and accurate data extraction.
 *   **Multi-Template Reports:** Generate reports in various professional formats (e.g., "BN Surveys", "Salomone & Associati") on demand.
 *   **Secure & Scalable:** Built on a **Cloud-Native Hybrid Architecture** using Google Cloud Platform (GCP).
 *   **Direct-to-Cloud Uploads:** Secure, high-performance file uploads directly to Google Cloud Storage (GCS) using signed URLs.
 *   **Real-Time Progress Tracking:** Users can monitor the status of their report generation in real-time.
-*   **Secure Multi-Tenancy:** Robust user authentication and data isolation using **Firebase Authentication**.
+*   **Secure Multi-Tenancy:** Robust user authentication, Row Level Security (RLS), and data isolation using **Firebase Authentication**.
 
 ## 🏗️ Technical Architecture (The "Google Stack")
 
@@ -27,22 +27,22 @@ We have decoupled the legacy monolith into a **Cloud-Native Hybrid Architecture*
 
 | Component | Technology Selection | Justification |
 | :--- | :--- | :--- |
-| **Frontend** | **Next.js 16 + Firebase Auth** | Hosted on **Cloud Run**. Client-side uploads directly to storage. Styled with **Tailwind CSS v4**. |
+| **Frontend** | **Next.js 16 + React 19 + Firebase Auth** | Hosted on **Cloud Run**. Client-side uploads directly to storage. Styled with **Tailwind CSS v4**. |
 | **Backend** | **FastAPI + Cloud Tasks** | Hosted on **Cloud Run**. Replaces Celery workers with HTTP-triggered task handlers. |
-| **Database** | **Cloud SQL (PostgreSQL)** | Managed Postgres. Connections secured via *Cloud SQL Auth Connector* (no public IP exposure). |
+| **Database** | **Cloud SQL (PostgreSQL)** | Managed Postgres with RLS for multi-tenancy. Connections secured via *Cloud SQL Auth Connector* (no public IP exposure). |
 | **Storage** | **Google Cloud Storage (GCS)** | Replaces local disk. Configured with CORS for secure browser-direct uploads. |
 | **Async Queue** | **Cloud Tasks** | Serverless task queue. Zero-maintenance, free-tier eligible solution replacing Redis. |
-| **AI Engine** | **Vertex AI (Gemini 2.5)** | Low-latency integration for document analysis and report generation. |
+| **AI Engine** | **Gemini API (`google-genai`)** | Direct API access using `gemini-2.5-pro` as primary and `gemini-2.5-flash-lite` as fallback. |
 
 ### Infrastructure Details
 
-*   **API Gateway & Services:** Cloud Run, Cloud SQL Admin, Cloud Storage, Cloud Tasks, Secret Manager, Vertex AI.
+*   **API Gateway & Services:** Cloud Run, Cloud SQL Admin, Cloud Storage, Cloud Tasks, Secret Manager.
 *   **Object Storage (Data Layer):**
     *   **CORS Enabled:** Allows `PUT` requests from web browsers for direct uploads.
     *   **Data Safety:** Soft-delete policy enabled (7-day recovery window).
     *   **Access:** Uniform Bucket-Level Access enforced.
 *   **Database (State Layer):**
-    *   **Spec:** PostgreSQL (Shared Core for dev/staging).
+    *   **Spec:** PostgreSQL with Row Level Security (RLS).
     *   **Security:** Public IP enabled but secured via IAM Auth.
 *   **Identity (Auth Layer):**
     *   **Provider:** Firebase Identity Platform.

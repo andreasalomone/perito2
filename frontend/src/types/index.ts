@@ -25,7 +25,7 @@ export const ClientSchema = z.object({
 });
 export type Client = z.infer<typeof ClientSchema>;
 
-export const CaseStatusEnum = z.enum(["OPEN", "GENERATING", "ERROR", "CLOSED"]);
+export const CaseStatusEnum = z.enum(["OPEN", "CLOSED", "ARCHIVED", "PROCESSING", "GENERATING", "ERROR"]);
 export type CaseStatusType = z.infer<typeof CaseStatusEnum>;
 
 // Base Case Schema

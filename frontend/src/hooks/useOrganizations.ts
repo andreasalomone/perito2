@@ -1,28 +1,20 @@
 import useSWR from 'swr';
 import { useAuth } from '@/context/AuthContext';
-import { useConfig } from '@/context/ConfigContext';
-import axios from 'axios';
+import { api } from '@/lib/api';
+import { Organization } from '@/types/admin';
 
-export interface Organization {
-    id: string;
-    name: string;
-    created_at: string;
-}
+// Re-export for backwards compatibility
+export type { Organization } from '@/types/admin';
 
 export function useOrganizations() {
     const { user, getToken } = useAuth();
-    const { apiUrl } = useConfig();
 
     const { data, error, isLoading, mutate } = useSWR<Organization[]>(
         user ? ['organizations'] : null,
         async () => {
             const token = await getToken();
             if (!token) throw new Error("No token available");
-            const response = await axios.get(
-                `${apiUrl}/api/v1/admin/organizations`,
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
-            return response.data;
+            return api.admin.listOrganizations(token);
         },
         {
             revalidateOnFocus: true,
