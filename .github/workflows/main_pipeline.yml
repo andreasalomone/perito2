@@ -66,7 +66,6 @@ jobs:
           gcloud builds submit backend \
             --region ${{ env.REGION }} \
             --tag ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:${{ github.sha }} \
-            --suppress-logs \
             --timeout=20m
 
       - name: Tag Backend as Latest
@@ -203,7 +202,6 @@ jobs:
           gcloud builds submit frontend \
             --region ${{ env.REGION }} \
             --tag ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/frontend:${{ github.sha }} \
-            --suppress-logs \
             --timeout=20m
 
       # Explicitly tag latest for frontend too
