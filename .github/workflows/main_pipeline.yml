@@ -64,6 +64,7 @@ jobs:
       - name: Build Backend with Cloud Build
         run: |
           gcloud builds submit backend \
+            --region ${{ env.REGION }} \
             --tag ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:${{ github.sha }} \
             --timeout=20m
 
@@ -193,6 +194,7 @@ jobs:
       - name: Build Frontend with Cloud Build
         run: |
           gcloud builds submit frontend \
+            --region ${{ env.REGION }} \
             --tag ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/frontend:${{ github.sha }} \
             --timeout=20m
 
