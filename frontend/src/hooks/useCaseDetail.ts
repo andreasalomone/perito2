@@ -1,12 +1,14 @@
-import useSWR from 'swr';
+import useSWR, { mutate as globalMutate } from 'swr';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/lib/api';
 import { CaseDetail, CaseStatus } from '@/types';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
 
 export function useCaseDetail(id: string | undefined) {
     const { user, getToken } = useAuth();
     const [shouldPoll, setShouldPoll] = useState(false);
+    const [pollingStart, setPollingStart] = useState<number | null>(null);
 
     // 1. Main Data Fetch (Full Payload) - Only fetches on mount or manual mutate
     const {
@@ -35,10 +37,43 @@ export function useCaseDetail(id: string | undefined) {
             caseData.status === "PROCESSING" ||
             caseData.documents.some(d => ["PROCESSING", "PENDING"].includes(d.ai_status));
 
+        if (isBusy && !shouldPoll) {
+            setPollingStart(Date.now());
+        }
         setShouldPoll(isBusy);
-    }, [caseData]);
+    }, [caseData, shouldPoll]);
 
-    // 3. Lightweight Polling (Status Only)
+    // 3. Stop polling after 10 minutes (job likely stuck)
+    useEffect(() => {
+        if (!pollingStart || !shouldPoll) return;
+
+        const elapsed = Date.now() - pollingStart;
+        if (elapsed > 10 * 60 * 1000) {
+            setShouldPoll(false);
+            setPollingStart(null);
+            toast.error("Generazione troppo lunga. Ricarica la pagina per verificare lo stato.");
+        }
+    }, [pollingStart, shouldPoll]);
+
+    // 4. Pause polling when tab is hidden
+    useEffect(() => {
+        const handleVisibility = () => {
+            if (document.hidden) {
+                setShouldPoll(false);
+            } else if (caseData?.status === "GENERATING" || caseData?.status === "PROCESSING") {
+                setShouldPoll(true);
+                mutateCase(); // Immediate refresh when returning
+            }
+        };
+
+        document.addEventListener("visibilitychange", handleVisibility);
+        return () => document.removeEventListener("visibilitychange", handleVisibility);
+    }, [caseData?.status, mutateCase]);
+
+    // 5. Adaptive polling interval (faster during generation)
+    const pollInterval = caseData?.status === "GENERATING" ? 2000 : 5000;
+
+    // 6. Lightweight Polling (Status Only)
     const { data: statusData } = useSWR<CaseStatus>(
         shouldPoll && user && id ? ['case-status', id] : null,
         async () => {
@@ -47,18 +82,31 @@ export function useCaseDetail(id: string | undefined) {
             return api.cases.getStatus(token, id!);
         },
         {
-            refreshInterval: 3000, // Poll light endpoint every 3s
+            refreshInterval: pollInterval, // Adaptive interval
             onSuccess: (newStatus) => {
                 // If status changed to a "finished" state, trigger full re-fetch
                 if (newStatus.status === "OPEN" || newStatus.status === "ERROR") {
                     setShouldPoll(false);
+                    setPollingStart(null);
+
+                    // FIX: Invalidate status cache to prevent race condition
+                    globalMutate(['case-status', id], undefined, { revalidate: false });
+
                     mutateCase(); // Re-fetch full details (documents, versions)
                 }
             }
         }
     );
 
-    // Merge logic: If we have newer status data, overlay it on caseData for UI feedback
+    // Enhanced mutate wrapper that invalidates polling cache
+    const safeRefresh = useCallback(() => {
+        // Clear polling cache before full re-fetch (prevents race condition)
+        globalMutate(['case-status', id], undefined, { revalidate: false });
+        setPollingStart(null);
+        mutateCase();
+    }, [id, mutateCase]);
+
+    // FIXED: Only merge if statusData exists and is not being invalidated
     const displayData = caseData && statusData
         ? { ...caseData, status: statusData.status, documents: statusData.documents }
         : caseData;
@@ -67,7 +115,7 @@ export function useCaseDetail(id: string | undefined) {
         caseData: displayData,
         isLoading,
         isError: caseError,
-        mutate: mutateCase,
+        mutate: safeRefresh,
         isGenerating: shouldPoll,
         setIsGenerating: setShouldPoll // Allow manual trigger from UI
     };

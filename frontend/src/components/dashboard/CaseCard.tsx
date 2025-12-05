@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useRef, useCallback } from "react";
+import { memo, useRef, useCallback, useState, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -16,17 +16,34 @@ interface CaseCardProps {
 
 export const CaseCard = memo(function CaseCard({ caseItem: c, index }: CaseCardProps) {
     const cardRef = useRef<HTMLDivElement>(null);
+    const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+    const rafRef = useRef<number>();
 
     const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-        const card = cardRef.current;
-        if (!card) return;
+        // Cancel previous RAF if still pending
+        if (rafRef.current) {
+            cancelAnimationFrame(rafRef.current);
+        }
 
-        const rect = card.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+        rafRef.current = requestAnimationFrame(() => {
+            const card = cardRef.current;
+            if (!card) return;
 
-        card.style.setProperty("--x", `${x}px`);
-        card.style.setProperty("--y", `${y}px`);
+            const rect = card.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            setMousePos({ x, y });
+        });
+    }, []);
+
+    // Cleanup RAF on unmount
+    useEffect(() => {
+        return () => {
+            if (rafRef.current) {
+                cancelAnimationFrame(rafRef.current);
+            }
+        };
     }, []);
 
     return (
@@ -37,6 +54,11 @@ export const CaseCard = memo(function CaseCard({ caseItem: c, index }: CaseCardP
                 "overflow-hidden transition-all hover:shadow-md hover:border-primary/20 group relative",
                 index === 0 ? "@lg:col-span-2 @lg:row-span-2" : "col-span-1"
             )}
+            style={{
+                // Use CSS custom properties for GPU-accelerated animations
+                "--x": `${mousePos.x}px`,
+                "--y": `${mousePos.y}px`,
+            } as React.CSSProperties}
         >
             <div
                 className="pointer-events-none absolute -inset-px opacity-0 transition duration-300 group-hover:opacity-100"

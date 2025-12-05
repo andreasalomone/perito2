@@ -126,9 +126,9 @@ export default function UserInviteManager({ selectedOrgId }: Props) {
                             ) : invites.length === 0 ? (
                                 <p className="text-sm text-muted-foreground">No users whitelisted yet</p>
                             ) : (
-                                <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                                <ul className="space-y-2 max-h-[400px] overflow-y-auto list-none" role="list">
                                     {invites.map((invite) => (
-                                        <div
+                                        <li
                                             key={invite.id}
                                             className="flex items-center justify-between p-3 rounded-md border bg-card"
                                         >
@@ -145,9 +145,9 @@ export default function UserInviteManager({ selectedOrgId }: Props) {
                                             >
                                                 <Trash2 className="h-4 w-4 text-destructive" />
                                             </Button>
-                                        </div>
+                                        </li>
                                     ))}
-                                </div>
+                                </ul>
                             )}
                         </div>
                     </>

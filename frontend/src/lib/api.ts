@@ -10,12 +10,21 @@ import {
 } from "@/types";
 
 
-// FORCE HTTPS: This ensures that even if the build environment passes http://, 
-// the browser will always upgrade it to https://
-export const API_URL = (process.env.NEXT_PUBLIC_API_URL || "")
-    .trim()
-    .replace(/^http:\/\//, "https://")
-    .replace(/\/$/, ""); // Remove trailing slash if present
+
+
+// BUILD-TIME VALIDATION: Ensure HTTPS enforcement
+const rawApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim() || "";
+
+if (!rawApiUrl) {
+    throw new Error('[CONFIG ERROR] NEXT_PUBLIC_API_URL is not defined');
+}
+
+if (!rawApiUrl.startsWith('https://') && process.env.NODE_ENV === 'production') {
+    throw new Error('[SECURITY] NEXT_PUBLIC_API_URL must use HTTPS in production. Got: ' + rawApiUrl);
+}
+
+// Clean up URL
+export const API_URL = rawApiUrl.replace(/\/$/, "");
 
 export class ApiError extends Error {
     constructor(message: string, public status?: number) {
