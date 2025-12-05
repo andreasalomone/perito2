@@ -28,6 +28,7 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
     const [user, setUser] = useState<User | null>(null);
     const [dbUser, setDbUser] = useState<DBUser | null>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [isSynced, setIsSynced] = useState(false); // Track backend sync completion
     const authRef = useRef<Auth | null>(null);
     const initialized = useRef(false);
@@ -36,11 +37,17 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
         if (initialized.current) return;
 
         try {
+            if (!firebaseConfig?.apiKey) {
+                throw new Error("Missing Firebase API Key. Please check your environment variables or build configuration.");
+            }
             const { auth } = initFirebase(firebaseConfig as any);
             authRef.current = auth;
             initialized.current = true;
         } catch (e) {
             console.error("Firebase init failed", e);
+            setError(e instanceof Error ? e.message : "Failed to initialize Firebase");
+            setLoading(false);
+            return;
         }
 
         const auth = authRef.current;
@@ -129,6 +136,23 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
             <div className="text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
                 <p className="text-gray-600">Synchronizing Profile...</p>
+            </div>
+        </div>;
+    }
+
+    if (error) {
+        return <div className="flex items-center justify-center min-h-screen">
+            <div className="text-center max-w-md mx-auto p-6 bg-red-50 rounded-lg">
+                <h2 className="text-xl font-bold text-red-600 mb-2">Configuration Error</h2>
+                <p className="text-red-800 mb-4">{error}</p>
+                <div className="text-sm text-red-600 text-left bg-white p-4 rounded border border-red-200 overflow-auto">
+                    <p className="font-semibold mb-1">Troubleshooting:</p>
+                    <ul className="list-disc list-inside space-y-1">
+                        <li>Check if <code>.env.local</code> exists</li>
+                        <li>Verify <code>FIREBASE_API_KEY</code> is set</li>
+                        <li>If using Cloud Run, check Secret Manager secrets</li>
+                    </ul>
+                </div>
             </div>
         </div>;
     }
