@@ -43,7 +43,7 @@ export default function CaseWorkspace() {
         try {
             const token = await getToken();
             // 1. Get Signed URL
-            const signRes = await axios.post(`${API_URL}/api/cases/${caseId}/documents/upload-url`,
+            const signRes = await axios.post(`${API_URL}/api/v1/cases/${caseId}/documents/upload-url`,
                 null,
                 {
                     headers: { Authorization: `Bearer ${token}` },
@@ -57,7 +57,7 @@ export default function CaseWorkspace() {
             });
 
             // 3. Register & Update State Locally
-            await axios.post<Document>(`${API_URL}/api/cases/${caseId}/documents/register`,
+            await axios.post<Document>(`${API_URL}/api/v1/cases/${caseId}/documents/register`,
                 {
                     filename: file.name,
                     gcs_path: signRes.data.gcs_path,
@@ -80,7 +80,7 @@ export default function CaseWorkspace() {
         setIsGenerating(true);
         try {
             const token = await getToken();
-            await axios.post(`${API_URL}/api/cases/${caseId}/generate`, {}, {
+            await axios.post(`${API_URL}/api/v1/cases/${caseId}/generate`, {}, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             toast.success("Generazione avviata! Il sistema ti avviserà al termine.");
@@ -95,7 +95,7 @@ export default function CaseWorkspace() {
         try {
             const token = await getToken();
             const res = await axios.post(
-                `${API_URL}/api/cases/${caseId}/versions/${v.id}/download`,
+                `${API_URL}/api/v1/cases/${caseId}/versions/${v.id}/download`,
                 { template_type: template },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
@@ -112,7 +112,7 @@ export default function CaseWorkspace() {
 
         try {
             const token = await getToken();
-            const signRes = await axios.post(`${API_URL}/api/cases/${caseId}/documents/upload-url`,
+            const signRes = await axios.post(`${API_URL}/api/v1/cases/${caseId}/documents/upload-url`,
                 null,
                 {
                     headers: { Authorization: `Bearer ${token}` },
@@ -122,7 +122,7 @@ export default function CaseWorkspace() {
 
             await axios.put(signRes.data.upload_url, file, { headers: { "Content-Type": file.type } });
 
-            await axios.post<ReportVersion>(`${API_URL}/api/cases/${caseId}/finalize`,
+            await axios.post<ReportVersion>(`${API_URL}/api/v1/cases/${caseId}/finalize`,
                 { final_docx_path: signRes.data.gcs_path },
                 { headers: { Authorization: `Bearer ${token}` } }
             );

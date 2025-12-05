@@ -38,7 +38,7 @@ export default function UserInviteManager({ selectedOrgId }: Props) {
         try {
             const token = await getToken();
             await axios.post(
-                `${process.env.NEXT_PUBLIC_API_URL}/api/admin/organizations/${selectedOrgId}/users/invite`,
+                `${process.env.NEXT_PUBLIC_API_URL}/api/v1/admin/organizations/${selectedOrgId}/users/invite`,
                 { email: newEmail, role: newRole },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
@@ -58,7 +58,7 @@ export default function UserInviteManager({ selectedOrgId }: Props) {
         try {
             const token = await getToken();
             await axios.delete(
-                `${process.env.NEXT_PUBLIC_API_URL}/api/admin/invites/${inviteId}`,
+                `${process.env.NEXT_PUBLIC_API_URL}/api/v1/admin/invites/${inviteId}`,
                 { headers: { Authorization: `Bearer ${token}` } }
             );
             toast.success(`Removed ${email}`);

@@ -32,7 +32,7 @@ export default function OrganizationManager({ onSelectOrganization }: Props) {
         try {
             const token = await getToken();
             await axios.post(
-                `${process.env.NEXT_PUBLIC_API_URL}/api/admin/organizations`,
+                `${process.env.NEXT_PUBLIC_API_URL}/api/v1/admin/organizations`,
                 { name: newOrgName },
                 { headers: { Authorization: `Bearer ${token}` } }
             );

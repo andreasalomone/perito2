@@ -19,7 +19,7 @@ export function useOrganizations() {
             const token = await getToken();
             if (!token) throw new Error("No token available");
             const response = await axios.get(
-                `${API_URL}/api/admin/organizations`,
+                `${API_URL}/api/v1/admin/organizations`,
                 { headers: { Authorization: `Bearer ${token}` } }
             );
             return response.data;

@@ -22,7 +22,6 @@ app = FastAPI(
 )
 
 # CORS: Allow requests from your Next.js Frontend
-# In production, replace "*" with your actual Cloud Run Frontend URL
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.BACKEND_CORS_ORIGINS, 
@@ -36,8 +35,8 @@ def health_check():
     return {"status": "healthy", "service": "robotperizia-api"}
 
 # Include Routers
-app.include_router(cases.router, prefix="/api/cases", tags=["Cases"])
-app.include_router(tasks.router, prefix="/tasks", tags=["Cloud Tasks"])
-app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
-app.include_router(users.router, prefix="/api/users", tags=["Users"])
-app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
+app.include_router(cases.router, prefix="/api/v1/cases", tags=["Cases"])
+app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["Cloud Tasks"])
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
+app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
+app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])

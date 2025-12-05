@@ -55,7 +55,7 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
                 try {
                     const token = await firebaseUser.getIdToken();
                     const response = await axios.post(
-                        `${process.env.NEXT_PUBLIC_API_URL}/api/auth/sync`,
+                        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/sync`,
                         {},
                         {
                             headers: {

@@ -62,21 +62,21 @@ export const api = {
     cases: {
         list: (token: string) =>
             fetchWithValidation<CaseSummary[]>(
-                `${API_URL}/api/cases/`,
+                `${API_URL}/api/v1/cases/`,
                 token,
                 z.array(CaseSummarySchema)
             ),
 
         get: (token: string, id: string) =>
             fetchWithValidation<CaseDetail>(
-                `${API_URL}/api/cases/${id}`,
+                `${API_URL}/api/v1/cases/${id}`,
                 token,
                 CaseDetailSchema
             ),
 
         create: (token: string, data: { reference_code: string; client_name?: string }) =>
             fetchWithValidation<CaseDetail>(
-                `${API_URL}/api/cases/`,
+                `${API_URL}/api/v1/cases/`,
                 token,
                 CaseDetailSchema,
                 {
@@ -87,7 +87,7 @@ export const api = {
 
         getStatus: (token: string, id: string) =>
             fetchWithValidation<CaseStatus>(
-                `${API_URL}/api/cases/${id}/status`,
+                `${API_URL}/api/v1/cases/${id}/status`,
                 token,
                 CaseStatusSchema
             )

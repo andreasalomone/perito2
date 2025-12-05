@@ -161,7 +161,7 @@ def trigger_extraction_task(doc_id: UUID, org_id: str):
         task = {
             "http_request": {
                 "http_method": tasks_v2.HttpMethod.POST,
-                "url": f"{settings.RESOLVED_BACKEND_URL}/tasks/process-document",
+                "url": f"{settings.RESOLVED_BACKEND_URL}/api/v1/tasks/process-document",
                 "headers": {"Content-Type": "application/json"},
                 "oidc_token": {
                     "service_account_email": settings.CLOUD_TASKS_SA_EMAIL,
@@ -201,7 +201,7 @@ def trigger_case_processing_task(case_id: str, org_id: str):
         task = {
             "http_request": {
                 "http_method": tasks_v2.HttpMethod.POST,
-                "url": f"{settings.RESOLVED_BACKEND_URL}/tasks/process-case",
+                "url": f"{settings.RESOLVED_BACKEND_URL}/api/v1/tasks/process-case",
                 "headers": {"Content-Type": "application/json"},
                 "oidc_token": {
                     "service_account_email": settings.CLOUD_TASKS_SA_EMAIL,

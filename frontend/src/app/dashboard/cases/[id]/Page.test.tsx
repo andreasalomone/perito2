@@ -95,7 +95,7 @@ describe("CaseWorkspace Page", () => {
 
         await waitFor(() => {
             expect(axios.post).toHaveBeenCalledWith(
-                expect.stringContaining("/api/cases/123/generate"),
+                expect.stringContaining("/api/v1/cases/123/generate"),
                 {},
                 expect.objectContaining({ headers: { Authorization: "Bearer fake-token" } })
             );

@@ -21,7 +21,7 @@ export function useInvites(organizationId: string | null) {
             const token = await getToken();
             if (!token) throw new Error("No token available");
             const response = await axios.get(
-                `${API_URL}/api/admin/organizations/${organizationId}/invites`,
+                `${API_URL}/api/v1/admin/organizations/${organizationId}/invites`,
                 { headers: { Authorization: `Bearer ${token}` } }
             );
             return response.data;
