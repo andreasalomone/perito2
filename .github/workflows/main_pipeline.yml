@@ -148,7 +148,7 @@ jobs:
           # This filter asks Cloud Run: "Look at traffic tags, find the one named 'green', give me its URL"
           CANARY_URL=$(gcloud run services describe ${{ env.BACKEND_SERVICE }} \
             --region ${{ env.REGION }} \
-            --format 'value(status.traffic.first(tag=green).url)')
+            --format 'value(status.traffic(tag=green).url)')
           
           if [ -z "$CANARY_URL" ]; then
             echo "❌ Could not find a URL for tag 'green'. Deployment might have failed."
