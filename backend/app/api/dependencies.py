@@ -183,9 +183,16 @@ def get_db(
             try:
                 db.execute(text("RESET app.current_user_uid; RESET app.current_org_id;"))
             except Exception as e:
-                logger.critical(f"FAILED TO RESET RLS CONTEXT in get_db: {e}")
-                # Invalidate connection to prevent data leak
-                db.invalidate()
+                logger.warning(f"Initial RESET RLS failed in get_db (likely aborted transaction): {e}. Attempting rollback.")
+                try:
+                    # If the transaction is aborted, we must rollback before we can run RESET
+                    db.rollback()
+                    db.execute(text("RESET app.current_user_uid; RESET app.current_org_id;"))
+                    logger.info("Successfully reset RLS context in get_db after rollback.")
+                except Exception as e2:
+                    logger.critical(f"FAILED TO RESET RLS CONTEXT in get_db after rollback: {e2}")
+                    # Invalidate connection to prevent data leak
+                    db.invalidate()
 
 # -----------------------------------------------------------------------------
 # 3b. Registration Database Session (Permissive)
@@ -218,8 +225,14 @@ def get_registration_db(
             try:
                 db.execute(text("RESET app.current_user_uid;"))
             except Exception as e:
-                logger.critical(f"FAILED TO RESET RLS CONTEXT in get_registration_db: {e}")
-                db.invalidate()
+                logger.warning(f"Initial RESET RLS failed in get_registration_db (likely aborted transaction): {e}. Attempting rollback.")
+                try:
+                    db.rollback()
+                    db.execute(text("RESET app.current_user_uid;"))
+                    logger.info("Successfully reset RLS context in get_registration_db after rollback.")
+                except Exception as e2:
+                    logger.critical(f"FAILED TO RESET RLS CONTEXT in get_registration_db after rollback: {e2}")
+                    db.invalidate()
 
 # -----------------------------------------------------------------------------
 # 4. Superadmin Dependency
