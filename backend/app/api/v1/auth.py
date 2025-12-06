@@ -9,8 +9,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.api.dependencies import get_current_user_token, get_registration_db
-from app.models import AllowedEmail, User
+from app.models import AllowedEmail, Organization, User
 from app.schemas.enums import UserRole
 
 # Configure Structured Logging
@@ -85,6 +86,35 @@ def sync_user(
     invite_stmt = select(AllowedEmail).where(AllowedEmail.email == email)
     allowed_email = db.scalar(invite_stmt)
 
+    # --- 3b. Superadmin Bootstrap (Break Glass) ---
+    # If the DB was wiped, normal users can't login because the whitelist is empty.
+    # We allow Superadmins (defined in env vars) to auto-provision themselves.
+    if not allowed_email and email in settings.SUPERADMIN_EMAIL_LIST:
+        logger.warning(f"Superadmin detected in empty system: {email}. Auto-provisioning...")
+        
+        # 1. Ensure an Organization exists
+        org_stmt = select(Organization).limit(1)
+        existing_org = db.scalar(org_stmt)
+        
+        if not existing_org:
+            logger.info("No organizations found. Creating default 'System Admin Org'.")
+            existing_org = Organization(name="System Admin Org")
+            db.add(existing_org)
+            db.flush() # Flush to get ID
+            
+        # 2. Add to Whitelist
+        allowed_email = AllowedEmail(
+            organization_id=existing_org.id,
+            email=email,
+            role=UserRole.ADMIN
+        )
+        db.add(allowed_email)
+        db.commit()
+        db.refresh(allowed_email)
+        logger.info(f"Superadmin auto-whitelisted: {email}")
+
+    # --- End Bootstrap ---
+    
     if not allowed_email:
         logger.warning(f"Registration rejected: Email not whitelisted: {email}")
         raise HTTPException(
