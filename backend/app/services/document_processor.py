@@ -10,10 +10,11 @@ from typing import Any, Callable, Dict, List, TypeVar, Union, cast
 import fitz  # PyMuPDF
 import mailparser
 import openpyxl
-from docx import Document as DocxDocument
 from PIL import Image
 import re
 import uuid
+import zipfile
+import xml.etree.ElementTree as ET
 
 def sanitize_filename(filename: str) -> str:
     """
@@ -129,11 +130,37 @@ def prepare_image_for_llm(image_path: str) -> List[Dict[str, Any]]:
 
 @handle_extraction_errors()
 def extract_text_from_docx(docx_path: str) -> List[Dict[str, Any]]:
-    doc = DocxDocument(docx_path)
-    full_text = [para.text for para in doc.paragraphs]
+    """
+    Extracts text from DOCX using streaming XML parsing (SAX-like).
+    This avoids loading the entire document object model into memory, 
+    fixing the 'Major' memory vulnerability identified in the audit.
+    """
+    text_content = []
+    try:
+        with zipfile.ZipFile(docx_path) as zf:
+            if "word/document.xml" not in zf.namelist():
+                raise ValueError("Invalid DOCX: Missing word/document.xml")
+                
+            with zf.open("word/document.xml") as f:
+                # iterparse is a streaming parser
+                context = ET.iterparse(f, events=("end",))
+                for event, elem in context:
+                    # w:t is the tag for text in Word XML
+                    if elem.tag.endswith("}t"):
+                        if elem.text:
+                            text_content.append(elem.text)
+                    # Clean up element to free memory
+                    elem.clear()
+        
+        full_text = "\n".join(text_content)
+        
+    except Exception as e:
+        logger.warning(f"Fast extraction failed: {e}. Falling back to standard method if needed, or failing.")
+        raise e
+
     return [{
         "type": "text",
-        "content": "\n".join(full_text),
+        "content": full_text,
         "filename": sanitize_filename(os.path.basename(docx_path)),
     }]
 

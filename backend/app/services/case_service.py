@@ -17,7 +17,8 @@ from app.services import document_processor
 from app.services.gcs_service import download_file_to_temp, get_storage_client
 
 # Limit concurrent extractions to prevent filling up memory/disk
-extraction_semaphore = threading.Semaphore(5)
+# Use asyncio.Semaphore for async contexts.
+extraction_semaphore = asyncio.Semaphore(5)
 
 logger = logging.getLogger(__name__)
 
@@ -261,7 +262,7 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: AsyncSessio
         # Perform extraction only if not already processed
         tmp_dir = tempfile.mkdtemp()
         try:
-            with extraction_semaphore:
+            async with extraction_semaphore:
                 # Run core logic in thread pool to avoid blocking event loop
                 await asyncio.to_thread(_perform_extraction_logic, doc, tmp_dir)
                 

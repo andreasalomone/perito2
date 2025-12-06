@@ -120,7 +120,7 @@ def get_db(
     # This allows the 'user_self_access' RLS policy to let us read our own record.
     try:
         db.execute(
-            text("SELECT set_config('app.current_user_uid', :uid, false)"), 
+            text("SELECT set_config('app.current_user_uid', :uid, true)"), 
             {"uid": uid}
         )
         logger.debug(f"get_db: Set app.current_user_uid to {uid}")
@@ -151,7 +151,7 @@ def get_db(
     # If RLS is on, Postgres now filters everything automatically.
     try:
         db.execute(
-            text("SELECT set_config('app.current_org_id', :org_id, false)"), 
+            text("SELECT set_config('app.current_org_id', :org_id, true)"), 
             {"org_id": org_id}
         )
         logger.debug(f"get_db: Set app.current_org_id to {org_id}")
@@ -160,7 +160,15 @@ def get_db(
         raise HTTPException(status_code=500, detail="Database session initialization failed")
     
     logger.info(f"get_db: Successfully initialized session for user {uid} in org {org_id}")
-    yield db
+    try:
+        yield db
+    finally:
+         # Although is_local=True cleans up on transaction end, 
+        # explicit RESET adds defense-in-depth against driver quirks.
+        try:
+            db.execute(text("RESET app.current_user_uid; RESET app.current_org_id;"))
+        except Exception:
+            pass # Connection likely closed or dead
 
 # -----------------------------------------------------------------------------
 # 3b. Registration Database Session (Permissive)
@@ -178,14 +186,20 @@ def get_registration_db(
     
     try:
         db.execute(
-            text("SELECT set_config('app.current_user_uid', :uid, false)"),
+            text("SELECT set_config('app.current_user_uid', :uid, true)"),
             {"uid": uid}
         )
     except Exception as e:
         logger.error(f"Failed to set app.current_user_uid for registration: {e}")
         raise HTTPException(status_code=500, detail="Database context initialization failed")
     
-    yield db
+    try:
+        yield db
+    finally:
+        try:
+            db.execute(text("RESET app.current_user_uid;"))
+        except Exception:
+            pass
 
 # -----------------------------------------------------------------------------
 # 4. Superadmin Dependency

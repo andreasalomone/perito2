@@ -28,7 +28,7 @@ import threading
 logger = logging.getLogger(__name__)
 
 # Limit concurrent downloads during generation to prevent filling up memory/disk
-download_semaphore = threading.Semaphore(5)
+download_semaphore = asyncio.Semaphore(5)
 
 async def run_generation_task(case_id: str, organization_id: str):
     """
@@ -329,7 +329,7 @@ async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSes
                             item["local_path"] = None # Ensure we don't rely on stale local paths
                             try:
                                 logger.info(f"Re-downloading {target_gcs_path} for generation...")
-                                with download_semaphore:
+                                async with download_semaphore:
                                     # Use the helper that handles gs:// parsing
                                     # [FIX] Generate a valid temp path
                                     fd, local_path = tempfile.mkstemp(suffix=f"_{item.get('filename', 'asset')}")

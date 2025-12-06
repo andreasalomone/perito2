@@ -11,8 +11,9 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db
 from app.api.dependencies import get_superadmin_user
-from app.models import User, Organization, AllowedEmail
-from app.schemas.enums import UserRole
+from app.models import User, Organization, AllowedEmail, Case
+from app.schemas.enums import UserRole, CaseStatus
+from datetime import datetime, timedelta, timezone
 
 # Configure Structured Logging
 logger = logging.getLogger("app.admin.orgs")
@@ -310,4 +311,55 @@ def cleanup_orphaned_storage(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Cleanup operation failed: {str(e)}"
+        )
+
+@router.post(
+    "/rescue-zombies",
+    response_model=dict,
+    summary="Rescue Stuck Cases"
+)
+def rescue_stuck_cases(
+    superadmin: User = Depends(get_superadmin_user),
+    db: Session = Depends(get_db)
+) -> dict:
+    """
+    Superadmin only: Reset cases stuck in 'GENERATING' state for > 30 minutes.
+    
+    These "zombie" cases occur if a worker crashes (OOM/Timeout) before updating the status.
+    This endpoint finds them and marks them as ERROR so users can retry.
+    """
+    try:
+        # Define cutoff time (30 minutes ago)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=30)
+        
+        # Find stuck cases
+        # status == GENERATING AND updated_at < cutoff
+        stmt = select(Case).where(
+            Case.status == CaseStatus.GENERATING,
+            Case.updated_at < cutoff_time
+        )
+        stuck_cases = db.scalars(stmt).all()
+        
+        rescued_count = 0
+        for case in stuck_cases:
+            logger.warning(f"Rescuing zombie case {case.id} (stuck since {case.updated_at})")
+            case.status = CaseStatus.ERROR
+            rescued_count += 1
+            
+        db.commit()
+        
+        logger.info(f"Zombie rescue completed: {rescued_count} cases reset to ERROR")
+        
+        return {
+            "status": "success",
+            "rescued_count": rescued_count,
+            "cutoff_time": cutoff_time.isoformat()
+        }
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Zombie rescue failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Rescue operation failed: {str(e)}"
         )

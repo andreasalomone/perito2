@@ -5,7 +5,7 @@ from google.cloud.sql.connector import Connector, create_async_connector, IPType
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import QueuePool
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
@@ -72,7 +72,11 @@ async def getconn_async() -> Any:
 engine = create_engine(
     "postgresql+pg8000://",
     creator=getconn,
-    poolclass=NullPool,
+    poolclass=QueuePool,
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=1800, # Recycle connections every 30 mins
+    pool_timeout=30,
     echo=(settings.LOG_LEVEL == "DEBUG"),
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -81,7 +85,10 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 async_engine = create_async_engine(
     "postgresql+asyncpg://",
     async_creator=getconn_async,
-    poolclass=NullPool,
+    poolclass=QueuePool,
+    pool_size=5,
+    max_overflow=0, # Strict limit for workers to prevent starvation
+    pool_recycle=1800,
     echo=(settings.LOG_LEVEL == "DEBUG"),
 )
 AsyncSessionLocal = async_sessionmaker(
