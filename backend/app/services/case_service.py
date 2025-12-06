@@ -42,10 +42,7 @@ def get_or_create_client(db: Session, name: str, organization_id: UUID) -> Clien
             client = Client(name=name, organization_id=organization_id)
             db.add(client)
             db.flush()  # Flush within the savepoint
-        # If we get here, the savepoint was successful
-        # Note: we don't commit here because we're inside a larger transaction
-        db.flush()  # Make sure the client ID is available
-        db.refresh(client)
+        # Savepoint successful - client.id is now available
         return client
         
     except IntegrityError:

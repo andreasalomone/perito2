@@ -176,6 +176,7 @@ def create_case(
 
         # CRM Logic
         client_id: Optional[UUID] = None
+        client: Optional[Client] = None
         if case_in.client_name:
             logger.info(f"Creating/fetching client: {case_in.client_name}")
             client = case_service.get_or_create_client(db, case_in.client_name, org_id)
@@ -185,12 +186,18 @@ def create_case(
             reference_code=case_in.reference_code,
             organization_id=org_id,
             client_id=client_id,
-            creator_id=current_user["uid"], # Save creator
+            creator_id=current_user["uid"],
             status=CaseStatus.OPEN
         )
+        # Manually populate relationships for response serialization
+        # NullPool + RLS prevents db.refresh() after commit from working
+        new_case.client = client
+        new_case.creator = user
+        new_case.documents = []
+        new_case.report_versions = []
+        
         db.add(new_case)
         db.commit()
-        db.refresh(new_case)
         logger.info(f"Successfully created case {new_case.id} for organization {org_id}")
         return new_case
     except HTTPException:
