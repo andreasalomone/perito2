@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import exists, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, selectinload, make_transient
 
 from app import schemas
 from app.api.dependencies import get_current_user_token, get_db
@@ -198,6 +198,12 @@ def create_case(
         
         db.add(new_case)
         db.commit()
+        
+        # Critical: Detach from session to prevent expired attribute access
+        # NullPool + expire_on_commit=True would trigger lazy loads that fail on RLS
+        db.expunge(new_case)
+        make_transient(new_case)
+        
         logger.info(f"Successfully created case {new_case.id} for organization {org_id}")
         return new_case
     except HTTPException:
