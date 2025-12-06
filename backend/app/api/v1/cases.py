@@ -192,14 +192,14 @@ def create_case(
         
         db.add(new_case)
         db.commit()
+        db.refresh(new_case)
         
-        # Critical: Detach from session BEFORE setting relationships
-        # NullPool + expire_on_commit=True expires ALL attributes after commit,
-        # including any relationships we set before commit
-        db.expunge(new_case)
-        make_transient(new_case)
+        # Reload relationships to prevent "Instance <x> is not bound to a Session" or expired attribute errors
+        # during Pydantic serialization (specifically for computed fields like creator_email)
+        db.refresh(user)
         
-        # NOW set relationships - they won't be expired since object is detached
+        # Re-assign relationships manually so they are available for Pydantic's from_attributes
+        # We don't need make_transient/expunge if we handle the session state correctly.
         new_case.client = client
         new_case.creator = user
         new_case.documents = []
