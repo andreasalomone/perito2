@@ -59,6 +59,9 @@ def sync_user(
     # 1. Input Sanitization
     uid: str | None = token.get("uid")
     email: str | None = token.get("email")
+    # FIX: Normalize email to lower case immediately to prevent case sensitivity issues
+    if email:
+        email = email.lower()
 
     if not uid or not email:
         logger.warning("Sync attempted with invalid token claims.", extra={"token_keys": token.keys()})

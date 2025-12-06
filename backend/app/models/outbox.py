@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from sqlalchemy import Column, String, DateTime, Integer, Uuid, Text, Index, text
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import JSONB
 from app.models.base import Base
 
@@ -11,7 +12,7 @@ class OutboxMessage(Base):
     topic = Column(String(50), nullable=False) # e.g., "generate_report"
     payload = Column(JSONB, nullable=False) # The data needed for the task
     status = Column(String(20), default="PENDING", nullable=False) # PENDING, PROCESSED, FAILED
-    organization_id = Column(String(36), nullable=True)  # For tenant isolation
+    organization_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=True)  # For tenant isolation
     retry_count = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     processed_at = Column(DateTime(timezone=True), nullable=True)
