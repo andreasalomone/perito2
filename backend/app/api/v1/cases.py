@@ -251,14 +251,22 @@ def register_document(
         ai_status=ExtractionStatus.PENDING
     )
     db.add(new_doc)
-    db.commit()
-    db.refresh(new_doc)
     
-    # 2.5. Tag blob as finalized
+    # 2.5. Tag blob as finalized BEFORE commit
+    # If this fails, we fail the request. The file remains an orphan (db undefined),
+    # and will be cleaned up by the daily job.
     try:
         gcs_service.tag_blob_as_finalized(clean_path)
     except Exception as e:
-        logger.warning(f"Failed to tag blob {clean_path} as finalized: {e}")
+        logger.error(f"Failed to tag blob {clean_path} as finalized: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, 
+            detail="Failed to finalize document storage."
+        )
+
+    # 3. Commit only if tagging succeeded (or we are okay with it, but here we enforce it)
+    db.commit()
+    db.refresh(new_doc)
     
     # 3. Trigger Async Processing
     case_service.trigger_extraction_task(new_doc.id, str(case.organization_id))

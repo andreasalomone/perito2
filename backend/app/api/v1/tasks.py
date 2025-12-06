@@ -33,6 +33,10 @@ class DocumentTaskPayload(TaskBase):
 # -----------------------------------------------------------------------------
 # 2. Dependencies
 # -----------------------------------------------------------------------------
+# GLOBAL CACHE for Google's public keys
+# This object handles caching internally.
+_cached_request = google_requests.Request()
+
 def verify_cloud_tasks_auth(
     authorization: Annotated[str | None, Header()] = None
 ) -> Literal[True]:
@@ -54,9 +58,10 @@ def verify_cloud_tasks_auth(
              raise ValueError("Invalid header format")
 
         # Blocking I/O: Makes a request to Google's Certs endpoint
+        # Uses the global _cached_request to persist keys
         id_info = id_token.verify_oauth2_token(
             token, 
-            google_requests.Request(), 
+            _cached_request, 
             audience=settings.BACKEND_URL 
         )
     except Exception as e:

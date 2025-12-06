@@ -1,17 +1,17 @@
 import logging
 import uuid
-from typing import List
+from typing import List, Any
 from enum import Enum
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
-from sqlalchemy import select
+from sqlalchemy import select, union
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db
 from app.api.dependencies import get_superadmin_user
-from app.models import User, Organization, AllowedEmail, Case
+from app.models import User, Organization, AllowedEmail, Case, Document, ReportVersion
 from app.schemas.enums import UserRole, CaseStatus
 from datetime import datetime, timedelta, timezone
 
@@ -245,67 +245,89 @@ def delete_invite(
 )
 def cleanup_orphaned_storage(
     superadmin: User = Depends(get_superadmin_user),
+    db: Session = Depends(get_db)
 ) -> dict:
     """
     Superadmin only: Deletes orphaned files from GCS uploads/ directory.
     
-    This endpoint implements metadata-aware cleanup that the GCS Lifecycle
-    Policy cannot provide. It safely removes files older than 24 hours that
-    were uploaded but never successfully registered in the database.
-    
-    **How it works:**
-    1. Lists all blobs in the `uploads/` prefix
-    2. Checks blob age (must be > 24 hours old)
-    3. Checks blob metadata for `status=finalized` tag
-    4. Deletes only files that are old AND not finalized
-    
-    **Security:** This endpoint should be called by Cloud Scheduler with 
-    OIDC authentication or manually by superadmin users.
-    
-    **Idempotent:** Safe to run multiple times without side effects.
+    Source of Truth: Postgres (Document and ReportVersion tables).
+    Only deletes files that are > 24 hours old AND do not exist in the DB.
     """
+
     from datetime import datetime, timedelta, timezone
     from app.core.config import settings
     from app.services import gcs_service
+    # Document, ReportVersion, union are now top-level imports
     
     try:
+        start_time = datetime.now(timezone.utc)
+        # Cloud Run Timeout Safety: Stop processing after 50 seconds
+        TIME_LIMIT_SECONDS = 50 
+        
         client = gcs_service.get_storage_client()
         bucket = client.bucket(settings.STORAGE_BUCKET_NAME)
         
-        # List all blobs in uploads/ with a SAFETY LIMIT
-        # SCALABILITY FIX: Added max_results to prevent checking 100k files in one request.
-        # Ideally this should be a Cloud Function, but this limit prevents the crash.
-        blobs = bucket.list_blobs(prefix="uploads/", max_results=100)
+        blobs = bucket.list_blobs(prefix="uploads/")
         
         deleted_count = 0
         skipped_count = 0
-        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=24)
+        partial_complete = False
         
+        cutoff_time = start_time - timedelta(hours=24)
+        
+        batch_paths = []
+        blobs_to_check = []
+        BATCH_SIZE = 100
+
+        def process_batch(paths_batch: List[str], blobs_batch: List[Any]):
+            nonlocal deleted_count
+            if not paths_batch:
+                return
+
+            stmt = union(
+                select(Document.gcs_path).where(Document.gcs_path.in_(paths_batch)),
+                select(ReportVersion.docx_storage_path).where(ReportVersion.docx_storage_path.in_(paths_batch))
+            )
+            valid_paths = set(db.scalars(stmt).all())
+            
+            for b in blobs_batch:
+                if b.name not in valid_paths:
+                    logger.info(f"Deleting orphan: {b.name}")
+                    try:
+                        b.delete()
+                        deleted_count += 1
+                    except Exception as e:
+                        logger.error(f"Failed to delete {b.name}: {e}")
+
         for blob in blobs:
-            # 1. Age Check: Only process files older than 24 hours
+            # Check Time Budget
+            if (datetime.now(timezone.utc) - start_time).total_seconds() > TIME_LIMIT_SECONDS:
+                logger.warning("Cleanup job hitting time limit. Stopping early.")
+                partial_complete = True
+                break
+
             if blob.time_created < cutoff_time:
-                # 2. Metadata Check: blob.metadata is None if no metadata set
-                metadata = blob.metadata or {}
+                batch_paths.append(blob.name)
+                blobs_to_check.append(blob)
                 
-                # 3. Decision: Delete only if NOT finalized
-                if metadata.get("status") != "finalized":
-                    logger.info(f"Deleting orphaned blob: {blob.name} (age: {blob.time_created})")
-                    blob.delete()
-                    deleted_count += 1
-                else:
-                    # File is old but has finalized tag - keep it
-                    skipped_count += 1
+                if len(batch_paths) >= BATCH_SIZE:
+                    process_batch(batch_paths, blobs_to_check)
+                    skipped_count += (len(batch_paths) - (len(batch_paths) - len(blobs_to_check)))
+                    batch_paths = []
+                    blobs_to_check = []
             else:
-                # File is too new to delete
                 skipped_count += 1
         
-        logger.info(f"Storage cleanup completed: {deleted_count} deleted, {skipped_count} preserved")
+        if batch_paths:
+             process_batch(batch_paths, blobs_to_check)
+
+        logger.info(f"Storage cleanup completed: {deleted_count} deleted. Partial: {partial_complete}")
         
         return {
-            "status": "success",
+            "status": "partial_success" if partial_complete else "success",
             "deleted_count": deleted_count,
-            "skipped_count": skipped_count,
-            "cutoff_time": cutoff_time.isoformat()
+            "cutoff_time": cutoff_time.isoformat(),
+            "partial": partial_complete
         }
         
     except Exception as e:
