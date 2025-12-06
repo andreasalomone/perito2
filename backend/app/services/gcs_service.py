@@ -43,9 +43,12 @@ def generate_upload_signed_url(
         "file_path": blob_name 
     }
 
+MAX_DOWNLOAD_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB Limit
+
 def download_file_to_temp(gcs_path: str, local_path: str):
     """
     Downloads a file from GCS to a local path (used by the worker later).
+    Enforces strict security checks: Bucket Validation and Size Limits.
     """
     client = get_storage_client()
     
@@ -59,8 +62,21 @@ def download_file_to_temp(gcs_path: str, local_path: str):
         bucket_name = settings.STORAGE_BUCKET_NAME
         blob_name = gcs_path
 
+    # 1. SECURITY: Strict Bucket Validation
+    # Prevent Path Traversal / Malicious Bucket Attacks
+    if bucket_name != settings.STORAGE_BUCKET_NAME:
+        raise ValueError(f"Security Alert: Attempted download from unauthorized bucket '{bucket_name}'. Expected '{settings.STORAGE_BUCKET_NAME}'.")
+
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
+    
+    # 2. RELOAD METADATA to get size
+    blob.reload()
+    
+    # 3. SECURITY: Size Limit (DoS/OOM Protection)
+    if blob.size and blob.size > MAX_DOWNLOAD_SIZE_BYTES:
+        raise ValueError(f"File too large for processing: {blob.size} bytes (Max: {MAX_DOWNLOAD_SIZE_BYTES} bytes).")
+
     blob.download_to_filename(local_path)
     return local_path
 

@@ -166,16 +166,16 @@ def extract_text_from_docx(docx_path: str) -> List[Dict[str, Any]]:
 
 @handle_extraction_errors()
 def extract_text_from_xlsx(xlsx_path: str) -> List[Dict[str, Any]]:
-    text_content = ""
+    parts = []
     try:
         workbook = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
         for sheet_name in workbook.sheetnames:
-            text_content += f"--- Sheet: {sheet_name} ---\n"
+            parts.append(f"--- Sheet: {sheet_name} ---\n")
             sheet = workbook[sheet_name]
             for row in sheet.iter_rows(values_only=True):
                 row_values = [str(cell) if cell is not None else "" for cell in row]
-                text_content += ",".join(row_values) + "\n"
-            text_content += "\n"
+                parts.append(",".join(row_values) + "\n")
+            parts.append("\n")
         workbook.close()
     except Exception as e:
         logger.warning(f"Failed to read XLSX file {xlsx_path}: {e}")
@@ -187,7 +187,7 @@ def extract_text_from_xlsx(xlsx_path: str) -> List[Dict[str, Any]]:
 
     return [{
         "type": "text",
-        "content": text_content,
+        "content": "".join(parts),
         "filename": sanitize_filename(os.path.basename(xlsx_path)),
     }]
 

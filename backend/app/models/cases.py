@@ -1,47 +1,123 @@
 import uuid
-from datetime import datetime
-from sqlalchemy import Column, String, DateTime, ForeignKey, Uuid, Enum as SAEnum, UniqueConstraint, Index, text
-from sqlalchemy.orm import relationship
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, List, Optional
+
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+    Uuid,
+    func,
+    text,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.models.base import Base
 from app.schemas.enums import CaseStatus
 
-class Client(Base):
-    """CRM: The Insurance Companies"""
-    __tablename__ = "clients"
-    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
-    organization_id = Column(Uuid, ForeignKey("organizations.id"), nullable=False)
-    name = Column(String(255), nullable=False) # e.g. "Generali"
-    vat_number = Column(String(50))
-    
-    __table_args__ = (UniqueConstraint('organization_id', 'name', name='uq_clients_org_name'),)
-    
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-    organization = relationship("Organization", back_populates="clients")
-    cases = relationship("Case", back_populates="client")
+# Prevent circular imports for type checking only
+if TYPE_CHECKING:
+    from app.models.documents import Document, ReportVersion
+    from app.models.users import Organization, User
 
-class Case(Base):
-    """The Container for a Claim (Sinistro)"""
-    __tablename__ = "cases"
-    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
-    organization_id = Column(Uuid, ForeignKey("organizations.id"), nullable=False)
-    client_id = Column(Uuid, ForeignKey("clients.id"), nullable=True)
-    creator_id = Column(String(128), ForeignKey("users.id"), nullable=True)
-    
-    reference_code = Column(String(100)) # e.g. "Sinistro 2024/005"
-    status = Column(SAEnum(CaseStatus), default=CaseStatus.OPEN, nullable=False) # Checked by DB constraint
-    
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-    
+
+class Client(Base):
+    """
+    CRM Entity: Represents Insurance Companies (e.g., Generali, Allianz).
+    Scoped to an Organization (Tenant).
+    """
+    __tablename__ = "clients"
     __table_args__ = (
-        Index('idx_cases_dashboard', 'organization_id', text('created_at DESC')),
-        Index('idx_cases_reference', 'organization_id', 'reference_code'),
-        Index('idx_cases_client', 'organization_id', 'client_id'),
-        Index('idx_cases_creator', 'organization_id', 'creator_id'),
+        # Prevent duplicate client names within the same organization
+        UniqueConstraint('organization_id', 'name', name='uq_clients_org_name'),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid.uuid4
+    )
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    vat_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    
+    # Use timezone-aware UTC for all timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), 
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now() # Double safety: DB also defaults to NOW()
     )
 
     # Relationships
-    organization = relationship("Organization", back_populates="cases")
-    client = relationship("Client", back_populates="cases")
-    creator = relationship("User", backref="cases") # Backref for easy access
-    documents = relationship("Document", back_populates="case", cascade="all, delete-orphan")
-    report_versions = relationship("ReportVersion", back_populates="case", cascade="all, delete-orphan")
+    # Note: explicit typing Mapped["ClassName"] enables IDE autocompletion
+    organization: Mapped["Organization"] = relationship(back_populates="clients")
+    cases: Mapped[List["Case"]] = relationship(back_populates="client")
+
+
+class Case(Base):
+    """
+    The Core Container for a Claim (Sinistro).
+    """
+    __tablename__ = "cases"
+    __table_args__ = (
+        # Dashboard Optimization: Fetch by Org, Order by Date
+        Index('idx_cases_dashboard', 'organization_id', text('created_at DESC')),
+        # Search Optimization
+        Index('idx_cases_reference', 'organization_id', 'reference_code'),
+        Index('idx_cases_client', 'organization_id', 'client_id'),
+        Index('idx_cases_creator', 'organization_id', 'creator_id'),
+        # LOGIC FIX: Prevent duplicate reference codes in the same Org
+        UniqueConstraint('organization_id', 'reference_code', name='uq_cases_org_ref'),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid.uuid4
+    )
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id"), nullable=False
+    )
+    client_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("clients.id"), nullable=True
+    )
+    # Firebase UIDs are strings, usually 28-36 chars. 128 is a safe upper bound.
+    creator_id: Mapped[Optional[str]] = mapped_column(
+        String(128), ForeignKey("users.id"), nullable=True
+    )
+    
+    reference_code: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    
+    status: Mapped[CaseStatus] = mapped_column(
+        default=CaseStatus.OPEN,
+        nullable=False
+        # Native Enum handling is implied by the Type Hint in SA 2.0
+    )
+    
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), 
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now()
+    )
+    
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
+    # Relationships
+    organization: Mapped["Organization"] = relationship(back_populates="cases")
+    client: Mapped[Optional["Client"]] = relationship(back_populates="cases")
+    
+    # Changed 'backref' to explicit relationship. 
+    # Requires 'cases = relationship("Case", back_populates="creator")' on User model.
+    creator: Mapped[Optional["User"]] = relationship(back_populates="cases")
+    
+    documents: Mapped[List["Document"]] = relationship(
+        back_populates="case", 
+        cascade="all, delete-orphan"
+    )
+    report_versions: Mapped[List["ReportVersion"]] = relationship(
+        back_populates="case", 
+        cascade="all, delete-orphan"
+    )

@@ -20,5 +20,6 @@ class OutboxMessage(Base):
     __table_args__ = (
         Index('idx_outbox_pending_fifo', 'created_at', postgresql_where=text("status = 'PENDING'")),
         Index('idx_outbox_org_pending', 'organization_id', 'created_at', postgresql_where=text("status = 'PENDING'")),
+        Index('idx_outbox_retry_count', 'retry_count'),
     )
 

@@ -85,7 +85,6 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 async_engine = create_async_engine(
     "postgresql+asyncpg://",
     async_creator=getconn_async,
-    poolclass=QueuePool,
     pool_size=5,
     max_overflow=0, # Strict limit for workers to prevent starvation
     pool_recycle=1800,

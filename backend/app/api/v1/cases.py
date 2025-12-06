@@ -1,12 +1,12 @@
 import logging
 import re
 from pathlib import Path
-from typing import Annotated, List, Optional
+from typing import Annotated, List, Optional, Any
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import exists, select
-from sqlalchemy.orm import Session, selectinload, make_transient
+from sqlalchemy.orm import Session, selectinload
 
 from app import schemas
 from app.api.dependencies import get_current_user_token, get_db
@@ -14,20 +14,12 @@ from app.core.config import settings
 from app.models import Case, Client, Document, ReportVersion, User
 from app.schemas.enums import CaseStatus, ExtractionStatus
 from app.services import case_service, gcs_service
-# In a real scenario, we assume report_generation_service is refactored 
-# to create its own DB session, not accept one as an arg.
 from app.services import report_generation_service as generation_service 
 
 # Configure structured logging
 logger = logging.getLogger("app.api.cases")
 
 router = APIRouter()
-
-# -----------------------------------------------------------------------------
-# Constants & Configuration
-# -----------------------------------------------------------------------------
-# Regex for safe filenames (alphanumeric, dashes, underscores, spaces)
-SAFE_FILENAME_REGEX = re.compile(r"^[a-zA-Z0-9_\-\. ]+$")
 
 # -----------------------------------------------------------------------------
 # Endpoints
@@ -37,39 +29,40 @@ SAFE_FILENAME_REGEX = re.compile(r"^[a-zA-Z0-9_\-\. ]+$")
     "/",
     response_model=List[schemas.CaseSummary],
     summary="List Cases",
-    description="Retrieve a paginated list of cases for the authenticated organization with optional filtering."
+    description="Retrieve a paginated list of cases for the authenticated organization."
 )
 def list_cases(
     db: Annotated[Session, Depends(get_db)],
-    skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(50, ge=1, le=100, description="Max records to return"),
-    search: Optional[str] = Query(None, description="Search by reference code or client name"),
-    client_id: Optional[UUID] = Query(None, description="Filter by specific client"),
-    status: Optional[CaseStatus] = Query(None, description="Filter by case status"),
-    scope: str = Query("all", description="Filter scope: 'all' or 'mine'"),
-    current_user: dict = Depends(get_current_user_token), # Need user info for 'mine' scope
+    current_user: Annotated[dict[str, Any], Depends(get_current_user_token)],
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    search: Optional[str] = Query(None),
+    client_id: Optional[UUID] = Query(None),
+    status: Optional[CaseStatus] = Query(None),
+    scope: str = Query("all", pattern="^(all|mine)$"),
 ) -> List[Case]:
     """
-    Fetches cases using SQLAlchemy 2.0 syntax.
-    Relies on RLS (Row Level Security) applied by `get_db` or query filtering.
+    Fetches cases with RLS and Soft Delete filtering.
     """
     stmt = (
         select(Case)
         .options(
             selectinload(Case.client),
-            selectinload(Case.creator) # Eager load creator for email display
-        ) 
+            # Optimize: Load only creator email
+            selectinload(Case.creator).load_only(User.email)
+        )
         .order_by(Case.created_at.desc())
     )
     
+    # Soft Delete Filter
+    stmt = stmt.where(Case.deleted_at.is_(None))
+
     # 0. Scope Filter ("My Cases")
     if scope == "mine":
-        # Filter by creator_id matching current user's UID
         stmt = stmt.where(Case.creator_id == current_user["uid"])
 
-    # 1. Text Search (Reference Code OR Client Name)
+    # 1. Text Search
     if search:
-        # Join with Client to search by client name
         stmt = stmt.join(Case.client, isouter=True).where(
             (Case.reference_code.ilike(f"%{search}%")) |
             (Client.name.ilike(f"%{search}%"))
@@ -83,10 +76,7 @@ def list_cases(
     if status:
         stmt = stmt.where(Case.status == status)
 
-    # 4. Pagination
-    stmt = stmt.offset(skip).limit(limit)
-    
-    return list(db.scalars(stmt).all())
+    return list(db.scalars(stmt.offset(skip).limit(limit)).all())
 
 
 @router.get(
@@ -100,27 +90,22 @@ def get_case_status(
 ) -> dict:
     """
     Lightweight polling endpoint. 
-    Optimized to avoid loading heavy relationships.
+    Returns boolean status + granular progress stats.
     """
-    # 1. Fetch Case Status Only
-    case_status = db.scalar(
-        select(Case.status).where(Case.id == case_id)
+    # 1. Fetch Case Status
+    case = db.scalar(
+        select(Case).where(Case.id == case_id, Case.deleted_at.is_(None))
     )
-    if not case_status:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail="Case not found"
-        )
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
     
-    # 2. Fetch Lightweight Document List (ID + Status Only)
-    # This avoids loading the full Document object (which might have large text fields in future)
+    # 2. Fetch Document Meta
     docs_stmt = (
         select(Document.id, Document.ai_status, Document.created_at, Document.filename)
         .where(Document.case_id == case_id)
     )
     docs = db.execute(docs_stmt).all()
     
-    # Map to schema format
     documents_data = [
         {
             "id": row.id, 
@@ -131,14 +116,14 @@ def get_case_status(
         for row in docs
     ]
 
-    # 3. Check for processing documents
-    is_generating = (case_status == CaseStatus.GENERATING) or any(
+    # 3. Calculate Processing State
+    is_generating = (case.status == CaseStatus.GENERATING) or any(
         d["ai_status"] in [ExtractionStatus.PENDING, ExtractionStatus.PROCESSING] for d in documents_data
     )
     
     return {
         "id": case_id,
-        "status": case_status,
+        "status": case.status,
         "documents": documents_data,
         "is_generating": is_generating
     }
@@ -152,71 +137,24 @@ def get_case_status(
 )
 def create_case(
     case_in: schemas.CaseCreate,
-    current_user: Annotated[dict, Depends(get_current_user_token)],
+    current_user: Annotated[dict[str, Any], Depends(get_current_user_token)],
     db: Annotated[Session, Depends(get_db)]
 ) -> Case:
     """
-    Creates a new case. Handles optional client creation via CRM service.
+    Creates a new case. Logic delegated to Service layer.
     """
-    try:
-        logger.info(f"Creating case for user {current_user.get('uid')} with data: {case_in.model_dump()}")
-        
-        # Strict Type Parsing
-        # Fetch User from DB to get Organization ID (Reliable Source of Truth)
-        # Note: get_db dependency already ensures the user exists via RLS/Session setup,
-        # but we need the actual ORM object here to access the relationship/field.
-        user = db.get(User, current_user["uid"])
-        if not user:
-            # Should be caught by get_db, but safe guard
-            logger.error(f"User {current_user['uid']} not found in database despite passing get_db")
-            raise HTTPException(status_code=403, detail="User account not found.")
-            
-        org_id = user.organization_id
-        logger.info(f"User {current_user['uid']} belongs to organization {org_id}")
+    # Retrieve user to get Organization ID (needed for service)
+    # Ideally the service would do this, but we keep the router simple for now
+    user = db.get(User, current_user["uid"])
+    if not user:
+        raise HTTPException(status_code=403, detail="User account not found.")
 
-        # CRM Logic
-        client_id: Optional[UUID] = None
-        client: Optional[Client] = None
-        if case_in.client_name:
-            logger.info(f"Creating/fetching client: {case_in.client_name}")
-            client = case_service.get_or_create_client(db, case_in.client_name, org_id)
-            client_id = client.id
-
-        new_case = Case(
-            reference_code=case_in.reference_code,
-            organization_id=org_id,
-            client_id=client_id,
-            creator_id=current_user["uid"],
-            status=CaseStatus.OPEN
-        )
-        
-        db.add(new_case)
-        db.commit()
-        db.refresh(new_case)
-        
-        # Reload relationships to prevent "Instance <x> is not bound to a Session" or expired attribute errors
-        # during Pydantic serialization (specifically for computed fields like creator_email)
-        db.refresh(user)
-        
-        # Re-assign relationships manually so they are available for Pydantic's from_attributes
-        # We don't need make_transient/expunge if we handle the session state correctly.
-        new_case.client = client
-        new_case.creator = user
-        new_case.documents = []
-        new_case.report_versions = []
-        
-        logger.info(f"Successfully created case {new_case.id} for organization {org_id}")
-        return new_case
-    except HTTPException:
-        # Re-raise HTTP exceptions as-is
-        raise
-    except Exception as e:
-        logger.error(f"Error creating case: {e}", exc_info=True)
-        db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to create case: {str(e)}"
-        )
+    return case_service.create_case_with_client(
+        db=db,
+        case_data=case_in,
+        user_uid=current_user["uid"],
+        user_org_id=user.organization_id # Pass the Object UUID
+    )
 
 
 @router.get("/{case_id}", response_model=schemas.CaseDetail)
@@ -224,17 +162,14 @@ def get_case_detail(
     case_id: UUID, 
     db: Annotated[Session, Depends(get_db)]
 ) -> Case:
-    """
-    Retrieves full case details including documents and report versions.
-    """
     stmt = (
         select(Case)
         .options(
             selectinload(Case.documents), 
             selectinload(Case.report_versions),
-            selectinload(Case.creator)
+            selectinload(Case.creator).load_only(User.email)
         )
-        .where(Case.id == case_id)
+        .where(Case.id == case_id, Case.deleted_at.is_(None))
     )
     case = db.scalar(stmt)
     
@@ -250,18 +185,16 @@ def get_doc_upload_url(
     content_type: str,
     db: Annotated[Session, Depends(get_db)]
 ) -> dict:
-    """
-    Generates a secure, time-limited Signed URL for GCS uploads.
-    Enforces MIME types and Organization isolation.
-    """
     case = db.get(Case, case_id)
-    if not case:
+    if not case or case.deleted_at:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    # 1. Sanitize Filename
+    # 1. Sanitize Filename (Strict Regex)
     clean_filename = Path(filename).name
-    if not SAFE_FILENAME_REGEX.match(clean_filename):
-        raise HTTPException(status_code=400, detail="Invalid filename characters.")
+    # Use the regex from case_service or a local constant if not exported? 
+    # Just use basic check here or import. 
+    if not re.match(r"^[a-zA-Z0-9_\-\. ]+$", clean_filename):
+         raise HTTPException(status_code=400, detail="Invalid filename characters.")
 
     # 2. Validate Extension & MIME
     ext = Path(clean_filename).suffix.lower()
@@ -275,7 +208,6 @@ def get_doc_upload_url(
         )
 
     # 3. Generate URL
-    # Path: uploads/{organization_id}/{case_id}/{clean_filename}
     return gcs_service.generate_upload_signed_url(
         filename=clean_filename,
         content_type=content_type,
@@ -290,32 +222,24 @@ def get_doc_upload_url(
 )
 def register_document(
     case_id: UUID,
-    payload: schemas.DocumentRegisterPayload, # Refactored to use Pydantic body
+    payload: schemas.DocumentRegisterPayload,
     db: Annotated[Session, Depends(get_db)]
 ) -> Document:
     """
-    Registers a file uploaded to GCS in the database.
-    
-    Security: Strictly validates that the provided GCS path belongs 
-    to the authenticated organization and case.
+    Registers a GCS blob as a Document.
+    Uses centralized path validation from Service layer.
     """
     case = db.get(Case, case_id)
-    if not case:
+    if not case or case.deleted_at:
         raise HTTPException(status_code=404, detail="Case not found")
 
     # 1. Security: Path Validation (Prevent IDOR)
-    # The path MUST start with: uploads/<org_id>/<case_id>/
-    expected_prefix = f"uploads/{case.organization_id}/{case.id}/"
-    
-    # Strip potential 'gs://bucket/' prefix if sent by client
-    clean_path = payload.gcs_path.replace(f"gs://{settings.STORAGE_BUCKET_NAME}/", "")
-    
-    if not clean_path.startswith(expected_prefix):
-        logger.warning(f"IDOR Attempt: User tried to register path {clean_path} for case {case.id}")
-        raise HTTPException(
-            status_code=403, 
-            detail="Security violation: File path does not match case context."
-        )
+    clean_path = case_service.validate_storage_path(
+        raw_path=payload.gcs_path,
+        org_id=case.organization_id,
+        case_id=case.id,
+        allowed_prefixes=["uploads"]
+    )
 
     # 2. Create Record
     new_doc = Document(
@@ -330,16 +254,13 @@ def register_document(
     db.commit()
     db.refresh(new_doc)
     
-    # 2.5. Tag blob as finalized to prevent lifecycle deletion
-    # This protects successfully registered files from the 24h cleanup policy
+    # 2.5. Tag blob as finalized
     try:
         gcs_service.tag_blob_as_finalized(clean_path)
     except Exception as e:
-        # Log but don't fail the request - metadata tagging is defensive
         logger.warning(f"Failed to tag blob {clean_path} as finalized: {e}")
     
     # 3. Trigger Async Processing
-    # Note: We do NOT pass 'db' here.
     case_service.trigger_extraction_task(new_doc.id, str(case.organization_id))
     
     return new_doc
@@ -351,17 +272,12 @@ async def trigger_generation(
     background_tasks: BackgroundTasks,
     db: Annotated[Session, Depends(get_db)]
 ) -> dict:
-    """
-    Triggers the AI Report Generation pipeline.
-    """
     case = db.get(Case, case_id)
-    if not case:
+    if not case or case.deleted_at:
         raise HTTPException(status_code=404, detail="Case not found")
 
     if settings.RUN_LOCALLY:
-        # LOCAL DEV: Use BackgroundTasks
-        # CRITICAL: Do NOT pass 'db' session. 
-        # The service method must create a NEW session using SessionLocal()
+        # LOCAL DEV
         background_tasks.add_task(
             generation_service.process_case_logic,
             case_id=str(case.id),
@@ -380,37 +296,19 @@ def finalize_case_endpoint(
     payload: schemas.FinalizePayload,
     db: Annotated[Session, Depends(get_db)]
 ) -> ReportVersion:
-    """
-    Finalizes a case by promoting a specific DOCX as the official version.
-    """
     case = db.get(Case, case_id)
-    if not case:
+    if not case or case.deleted_at:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    # 1. Path Security & Traversal Protection
-    raw_path = payload.final_docx_path
-    
-    # Check for traversal chars
-    if ".." in raw_path or "~" in raw_path:
-        raise HTTPException(status_code=403, detail="Invalid path characters.")
+    # 1. Validated Path
+    clean_path = case_service.validate_storage_path(
+        raw_path=payload.final_docx_path,
+        org_id=case.organization_id,
+        case_id=case.id,
+        allowed_prefixes=["uploads", "reports"]
+    )
 
-    # 2. Strict Prefix Validation
-    # Allow files from 'uploads/' (user uploaded) or 'reports/' (system generated)
-    clean_path = raw_path.replace(f"gs://{settings.STORAGE_BUCKET_NAME}/", "")
-    
-    valid_prefixes = [
-        f"uploads/{case.organization_id}/{case.id}/",
-        f"reports/{case.organization_id}/{case.id}/"
-    ]
-    
-    if not any(clean_path.startswith(prefix) for prefix in valid_prefixes):
-        logger.warning(f"IDOR Attempt in finalize: {clean_path}")
-        raise HTTPException(
-            status_code=403, 
-            detail="File must belong to this case (invalid path prefix)."
-        )
-
-    # 3. Execute Service
+    # 2. Execute Service
     final_version = case_service.finalize_case(
         db=db,
         case_id=case.id,
@@ -429,14 +327,9 @@ async def download_version(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[dict, Depends(get_current_user_token)]
 ) -> dict:
-    """
-    Generates a download URL.
-    - Final versions: Direct GCS link.
-    - Draft versions: Renders template on-the-fly.
-    """
     # Validate Case
     case = db.get(Case, case_id)
-    if not case:
+    if not case or case.deleted_at:
         raise HTTPException(status_code=404, detail="Case not found")
         
     # Validate Version
@@ -470,3 +363,26 @@ async def download_version(
     except Exception as e:
         logger.error(f"Download generation failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_case(
+    case_id: UUID,
+    db: Annotated[Session, Depends(get_db)]
+):
+    """
+    Soft-deletes a case.
+    """
+    case = db.get(Case, case_id)
+    if not case or case.deleted_at:
+        raise HTTPException(status_code=404, detail="Case not found")
+        
+    # Check permissions? 
+    # Current RLS allows owner/org member. 
+    # Maybe only creator should delete? 
+    # For now, org level access is assumed fine.
+    
+    from datetime import datetime
+    case.deleted_at = datetime.utcnow()
+    db.commit()
+    logger.info(f"Case {case_id} soft-deleted.")
+    return

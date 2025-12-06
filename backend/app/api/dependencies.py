@@ -100,6 +100,11 @@ def get_current_user_token(creds: HTTPAuthorizationCredentials = Security(securi
 # -----------------------------------------------------------------------------
 # 3. Secure Database Session (RLS)
 # -----------------------------------------------------------------------------
+from app.db.session import set_rls_variables
+
+# -----------------------------------------------------------------------------
+# 3. Secure Database Session (RLS)
+# -----------------------------------------------------------------------------
 def get_db(
     current_user_token: dict[str, Any] = Depends(get_current_user_token),
     db: Session = Depends(get_raw_db)
@@ -116,59 +121,71 @@ def get_db(
     
     logger.info(f"get_db: Processing request for user {uid} ({email})")
     
-    # 1. Set the User UID session variable FIRST
-    # This allows the 'user_self_access' RLS policy to let us read our own record.
-    try:
-        db.execute(
-            text("SELECT set_config('app.current_user_uid', :uid, true)"), 
-            {"uid": uid}
-        )
-        logger.debug(f"get_db: Set app.current_user_uid to {uid}")
-    except Exception as e:
-        logger.error(f"get_db: Failed to set app.current_user_uid for {uid}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Database session initialization failed")
-    
-    # 2. Now we can safely query the User table
-    try:
-        user_record = db.query(User).filter(User.id == uid).first()
-        logger.debug(f"get_db: User query result for {uid}: {user_record is not None}")
-    except Exception as e:
-        logger.error(f"get_db: Failed to query user {uid}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to query user record")
-    
-    if not user_record:
-        # Phantom User Race Condition: User authenticated in Firebase but not yet synced to DB
-        logger.warning(f"get_db: User {uid} ({email}) authenticated but not found in database.")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User account not initialized. Please complete registration first."
-        )
+    # Track if we have dirtied the connection
+    connection_dirtied = False
 
-    org_id = str(user_record.organization_id)
-    logger.info(f"get_db: User {uid} belongs to organization {org_id}")
-    
-    # 3. Set the Organization ID session variable
-    # If RLS is on, Postgres now filters everything automatically.
     try:
-        db.execute(
-            text("SELECT set_config('app.current_org_id', :org_id, true)"), 
-            {"org_id": org_id}
-        )
-        logger.debug(f"get_db: Set app.current_org_id to {org_id}")
-    except Exception as e:
-        logger.error(f"get_db: Failed to set app.current_org_id for {uid}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Database session initialization failed")
-    
-    logger.info(f"get_db: Successfully initialized session for user {uid} in org {org_id}")
-    try:
-        yield db
-    finally:
-         # Although is_local=True cleans up on transaction end, 
-        # explicit RESET adds defense-in-depth against driver quirks.
+        # 1. Set the User UID session variable FIRST
+        # This allows the 'user_self_access' RLS policy to let us read our own record.
+        # We use is_local=False to ensure it persists if we commit, but we MUST reset it.
         try:
-            db.execute(text("RESET app.current_user_uid; RESET app.current_org_id;"))
-        except Exception:
-            pass # Connection likely closed or dead
+            db.execute(
+                text("SELECT set_config('app.current_user_uid', :uid, false)"), 
+                {"uid": uid}
+            )
+            connection_dirtied = True
+            logger.debug(f"get_db: Set app.current_user_uid to {uid}")
+        except Exception as e:
+            logger.error(f"get_db: Failed to set app.current_user_uid for {uid}: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Database session initialization failed")
+        
+        # 2. Now we can safely query the User table
+        try:
+            # OPTIMIZATION: Query only the organization_id to avoid loading heavy columns
+            user_msg = db.execute(
+                text("SELECT organization_id FROM users WHERE id = :uid"),
+                {"uid": uid}
+            ).fetchone()
+            
+            logger.debug(f"get_db: User query result for {uid}: {user_msg is not None}")
+        except Exception as e:
+            logger.error(f"get_db: Failed to query user {uid}: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to query user record")
+        
+        if not user_msg:
+            # Phantom User Race Condition
+            logger.warning(f"get_db: User {uid} ({email}) authenticated but not found in database.")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account not initialized. Please complete registration first."
+            )
+
+        org_id = str(user_msg.organization_id)
+        logger.info(f"get_db: User {uid} belongs to organization {org_id}")
+        
+        # 3. Set the Full RLS Context (User + Org) using the shared helper
+        # This uses is_local=False
+        try:
+            set_rls_variables(db, uid, org_id)
+            logger.debug(f"get_db: Set app.current_org_id to {org_id}")
+        except Exception as e:
+            logger.error(f"get_db: Failed to set RLS variables for {uid}: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Database session initialization failed")
+        
+        logger.info(f"get_db: Successfully initialized session for user {uid} in org {org_id}")
+        
+        # 4. Yield the session
+        yield db
+
+    finally:
+        # 5. CRITICAL: RESET variables before returning connection to pool
+        if connection_dirtied:
+            try:
+                db.execute(text("RESET app.current_user_uid; RESET app.current_org_id;"))
+            except Exception as e:
+                logger.critical(f"FAILED TO RESET RLS CONTEXT in get_db: {e}")
+                # Invalidate connection to prevent data leak
+                db.invalidate()
 
 # -----------------------------------------------------------------------------
 # 3b. Registration Database Session (Permissive)
@@ -183,23 +200,26 @@ def get_registration_db(
     the user to exist in the User table yet. This allows first-time registration.
     """
     uid = current_user_token['uid']
+    connection_dirtied = False
     
     try:
+        # Use is_local=False for consistency and safety against commits
         db.execute(
-            text("SELECT set_config('app.current_user_uid', :uid, true)"),
+            text("SELECT set_config('app.current_user_uid', :uid, false)"),
             {"uid": uid}
         )
+        connection_dirtied = True
+        yield db
     except Exception as e:
         logger.error(f"Failed to set app.current_user_uid for registration: {e}")
         raise HTTPException(status_code=500, detail="Database context initialization failed")
-    
-    try:
-        yield db
     finally:
-        try:
-            db.execute(text("RESET app.current_user_uid;"))
-        except Exception:
-            pass
+        if connection_dirtied:
+            try:
+                db.execute(text("RESET app.current_user_uid;"))
+            except Exception as e:
+                logger.critical(f"FAILED TO RESET RLS CONTEXT in get_registration_db: {e}")
+                db.invalidate()
 
 # -----------------------------------------------------------------------------
 # 4. Superadmin Dependency

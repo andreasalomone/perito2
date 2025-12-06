@@ -555,25 +555,56 @@ cleanup_retry_queue = CleanupRetryQueue()
 # Singleton Instance
 # We construct it with the concrete services from the app
 # AND inject the client and allowed dirs
+# Singleton Factory: Lazy Loading Proxy
+# prevents application startup crash if API Key is missing (e.g. CI/CD)
+class LazyGeminiProxy:
+    def __init__(self):
+        self._delegate: Optional[GeminiReportGenerator] = None
+        self._lock = asyncio.Lock()
 
-if not settings.GEMINI_API_KEY:
-    # Fail fast at startup as requested
-    raise ValueError("GEMINI_API_KEY is not configured. Application cannot start.")
+    async def generate(self, *args, **kwargs) -> ReportResult:
+        instance = await self._get_instance()
+        return await instance.generate(*args, **kwargs)
 
-_client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    async def _get_instance(self) -> GeminiReportGenerator:
+        if self._delegate:
+            return self._delegate
 
-gemini_generator = GeminiReportGenerator(
-    client=_client,
-    model_name=settings.LLM_MODEL_NAME,
-    fallback_model_name=settings.LLM_FALLBACK_MODEL_NAME,
-    file_upload_service=file_upload_service,
-    cache_service=cache_service,
-    prompt_builder_service=prompt_builder_service,
-    response_parser_service=response_parser_service,
-    generation_service=generation_service,
-    retry_queue=cleanup_retry_queue,
-    allowed_file_dirs=[Path(settings.UPLOAD_FOLDER), Path("/tmp")]
-)
+        async with self._lock:
+            # Double-check locking pattern
+            if self._delegate:
+                return self._delegate
+
+            if not settings.GEMINI_API_KEY:
+                logger.error("Attempted to use LLM without GEMINI_API_KEY configured.")
+                raise ValueError("GEMINI_API_KEY is not configured. Cannot generate report.")
+
+            logger.info("Initializing Gemini Service (Lazy Load)...")
+            
+            # Create Client
+            try:
+                _client = genai.Client(api_key=settings.GEMINI_API_KEY)
+            except Exception as e:
+                 logger.critical(f"Failed to create Google GenAI Client: {e}")
+                 raise
+
+            # Create Generator
+            self._delegate = GeminiReportGenerator(
+                client=_client,
+                model_name=settings.LLM_MODEL_NAME,
+                fallback_model_name=settings.LLM_FALLBACK_MODEL_NAME,
+                file_upload_service=file_upload_service,
+                cache_service=cache_service,
+                prompt_builder_service=prompt_builder_service,
+                response_parser_service=response_parser_service,
+                generation_service=generation_service,
+                retry_queue=cleanup_retry_queue,
+                allowed_file_dirs=[Path(settings.UPLOAD_FOLDER), Path("/tmp")]
+            )
+            return self._delegate
+
+# Export the proxy as the singleton
+gemini_generator = LazyGeminiProxy()
 
 # -----------------------------------------------------------------------------
 # 6. Concurrency Control (Cost Safeguard)

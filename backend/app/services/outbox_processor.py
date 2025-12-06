@@ -84,19 +84,17 @@ def process_outbox_batch(db: Session, batch_size: int = 10):
     NOTE: Do NOT call from async contexts. Use process_outbox_batch_async instead.
     """
     # FIX BUG-2: Check if we're in an existing event loop
+    # FIX BUG-2: Check if we're in an existing event loop
     try:
-        asyncio.get_running_loop()
-        # If we get here, we're already in an event loop - ERROR
-        logger.error(
-            "process_outbox_batch called from async context. "
-            "Use process_outbox_batch_async instead to avoid event loop conflict."
-        )
-        raise RuntimeError(
-            "Cannot use process_outbox_batch from async context. "
-            "Call process_outbox_batch_async directly."
-        )
+        loop = asyncio.get_running_loop()
+        if loop.is_running():
+             # We are in an async context (e.g. FastAPI). We CANNOT use asyncio.run().
+             # Schedule the work on the existing loop (Fire-and-forget).
+             logger.warning("process_outbox_batch called from async context. Scheduling background task.")
+             loop.create_task(process_outbox_batch_async(AsyncSessionLocal(), batch_size))
+             return
     except RuntimeError:
-        # No event loop running, safe to proceed
+        # No event loop running, safe to proceed with asyncio.run()
         pass
     # 1. Fetch pending messages with row locking (Sync)
     messages = db.query(OutboxMessage).filter(

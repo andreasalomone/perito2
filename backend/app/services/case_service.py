@@ -15,6 +15,12 @@ import shutil
 import threading
 from app.services import document_processor
 from app.services.gcs_service import download_file_to_temp, get_storage_client
+from app import schemas
+from app.models import User
+from typing import List
+import re
+from fastapi import HTTPException, status
+from pathlib import Path
 
 # Limit concurrent extractions to prevent filling up memory/disk
 # Use asyncio.Semaphore for async contexts.
@@ -55,6 +61,105 @@ def get_or_create_client(db: Session, name: str, organization_id: UUID) -> Clien
         ).one()
 
 # --- THE CRITICAL WORKFLOWS ---
+
+def validate_storage_path(
+    raw_path: str, 
+    org_id: UUID, 
+    case_id: UUID, 
+    allowed_prefixes: List[str]
+) -> str:
+    """
+    Sanitizes and validates that a GCS path belongs to the specific case context.
+    Prevents Path Traversal and IDOR (Insecure Direct Object Reference).
+    """
+    # 1. Traversal Check
+    if ".." in raw_path or "~" in raw_path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Invalid path characters detected."
+        )
+
+    # 2. Normalize: Remove 'gs://bucket/' prefix if present
+    clean_path = raw_path.replace(f"gs://{settings.STORAGE_BUCKET_NAME}/", "")
+
+    # 3. Context Validation
+    # Ensure the path starts with one of the allowed prefixes for this specific Org/Case
+    # Expected format: <prefix>/{org_id}/{case_id}/
+    valid_starts = [
+        f"{prefix.strip('/')}/{org_id}/{case_id}/" 
+        for prefix in allowed_prefixes
+    ]
+    
+    if not any(clean_path.startswith(v) for v in valid_starts):
+        logger.warning(
+            f"Security Alert: IDOR attempt. "
+            f"Path '{clean_path}' does not match context {org_id}/{case_id}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Security violation: File path does not belong to this case."
+        )
+        
+    return clean_path
+
+def create_case_with_client(
+    db: Session,
+    case_data: schemas.CaseCreate,
+    user_uid: str,
+    user_org_id: UUID
+) -> Case:
+    """
+    Encapsulates case creation logic including:
+    - User validation
+    - Client lookup/creation (CRM)
+    - Transaction management
+    """
+    try:
+        logger.info(f"Creating case for user {user_uid}")
+        
+        # 1. Fetch User (Strict Check)
+        user = db.query(User).filter(User.id == user_uid).first()
+        if not user:
+            raise HTTPException(status_code=403, detail="User account not found.")
+
+        # 2. CRM Logic (Get or Create Client)
+        client_id = None
+        client = None
+        if case_data.client_name:
+            client = get_or_create_client(db, case_data.client_name, user_org_id)
+            client_id = client.id
+
+        # 3. Create Case
+        new_case = Case(
+            reference_code=case_data.reference_code,
+            organization_id=user_org_id,
+            client_id=client_id,
+            creator_id=user_uid,
+            status=CaseStatus.OPEN
+        )
+        
+        db.add(new_case)
+        db.commit()
+        db.refresh(new_case)
+        
+        # 4. Reload relationships for Pydantic
+        # Manually assign to avoid lazy load issues after commit if session is closed/expired
+        new_case.client = client
+        new_case.creator = user
+        new_case.documents = []
+        new_case.report_versions = []
+        
+        return new_case
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating case: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create case: {str(e)}"
+        )
 
 def create_ai_version(db: Session, case_id: UUID, org_id: UUID, ai_text: str, docx_path: str):
     """
@@ -340,15 +445,21 @@ async def _check_and_trigger_generation(db: AsyncSession, case_id: UUID, org_id:
             return
 
         # Re-query all docs inside this locked transaction
-        result = await db.execute(
-            select(Document).filter(Document.case_id == case_id)
+        from sqlalchemy import func
+        
+        # PERFORMANCE FIX: Count pending docs instead of loading objects
+        # This is O(1) memory vs O(N)
+        stmt = select(func.count()).select_from(Document).filter(
+            Document.case_id == case_id,
+            Document.ai_status.notin_([
+                ExtractionStatus.SUCCESS.value, 
+                ExtractionStatus.ERROR.value, 
+                ExtractionStatus.SKIPPED.value
+            ])
         )
-        all_docs = result.scalars().all()
+        pending_count = await db.scalar(stmt)
         
-        # Check if all documents are processed (SUCCESS, ERROR, or SKIPPED)
-        pending_docs = [d for d in all_docs if d.ai_status not in [ExtractionStatus.SUCCESS.value, ExtractionStatus.ERROR.value, ExtractionStatus.SKIPPED.value]]
-        
-        if not pending_docs:
+        if pending_count == 0:
             logger.info(f"All documents for case {case_id} finished. Triggering generation.")
             
             # CRITICAL: Set status here to prevent other workers from entering

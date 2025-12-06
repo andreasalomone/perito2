@@ -1,38 +1,126 @@
 import uuid
-from datetime import datetime
-from sqlalchemy import Column, String, DateTime, ForeignKey, Uuid, Enum as SAEnum, UniqueConstraint
-from sqlalchemy.orm import relationship
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, List, Optional
+
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    String,
+    Uuid,
+    func,
+    UniqueConstraint
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.models.base import Base
 from app.schemas.enums import UserRole
 
+# Prevent circular imports for type checking
+if TYPE_CHECKING:
+    from app.models.cases import Case
+    from app.models.client import Client
+
 class Organization(Base):
+    """
+    The Tenant Root.
+    """
     __tablename__ = "organizations"
-    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
-    name = Column(String(255), nullable=False)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), 
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now()
+    )
     
     # Relationships
-    users = relationship("User", back_populates="organization")
-    cases = relationship("Case", back_populates="organization")
-    clients = relationship("Client", back_populates="organization")
+    # Explicit 'List[Type]' typing enables IDE navigation
+    users: Mapped[List["User"]] = relationship(
+        back_populates="organization", 
+        cascade="all, delete-orphan"
+    )
+    cases: Mapped[List["Case"]] = relationship(
+        back_populates="organization",
+        cascade="all, delete-orphan"
+    )
+    clients: Mapped[List["Client"]] = relationship(
+        back_populates="organization",
+        cascade="all, delete-orphan"
+    )
+    # Added missing relationship to support 'GET /admin/organizations/{id}/invites'
+    invites: Mapped[List["AllowedEmail"]] = relationship(
+        back_populates="organization",
+        cascade="all, delete-orphan"
+    )
+
 
 class User(Base):
+    """
+    Authenticated User (synced from Firebase).
+    Enforces strict 1-User-1-Org membership.
+    """
     __tablename__ = "users"
-    id = Column(String(128), primary_key=True) # Firebase UID
-    organization_id = Column(Uuid, ForeignKey("organizations.id"), nullable=False)
-    email = Column(String(255), nullable=False)
-    role = Column(SAEnum(UserRole), default=UserRole.MEMBER, nullable=False)
+
+    # Firebase UID is the Primary Key
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
     
-    organization = relationship("Organization", back_populates="users")
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id"), nullable=False
+    )
+    
+    # Index added for fast lookup during Auth Sync
+    email: Mapped[str] = mapped_column(
+        String(255), nullable=False, unique=True, index=True
+    )
+    
+    role: Mapped[UserRole] = mapped_column(
+        default=UserRole.MEMBER, nullable=False
+    )
+    
+    # Audit trail (missing in original)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), 
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now()
+    )
+    
+    organization: Mapped["Organization"] = relationship(back_populates="users")
+    cases: Mapped[List["Case"]] = relationship(back_populates="creator")
+    
+
+
 
 class AllowedEmail(Base):
-    """Whitelist for Invite-Only Auth"""
+    """
+    Whitelist / Invitation System.
+    """
     __tablename__ = "allowed_emails"
-    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
-    organization_id = Column(Uuid, ForeignKey("organizations.id"), nullable=False)
-    email = Column(String(255), nullable=False, unique=True)
-    role = Column(SAEnum(UserRole), default=UserRole.MEMBER, nullable=False)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid.uuid4
+    )
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id"), nullable=False
+    )
     
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    # Global uniqueness enforces that an email can only be invited 
+    # to one organization at a time (Strict Tenancy).
+    email: Mapped[str] = mapped_column(
+        String(255), nullable=False, unique=True
+    )
     
-    organization = relationship("Organization")
+    role: Mapped[UserRole] = mapped_column(
+        default=UserRole.MEMBER, nullable=False
+    )
+    
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), 
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now()
+    )
+    
+    organization: Mapped["Organization"] = relationship(back_populates="invites")
