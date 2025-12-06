@@ -189,20 +189,21 @@ def create_case(
             creator_id=current_user["uid"],
             status=CaseStatus.OPEN
         )
-        # Manually populate relationships for response serialization
-        # NullPool + RLS prevents db.refresh() after commit from working
-        new_case.client = client
-        new_case.creator = user
-        new_case.documents = []
-        new_case.report_versions = []
         
         db.add(new_case)
         db.commit()
         
-        # Critical: Detach from session to prevent expired attribute access
-        # NullPool + expire_on_commit=True would trigger lazy loads that fail on RLS
+        # Critical: Detach from session BEFORE setting relationships
+        # NullPool + expire_on_commit=True expires ALL attributes after commit,
+        # including any relationships we set before commit
         db.expunge(new_case)
         make_transient(new_case)
+        
+        # NOW set relationships - they won't be expired since object is detached
+        new_case.client = client
+        new_case.creator = user
+        new_case.documents = []
+        new_case.report_versions = []
         
         logger.info(f"Successfully created case {new_case.id} for organization {org_id}")
         return new_case
