@@ -1,18 +1,17 @@
 import logging
 from typing import Annotated, Literal
-import asyncio
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 from pydantic import BaseModel, UUID4, Field
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.database import get_raw_db as get_db
-from app.models import Case, Document
 from app.services import report_generation_service, case_service
+# Import output processor locally or at top level
+from app.services.outbox_processor import process_outbox_batch
 
 # Configure Structured Logging
 logger = logging.getLogger("app.tasks")
@@ -20,30 +19,7 @@ logger = logging.getLogger("app.tasks")
 router = APIRouter()
 
 # -----------------------------------------------------------------------------
-# 0. Defensive Check for Sync/Async Safety
-# -----------------------------------------------------------------------------
-def _assert_sync_context() -> None:
-    """
-    Defensive check to prevent accidental conversion of sync endpoints to async def.
-    If this endpoint is ever changed to 'async def', asyncio.run() inside would fail.
-    This check makes the failure explicit and early.
-    """
-    try:
-        loop = asyncio.get_running_loop()
-        # If we get here, there's an active event loop = we're in async context = BAD
-        raise RuntimeError(
-            "FATAL: This endpoint must be synchronous! "
-            "It uses asyncio.run() internally, which cannot be called from async context. "
-            "Do NOT change 'def' to 'async def' for task worker endpoints."
-        )
-    except RuntimeError as e:
-        if "no running event loop" in str(e):
-            pass  # Good - we're in sync context
-        else:
-            raise  # Re-raise our custom error or other RuntimeErrors
-
-# -----------------------------------------------------------------------------
-# 1. Strict Pydantic Models
+# 1. Models
 # -----------------------------------------------------------------------------
 class TaskBase(BaseModel):
     organization_id: UUID4 = Field(..., description="Target Organization UUID")
@@ -55,181 +31,135 @@ class DocumentTaskPayload(TaskBase):
     document_id: UUID4 = Field(..., description="Target Document UUID")
 
 # -----------------------------------------------------------------------------
-# 2. Security & Auth Dependencies
+# 2. Dependencies
 # -----------------------------------------------------------------------------
 def verify_cloud_tasks_auth(
     authorization: Annotated[str | None, Header()] = None
 ) -> Literal[True]:
     """
-    Validates that the request originates from a trusted Google Cloud Task.
-    Verifies the OIDC ID Token signed by Google.
+    Validates Google Cloud Task OIDC Token.
+    
+    NOTE: This is a synchronous function (def). When used as a dependency 
+    in an 'async def' route, FastAPI runs it in a threadpool to prevent blocking.
     """
-    # Fail-safe: Strict check for production environment
     if settings.ENVIRONMENT == "local" and settings.RUN_LOCALLY:
-        logger.debug("⚠️ Skipping Cloud Task Auth (Local Mode)")
         return True
 
     if not authorization:
-        logger.warning("⛔ Auth Failed: Missing Authorization header")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, 
-            detail="Missing Authorization header"
-        )
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
 
     try:
         scheme, _, token = authorization.partition(" ")
         if scheme.lower() != "bearer" or not token:
              raise ValueError("Invalid header format")
 
-        # Verify OIDC Token
-        # Audience must match the Service URL exactly
+        # Blocking I/O: Makes a request to Google's Certs endpoint
         id_info = id_token.verify_oauth2_token(
             token, 
             google_requests.Request(), 
             audience=settings.BACKEND_URL 
         )
-
-    except ValueError as e:
-        logger.warning(f"⛔ Token Validation Failed: {e}")
-        raise HTTPException(status_code=401, detail="Invalid Authentication Token")
     except Exception as e:
-        logger.error(f"⛔ Unexpected Auth Error: {e}", exc_info=True)
-        raise HTTPException(status_code=401, detail="Authentication Failed")
+        logger.warning(f"Auth Failed: {e}")
+        raise HTTPException(status_code=401, detail="Invalid Token")
 
-    # Service Account Whitelist Check
-    # Prevents other GCP services in your project from invoking these webhooks
     expected_sa = settings.CLOUD_TASKS_SA_EMAIL
-    
-    if not expected_sa:
-        # FAIL SECURE: Do not allow requests if configuration is missing
-        logger.critical("Security Misconfiguration: CLOUD_TASKS_SA_EMAIL is missing.")
-        raise HTTPException(status_code=500, detail="Server Configuration Error")
-
     if id_info.get("email") != expected_sa:
-        logger.critical(
-            f"⛔ Security Alert: Unauthorized Service Account detected. "
-            f"Expected: {expected_sa}, Got: {id_info.get('email')}"
-        )
-        raise HTTPException(status_code=403, detail="Forbidden: Service Account Mismatch")
+        logger.critical(f"Auth Mismatch. Expected: {expected_sa}, Got: {id_info.get('email')}")
+        raise HTTPException(status_code=403, detail="Service Account Mismatch")
 
     return True
 
 # -----------------------------------------------------------------------------
-# 3. RLS Context Manager
+# 3. Async Endpoints (AI & I/O Bound)
 # -----------------------------------------------------------------------------
-def set_rls_context(db: Session, organization_id: str) -> None:
-    """
-    Sets the PostgreSQL session variable for Row-Level Security.
-    """
-    try:
-        db.execute(
-            text("SELECT set_config('app.current_org_id', :org_id, false)"),
-            {"org_id": str(organization_id)}
-        )
-    except Exception as e:
-        logger.critical(f"❌ Failed to set RLS context: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-            detail="Security Context Failure"
-        )
-
-# -----------------------------------------------------------------------------
-# 4. Endpoints
-# -----------------------------------------------------------------------------
-
-# NOTE: We use 'def' (Synchronous) here because we are using a synchronous
-# DB driver (pg8000). FastAPI runs 'def' endpoints in a threadpool.
-# Using 'async def' would block the main event loop.
+# These endpoints do NOT touch the sync DB Session directly. 
+# They delegate to async services which manage their own sessions if needed.
 
 @router.post(
     "/process-case", 
     status_code=status.HTTP_202_ACCEPTED,
     summary="Process Case Logic"
 )
-def process_case(
+async def process_case(
     payload: CaseTaskPayload,
     _: bool = Depends(verify_cloud_tasks_auth)
 ):
     """
-    Worker endpoint to process case logic (e.g., status updates, initial checks).
+    Async Worker: Handles business logic updates.
     """
-    _assert_sync_context()
     logger.info(f"🚀 Processing Case: {payload.case_id}")
-    
-    # 3. Execute Business Logic
     try:
-        asyncio.run(report_generation_service.run_process_case_logic_standalone(
+        # Natively await the service. No asyncio.run() overhead.
+        await report_generation_service.run_process_case_logic_standalone(
             case_id=str(payload.case_id),
             organization_id=str(payload.organization_id)
-        ))
+        )
     except Exception as e:
-        logger.error(f"❌ Task Failure: {e}", exc_info=True)
-        # Return 500 to trigger Cloud Tasks retry policy (exponential backoff)
+        logger.error(f"❌ Case Task Failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Processing failed")
-
     return {"status": "success"}
-
 
 @router.post(
     "/process-document", 
     status_code=status.HTTP_202_ACCEPTED,
     summary="Process Document Extraction"
 )
-def process_document(
+async def process_document(
     payload: DocumentTaskPayload,
     _: bool = Depends(verify_cloud_tasks_auth)
 ):
     """
-    Worker endpoint to run Gemini AI extraction on a document.
+    Async Worker: Handles heavy AI extraction.
     """
-    _assert_sync_context()
     logger.info(f"🚀 Processing Document: {payload.document_id}")
-    
     try:
-        asyncio.run(case_service.run_process_document_extraction_standalone(
+        await case_service.run_process_document_extraction_standalone(
             doc_id=payload.document_id, 
             org_id=str(payload.organization_id)
-        ))
+        )
     except Exception as e:
-        logger.error(f"❌ Extraction Task Failure: {e}", exc_info=True)
+        logger.error(f"❌ Doc Task Failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Extraction failed")
-
     return {"status": "success"}
-
 
 @router.post(
     "/generate-report", 
-    status_code=status.HTTP_202_ACCEPTED,
-    summary="Generate DOCX Report"
+    status_code=status.HTTP_202_ACCEPTED
 )
-def generate_report(
+async def generate_report(
     payload: CaseTaskPayload,
     _: bool = Depends(verify_cloud_tasks_auth)
 ):
     """
-    Worker endpoint to compile the final DOCX report.
+    Async Worker: Compiles DOCX.
     """
-    _assert_sync_context()
-    logger.info(f"🚀 Generating Report for Case: {payload.case_id}")
-    
+    logger.info(f"🚀 Generating Report: {payload.case_id}")
     try:
-        asyncio.run(report_generation_service.run_generation_task(
+        await report_generation_service.run_generation_task(
             case_id=str(payload.case_id),
             organization_id=str(payload.organization_id)
-        ))
+        )
     except Exception as e:
-        logger.error(f"❌ Report Generation Failure: {e}", exc_info=True)
+        logger.error(f"❌ Gen Task Failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Generation failed")
-
     return {"status": "success"}
 
+# -----------------------------------------------------------------------------
+# 4. Sync Endpoints (DB Bound)
+# -----------------------------------------------------------------------------
+# This endpoint uses 'db: Session', which is a synchronous dependency.
+# Therefore, this route MUST be 'def' (Sync).
 
 @router.post("/flush-outbox")
-def flush_outbox_endpoint(db: Session = Depends(get_db)):
+def flush_outbox_endpoint(
+    db: Session = Depends(get_db) # This dependency blocks!
+):
     """
-    Trigger processing of pending outbox messages.
-    Called by Cloud Scheduler every minute.
+    Sync Worker: Flushes DB Outbox.
+    Must be synchronous because it relies on the global Sync DB session pattern.
     """
-    from app.services.outbox_processor import process_outbox_batch
+    # Verify auth manually or add dependency here if needed
+    # (Usually called by Scheduler via App Engine internal logic)
     process_outbox_batch(db)
     return {"status": "ok"}

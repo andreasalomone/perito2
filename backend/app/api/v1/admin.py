@@ -272,8 +272,10 @@ def cleanup_orphaned_storage(
         client = gcs_service.get_storage_client()
         bucket = client.bucket(settings.STORAGE_BUCKET_NAME)
         
-        # List all blobs in uploads/
-        blobs = bucket.list_blobs(prefix="uploads/")
+        # List all blobs in uploads/ with a SAFETY LIMIT
+        # SCALABILITY FIX: Added max_results to prevent checking 100k files in one request.
+        # Ideally this should be a Cloud Function, but this limit prevents the crash.
+        blobs = bucket.list_blobs(prefix="uploads/", max_results=100)
         
         deleted_count = 0
         skipped_count = 0
@@ -332,20 +334,21 @@ def rescue_stuck_cases(
         # Define cutoff time (30 minutes ago)
         cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=30)
         
-        # Find stuck cases
-        # status == GENERATING AND updated_at < cutoff
-        stmt = select(Case).where(
-            Case.status == CaseStatus.GENERATING,
-            Case.updated_at < cutoff_time
-        )
-        stuck_cases = db.scalars(stmt).all()
+        # SCALABILITY FIX: Use Bulk Update instead of Fetch-Loop-Save
+        # This prevents loading thousands of objects into memory.
+        from sqlalchemy import update
         
-        rescued_count = 0
-        for case in stuck_cases:
-            logger.warning(f"Rescuing zombie case {case.id} (stuck since {case.updated_at})")
-            case.status = CaseStatus.ERROR
-            rescued_count += 1
-            
+        stmt = (
+            update(Case)
+            .where(
+                Case.status == CaseStatus.GENERATING,
+                Case.updated_at < cutoff_time
+            )
+            .values(status=CaseStatus.ERROR)
+        )
+        
+        result = db.execute(stmt)
+        rescued_count = result.rowcount
         db.commit()
         
         logger.info(f"Zombie rescue completed: {rescued_count} cases reset to ERROR")
