@@ -112,12 +112,12 @@ export function ClientCombobox({ value, onChange, disabled }: ClientComboboxProp
                         )}
 
                         {!loading && clients.length > 0 && (
-                            <CommandGroup heading="Clienti Esistenti">
+                            <CommandGroup heading="Clienti Esistenti" forceMount>
                                 {clients.map((client) => (
                                     <CommandItem
                                         key={client.id}
-                                        value={`existing:${client.id}`}
-                                        onSelect={() => handleSelect(client.name)}
+                                        value={client.name}
+                                        onSelect={handleSelect}
                                         className="cursor-pointer"
                                     >
                                         <Check
@@ -135,9 +135,9 @@ export function ClientCombobox({ value, onChange, disabled }: ClientComboboxProp
                         {query && !clients.find(c => c.name.toLowerCase() === query.toLowerCase()) && (
                             <>
                                 <CommandSeparator />
-                                <CommandGroup heading="Nuovo">
+                                <CommandGroup heading="Nuovo" forceMount>
                                     <CommandItem
-                                        value={`new:${query}`}
+                                        value={`crea-${query}`}
                                         onSelect={() => handleSelect(query)}
                                         className="text-blue-500 cursor-pointer"
                                     >
