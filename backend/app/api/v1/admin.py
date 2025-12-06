@@ -9,7 +9,7 @@ from sqlalchemy import select, union
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_db
+from app.api.dependencies import get_db, get_raw_db
 from app.api.dependencies import get_superadmin_user
 from app.models import User, Organization, AllowedEmail, Case, Document, ReportVersion
 from app.schemas.enums import UserRole, CaseStatus
@@ -74,7 +74,7 @@ class GenericMessage(BaseModel):
 )
 def list_organizations(
     superadmin: User = Depends(get_superadmin_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_raw_db)
 ) -> List[Organization]:
     """
     Superadmin only: List all organizations.
@@ -92,7 +92,7 @@ def list_organizations(
 def create_organization(
     request: OrganizationBase,
     superadmin: User = Depends(get_superadmin_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_raw_db)
 ) -> Organization:
     """
     Superadmin only: Create a new organization.
@@ -127,7 +127,7 @@ def create_organization(
 def list_org_invites(
     org_id: uuid.UUID, # FastAPI automatically validates UUID format here
     superadmin: User = Depends(get_superadmin_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_raw_db)
 ) -> List[AllowedEmail]:
     """
     Superadmin only: List all whitelisted emails for an organization.
@@ -153,7 +153,7 @@ def invite_user_to_org(
     org_id: uuid.UUID,
     request: InviteUserRequest,
     superadmin: User = Depends(get_superadmin_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_raw_db)
 ) -> GenericMessage:
     """
     Superadmin only: Whitelist an email for a specific organization.
@@ -213,7 +213,7 @@ def invite_user_to_org(
 def delete_invite(
     invite_id: uuid.UUID,
     superadmin: User = Depends(get_superadmin_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_raw_db)
 ) -> GenericMessage:
     """
     Superadmin only: Remove a whitelisted email.
@@ -245,7 +245,7 @@ def delete_invite(
 )
 def cleanup_orphaned_storage(
     superadmin: User = Depends(get_superadmin_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_raw_db)
 ) -> dict:
     """
     Superadmin only: Deletes orphaned files from GCS uploads/ directory.
@@ -344,7 +344,7 @@ def cleanup_orphaned_storage(
 )
 def rescue_stuck_cases(
     superadmin: User = Depends(get_superadmin_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_raw_db)
 ) -> dict:
     """
     Superadmin only: Reset cases stuck in 'GENERATING' state for > 30 minutes.

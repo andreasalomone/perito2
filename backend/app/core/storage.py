@@ -102,6 +102,9 @@ class GoogleCloudStorage(StorageProvider):
         self._bucket = self._client.bucket(bucket_name)
 
     def save(self, file_stream: Union[bytes, BinaryIO], filename: str, folder: str) -> str:
+        # Security: sanitize filename to prevent path traversal
+        filename = posixpath.basename(filename)
+
         # Use posixpath for consistent cloud keys (forward slashes) regardless of OS
         blob_path = posixpath.join(folder, filename)
         blob = self._bucket.blob(blob_path)
