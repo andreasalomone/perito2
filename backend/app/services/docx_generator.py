@@ -120,19 +120,8 @@ def create_styled_docx(plain_text_report_content: str) -> io.BytesIO:
     )
 
     # --- Header con Logo su Ogni Pagina ---
-    # Use absolute path relative to the project root or assets directory
-    # Assuming 'assets' is at the same level as 'backend' or in the root
-    
-    # Try to find the assets directory
-    current_dir = os.path.dirname(os.path.abspath(__file__)) # backend/services
-    backend_dir = os.path.dirname(os.path.dirname(current_dir)) # backend
-    project_root = os.path.dirname(backend_dir) # perito
-    
-    logo_path = os.path.join(project_root, "assets", "logos", "bn-surveys-logo.png")
-    
-    if not os.path.exists(logo_path):
-         # Fallback for container structure where assets might be copied to /app/assets
-         logo_path = "/app/assets/logos/bn-surveys-logo.png"
+    # Use ASSETS_DIR from config which handles local vs container paths
+    logo_path = os.path.join(settings.ASSETS_DIR, "logos", "bn-surveys-logo.png")
 
     if not os.path.exists(logo_path):
         logger.warning(f"Logo not found at {logo_path}. Header will be empty.")

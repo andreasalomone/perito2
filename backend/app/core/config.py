@@ -141,6 +141,34 @@ class Settings(BaseSettings):
     def MAX_TOTAL_UPLOAD_SIZE_BYTES(self) -> int:
         return self.MAX_TOTAL_UPLOAD_SIZE_MB * 1024 * 1024
     
+    @property
+    def ASSETS_DIR(self) -> str:
+        """
+        Returns the absolute path to the assets directory.
+        Prioritizes:
+        1. /app/assets (Production/Container)
+        2. {project_root}/assets (Local Development)
+        """
+        # 1. Container / Production Path
+        container_assets = "/app/assets"
+        if os.path.exists(container_assets):
+            return container_assets
+            
+        # 2. Local Development Path
+        # config.py is in backend/app/core/ -> .../backend/app/core/
+        # We need to go up to 'perito' root.
+        # current: backend/app/core
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # backend/app
+        backend_app = os.path.dirname(current_dir)
+        # backend
+        backend_root = os.path.dirname(backend_app)
+        # perito (project root)
+        project_root = os.path.dirname(backend_root)
+        
+        local_assets = os.path.join(project_root, "assets")
+        return local_assets
+    
     class Config:
         env_file = ".env"
         extra = "ignore"

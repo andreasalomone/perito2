@@ -50,58 +50,65 @@ def validate_response_content(response: Any, report_content: str) -> Optional[st
     Returns:
         Error message if validation fails, None if valid.
     """
-    if not report_content:
-        logger.warning("Gemini response did not yield usable text content.")
+    # 1. Check for global blocking (Prompt Feedback)
+    if response.prompt_feedback and response.prompt_feedback.block_reason:
+        block_reason_obj = response.prompt_feedback.block_reason
+        block_reason_name = (
+            block_reason_obj.name
+            if hasattr(block_reason_obj, "name")
+            else str(block_reason_obj)
+        )
+        logger.error(
+            f"Content generation blocked. Reason from prompt_feedback: {block_reason_name}"
+        )
+        return f"Error: Content generation blocked by the LLM. Reason: {block_reason_name}"
 
-        # Check for blocking
-        if response.prompt_feedback and response.prompt_feedback.block_reason:
-            block_reason_obj = response.prompt_feedback.block_reason
-            block_reason_name = (
-                block_reason_obj.name
-                if hasattr(block_reason_obj, "name")
-                else str(block_reason_obj)
+    # 2. Check Candidate Finish Reasons
+    if response.candidates:
+        first_candidate = response.candidates[0]
+        if first_candidate.finish_reason:
+            finish_reason_obj = first_candidate.finish_reason
+            finish_reason_name = (
+                finish_reason_obj.name
+                if hasattr(finish_reason_obj, "name")
+                else str(finish_reason_obj)
             )
-            logger.error(
-                f"Content generation blocked. Reason from prompt_feedback: {block_reason_name}"
-            )
-            return f"Error: Content generation blocked by the LLM. Reason: {block_reason_name}"
-
-        # Check candidates for finish reason
-        if response.candidates:
-            first_candidate = response.candidates[0]
-            if first_candidate.finish_reason:
-                finish_reason_obj = first_candidate.finish_reason
-                finish_reason_name = (
-                    finish_reason_obj.name
-                    if hasattr(finish_reason_obj, "name")
-                    else str(finish_reason_obj)
+            
+            # Critical: Fail on MAX_TOKENS even if we have partial text
+            if finish_reason_name == types.FinishReason.MAX_TOKENS.name:
+                logger.warning("Content generation stopped due to MAX_TOKENS.")
+                return "Error: Content generation reached maximum token limit. The generated text may be incomplete."
+            
+            # Fail on other non-STOP reasons (SAFETY, RECITATION, etc.)
+            elif finish_reason_name != types.FinishReason.STOP.name:
+                logger.error(
+                    f"Content generation stopped for reason: {finish_reason_name}."
                 )
-                if finish_reason_name == types.FinishReason.MAX_TOKENS.name:
-                    logger.warning("Content generation stopped due to MAX_TOKENS.")
-                    return "Error: Content generation reached maximum token limit. The generated text may be incomplete."
-                elif finish_reason_name != types.FinishReason.STOP.name:
-                    logger.error(
-                        f"Content generation stopped for reason: {finish_reason_name}."
-                    )
-                    return f"Error: LLM generation stopped for reason: {finish_reason_name}."
-                elif (
-                    finish_reason_name == types.FinishReason.STOP.name
-                    and not report_content
-                ):
-                    logger.warning(
-                        "LLM generation finished (STOP), but no text content was extracted."
-                    )
-                    return "Error: LLM generation completed, but no usable text was found in the response."
-        else:
-            logger.error(
-                "No candidates found in LLM response and not blocked by prompt_feedback."
-            )
+                return f"Error: LLM generation stopped for reason: {finish_reason_name}."
+            
+            # If STOP, but no content, that's also an error
+            elif (
+                finish_reason_name == types.FinishReason.STOP.name
+                and not report_content
+            ):
+                logger.warning(
+                    "LLM generation finished (STOP), but no text content was extracted."
+                )
+                return "Error: LLM generation completed, but no usable text was found in the response."
 
-        if not report_content:
-            logger.error(
-                f"Unknown issue: No text in Gemini response. Prompt Feedback: {response.prompt_feedback}. Candidate 0 Finish Reason (if any): {response.candidates[0].finish_reason if response.candidates else 'N/A'}"
-            )
-            return "Error: Unknown issue with LLM response, no text content received."
+    # 3. Fallback: No candidates and no explicit block
+    elif not response.prompt_feedback:
+        logger.error(
+            "No candidates found in LLM response and not blocked by prompt_feedback."
+        )
+        return "Error: Unknown issue with LLM response, no candidates returned."
+
+    # 4. Final check for empty content if everything else looked okay
+    if not report_content:
+        logger.error(
+            f"Unknown issue: No text in Gemini response. Prompt Feedback: {response.prompt_feedback}. Candidate 0 Finish Reason (if any): {response.candidates[0].finish_reason if response.candidates else 'N/A'}"
+        )
+        return "Error: Unknown issue with LLM response, no text content received."
 
     return None
 
@@ -113,13 +120,19 @@ def parse_llm_response(response: Any) -> str:
         response: The LLM response object.
 
     Returns:
-        The extracted report content, or an error message starting with "Error:".
+        The extracted report content.
+
+    Raises:
+        ValueError: If validation fails (e.g. Max Tokens, Blocked, No Content).
     """
     report_content = extract_text_from_response(response)
     error_message = validate_response_content(response, report_content)
 
     if error_message:
-        return error_message
+        # LOGIC FIX: Fail hard if generation was incomplete/blocked.
+        # This allows the caller loop to catch the exception and mark the case as ERROR.
+        logger.error(f"Response validation failed: {error_message}")
+        raise ValueError(error_message)
 
     logger.info("Report content successfully generated.")
     return report_content
