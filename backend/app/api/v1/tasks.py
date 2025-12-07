@@ -62,7 +62,7 @@ def verify_cloud_tasks_auth(
         id_info = id_token.verify_oauth2_token(
             token, 
             _cached_request, 
-            audience=settings.BACKEND_URL 
+            audience=settings.RESOLVED_BACKEND_URL 
         )
     except Exception as e:
         logger.warning(f"Auth Failed: {e}")
