@@ -1,0 +1,20 @@
+# Kaniko-based Cloud Build configuration for frontend
+# Enables layer caching to speed up rebuilds when only code changes (skips npm install)
+
+steps:
+  - name: 'gcr.io/kaniko-project/executor:v1.23.2'
+    args:
+      - '--dockerfile=Dockerfile'
+      - '--context=.'
+      - '--destination=${_AR_REGISTRY}/${PROJECT_ID}/app/frontend:${_TAG}'
+      - '--cache=true'
+      - '--cache-ttl=24h'
+
+substitutions:
+  _AR_REGISTRY: 'europe-west1-docker.pkg.dev'
+  _TAG: 'latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1200s

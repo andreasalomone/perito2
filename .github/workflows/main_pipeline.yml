@@ -61,13 +61,13 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      # FIX 1: Build with SHA tag, then tag 'latest' separately
+      # Build with Kaniko for layer caching
       - name: Build Backend Container
         run: |
           gcloud builds submit backend \
             --region ${{ env.REGION }} \
-            --tag ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:${{ github.sha }} \
-            --timeout=20m
+            --config=backend/cloudbuild.yaml \
+            --substitutions=_TAG=${{ github.sha }}
 
       - name: Tag Backend as Latest
         run: |
@@ -202,8 +202,8 @@ jobs:
         run: |
           gcloud builds submit frontend \
             --region ${{ env.REGION }} \
-            --tag ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/frontend:${{ github.sha }} \
-            --timeout=20m
+            --config=frontend/cloudbuild.yaml \
+            --substitutions=_TAG=${{ github.sha }}
 
       # Explicitly tag latest for frontend too
       - name: Tag Frontend as Latest
