@@ -10,6 +10,8 @@ interface AuthContextType {
     user: User | null;
     dbUser: DBUser | null;
     loading: boolean;
+    isProfileComplete: boolean;
+    syncError: 'forbidden' | 'error' | null;
     login: () => Promise<void>;
     signupWithEmail: (email: string, password: string) => Promise<void>;
     loginWithEmail: (email: string, password: string) => Promise<void>;
@@ -32,6 +34,7 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isSynced, setIsSynced] = useState(false); // Track backend sync completion
+    const [syncError, setSyncError] = useState<'forbidden' | 'error' | null>(null);
     const authRef = useRef<Auth | null>(null);
     const initialized = useRef(false);
 
@@ -59,33 +62,50 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
             setUser(firebaseUser);
 
             if (firebaseUser) {
-                // Set cookie for middleware
+                // Set auth cookie for middleware
                 document.cookie = "auth_session=1; path=/; max-age=86400; SameSite=Lax";
 
-                setIsSynced(false); // Mark as not synced while we wait
+                setIsSynced(false);
+                setSyncError(null);
+
                 try {
                     const token = await firebaseUser.getIdToken();
                     const response = await axios.post(
                         `${apiUrl}/api/v1/auth/sync`,
                         {},
-                        {
-                            headers: {
-                                'Authorization': `Bearer ${token}`
-                            }
-                        }
+                        { headers: { 'Authorization': `Bearer ${token}` } }
                     );
 
-                    setDbUser(response.data);
-                    setIsSynced(true); // Backend successfully knows who we are
+                    const userData = response.data;
+                    setDbUser(userData);
+
+                    // Set profile completion cookie BEFORE marking synced
+                    document.cookie = userData.is_profile_complete
+                        ? "profile_complete=1; path=/; max-age=86400; SameSite=Lax"
+                        : "profile_complete=0; path=/; max-age=86400; SameSite=Lax";
+
+                    setIsSynced(true);
                 } catch (error) {
                     console.error("Error syncing user:", error);
                     setDbUser(null);
-                    setIsSynced(false);
+
+                    // Differentiate 403 (forbidden) from other errors
+                    if (axios.isAxiosError(error) && error.response?.status === 403) {
+                        setSyncError('forbidden');
+                        // Clear profile cookie - user is NOT allowed
+                        document.cookie = "profile_complete=; path=/; max-age=0; SameSite=Lax";
+                    } else {
+                        setSyncError('error');
+                    }
+
+                    setIsSynced(true);  // FIX: Was false, caused infinite spinner!
                 }
             } else {
-                // Remove cookie
+                // Remove cookies on logout
                 document.cookie = "auth_session=; path=/; max-age=0; SameSite=Lax";
+                document.cookie = "profile_complete=; path=/; max-age=0; SameSite=Lax";
                 setDbUser(null);
+                setSyncError(null);
                 setIsSynced(true); // Guest mode is technically "synced" (no user)
             }
 
@@ -123,7 +143,9 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
         if (authRef.current) {
             await signOut(authRef.current);
             document.cookie = "auth_session=; path=/; max-age=0; SameSite=Lax";
+            document.cookie = "profile_complete=; path=/; max-age=0; SameSite=Lax";
             setDbUser(null);
+            setSyncError(null);
         }
     };
 
@@ -159,8 +181,13 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
         </div>;
     }
 
+    const isProfileComplete = dbUser?.is_profile_complete ?? false;
+
     return (
-        <AuthContext.Provider value={{ user, dbUser, loading, login, signupWithEmail, loginWithEmail, resetPassword, logout, getToken }}>
+        <AuthContext.Provider value={{
+            user, dbUser, loading, isProfileComplete, syncError,
+            login, signupWithEmail, loginWithEmail, resetPassword, logout, getToken
+        }}>
             {children}
         </AuthContext.Provider>
     );

@@ -73,4 +73,7 @@ export interface DBUser {
     email: string;
     organization_id: string;
     role: string;
+    first_name?: string | null;
+    last_name?: string | null;
+    is_profile_complete: boolean;
 }

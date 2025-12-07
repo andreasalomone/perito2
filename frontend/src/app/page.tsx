@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 function LandingPage() {
-  const { user, login, signupWithEmail, loginWithEmail, resetPassword, loading } = useAuth();
+  const { user, isProfileComplete, syncError, login, signupWithEmail, loginWithEmail, resetPassword, loading } = useAuth();
   const router = useRouter();
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [email, setEmail] = useState("");
@@ -19,10 +19,11 @@ function LandingPage() {
   const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
 
   useEffect(() => {
-    if (user) {
-      router.push("/dashboard");
+    // Only redirect if user is logged in and there's no sync error
+    if (user && !syncError) {
+      router.push(isProfileComplete ? "/dashboard" : "/onboarding");
     }
-  }, [user, router]);
+  }, [user, isProfileComplete, syncError, router]);
 
   const handleGoogleLogin = async () => {
     setIsLoggingIn(true);

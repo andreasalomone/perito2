@@ -11,6 +11,7 @@ import {
     Client
 } from "@/types";
 import { OrganizationSchema, AllowedEmailSchema, Organization, AllowedEmail } from "@/types/admin";
+import { UserProfileResponseSchema, UserProfileResponse } from "@/types/user";
 import { getApiUrl } from "@/context/ConfigContext";
 
 // Dynamic API URL getter - reads from ConfigContext at runtime
@@ -114,6 +115,15 @@ export const api = {
                 token,
                 z.array(ClientSchema),
                 { params: query ? { q: query } : {} }
+            )
+    },
+    users: {
+        updateProfile: (token: string, data: { first_name: string; last_name: string }) =>
+            fetchWithValidation<UserProfileResponse>(
+                `${getBaseUrl()}/api/v1/users/me`,
+                token,
+                UserProfileResponseSchema,
+                { method: "PATCH", data }
             )
     },
     admin: {

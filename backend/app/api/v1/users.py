@@ -1,6 +1,6 @@
 import logging
-from enum import Enum
-from typing import Annotated, Any, Dict
+from typing import Annotated, Any, Dict, Optional
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -34,6 +34,31 @@ class InviteUserRequest(BaseModel):
 
 class GenericResponse(BaseModel):
     message: str
+
+
+class ProfileUpdateRequest(BaseModel):
+    """Request body for updating user profile."""
+    first_name: str = Field(..., min_length=1, max_length=100)
+    last_name: str = Field(..., min_length=1, max_length=100)
+
+    @field_validator("first_name", "last_name")
+    @classmethod
+    def strip_whitespace(cls, v: str) -> str:
+        return v.strip()
+
+
+class UserProfileResponse(BaseModel):
+    """Response for profile operations."""
+    id: str
+    email: EmailStr
+    organization_id: UUID
+    role: UserRole
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    is_profile_complete: bool
+
+    class Config:
+        from_attributes = True
 
 # -----------------------------------------------------------------------------
 # 2. Endpoint Logic
@@ -119,3 +144,44 @@ def invite_user(
             detail="Internal server error."
         )
 
+
+# -----------------------------------------------------------------------------
+# 3. Profile Update Endpoint
+# -----------------------------------------------------------------------------
+@router.patch(
+    "/me",
+    response_model=UserProfileResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update User Profile",
+    description="Update current user's first name and last name."
+)
+def update_my_profile(
+    request: ProfileUpdateRequest,
+    token: Annotated[Dict[str, Any], Depends(get_current_user_token)],
+    db: Annotated[Session, Depends(get_db)]
+) -> User:
+    """
+    Allows a user to update their own profile (first_name, last_name).
+    This is required during the onboarding flow.
+    """
+    uid = token.get("uid")
+    if not uid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token."
+        )
+    
+    user = db.scalar(select(User).where(User.id == uid))
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found."
+        )
+    
+    user.first_name = request.first_name
+    user.last_name = request.last_name
+    db.commit()
+    db.refresh(user)
+    
+    logger.info(f"Profile updated for user: {uid}")
+    return user

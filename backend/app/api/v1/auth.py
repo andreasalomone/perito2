@@ -1,6 +1,6 @@
 import logging
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
-
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -25,15 +25,18 @@ router = APIRouter()
 class UserRead(BaseModel):
     """
     Public-facing user profile.
-    Excludes sensitive internal fields if any.
+    Includes profile completion status for onboarding flow.
     """
     id: str
     email: EmailStr
-    organization_id: UUID  # Changed to UUID to match ORM model
+    organization_id: UUID
     role: UserRole
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    is_profile_complete: bool
 
     class Config:
-        from_attributes = True # Replaces 'orm_mode = True' in Pydantic v2
+        from_attributes = True
 
 # -----------------------------------------------------------------------------
 # 2. The Refactored Endpoint
@@ -77,6 +80,10 @@ def sync_user(
     db_user = db.scalar(stmt)
 
     if db_user:
+        # Update last_login timestamp for returning users
+        db_user.last_login = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(db_user)
         return db_user
 
     # 3. Slow Path: New User Registration

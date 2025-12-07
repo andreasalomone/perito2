@@ -81,15 +81,31 @@ class User(Base):
         default=UserRole.MEMBER, nullable=False
     )
     
-    # Audit trail (missing in original)
+    # Profile fields for onboarding
+    first_name: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True
+    )
+    last_name: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True
+    )
+    
+    # Audit trail
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), 
         default=lambda: datetime.now(timezone.utc),
         server_default=func.now()
     )
+    last_login: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     
     organization: Mapped["Organization"] = relationship(back_populates="users")
     cases: Mapped[List["Case"]] = relationship(back_populates="creator")
+    
+    @property
+    def is_profile_complete(self) -> bool:
+        """Returns True if both first_name and last_name are set."""
+        return bool(self.first_name and self.last_name)
     
 
 
