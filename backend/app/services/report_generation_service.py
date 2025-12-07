@@ -550,12 +550,10 @@ async def generate_docx_variant(
     blob = await asyncio.to_thread(upload_blob)
     
     # 5. Generate Signed URL (Read)
-    # We can use the blob object directly or the gcs_service helper
-    url = blob.generate_signed_url(
-        version="v4",
-        expiration=3600, # 1 hour
-        method="GET"
-    )
+    # Use gcs_service helper which handles IAM SignBlob for Cloud Run
+    from app.services.gcs_service import generate_download_signed_url
+    gcs_path = f"gs://{bucket_name}/{blob_name}"
+    url = generate_download_signed_url(gcs_path)
     
     return url
 

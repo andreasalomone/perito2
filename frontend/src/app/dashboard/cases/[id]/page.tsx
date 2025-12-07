@@ -53,8 +53,13 @@ export default function CaseWorkspace() {
             );
 
             // 2. Upload to GCS
+            // The x-goog-content-length-range header must match what was signed in the URL
+            const maxFileSize = 50 * 1024 * 1024; // 50MB - must match backend settings.MAX_FILE_SIZE_MB
             await axios.put(signRes.data.upload_url, file, {
-                headers: { "Content-Type": file.type }
+                headers: {
+                    "Content-Type": file.type,
+                    "x-goog-content-length-range": `0,${maxFileSize}`
+                }
             });
 
             // 3. Register & Update State Locally
@@ -121,7 +126,13 @@ export default function CaseWorkspace() {
                 }
             );
 
-            await axios.put(signRes.data.upload_url, file, { headers: { "Content-Type": file.type } });
+            const maxFileSize = 50 * 1024 * 1024; // 50MB - must match backend
+            await axios.put(signRes.data.upload_url, file, {
+                headers: {
+                    "Content-Type": file.type,
+                    "x-goog-content-length-range": `0,${maxFileSize}`
+                }
+            });
 
             await axios.post<ReportVersion>(`${apiUrl}/api/v1/cases/${caseId}/finalize`,
                 { final_docx_path: signRes.data.gcs_path },
