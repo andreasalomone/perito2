@@ -266,6 +266,19 @@ def register_document(
 
     # 3. Commit only if tagging succeeded (or we are okay with it, but here we enforce it)
     db.commit()
+    
+    # RE-APPLY RLS CONTEXT (Fix for QueuePool connection swap after commit)
+    # db.commit() may release connection to pool, and db.refresh() gets a new one
+    # without the RLS session variables set.
+    from sqlalchemy import text
+    try:
+        db.execute(
+            text("SELECT set_config('app.current_org_id', :oid, false)"), 
+            {"oid": str(case.organization_id)}
+        )
+    except Exception as e:
+        logger.warning(f"Failed to re-apply RLS context before refresh: {e}")
+    
     db.refresh(new_doc)
     
     # 3. Trigger Async Processing
