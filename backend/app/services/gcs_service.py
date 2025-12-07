@@ -1,11 +1,36 @@
 import datetime
+import google.auth
 from google.cloud import storage
+from google.auth.transport import requests
 from functools import lru_cache
 from app.core.config import settings
 
 @lru_cache(maxsize=1)
 def get_storage_client():
     return storage.Client()
+
+def get_signing_credentials():
+    """
+    Get credentials for signing URLs in Cloud Run environment.
+    
+    Cloud Run's compute engine credentials don't have a private key,
+    so we need to use IAM SignBlob API via service_account_email + access_token.
+    
+    NOTE: Intentionally not cached because tokens expire (~1 hour).
+    """
+    credentials, project = google.auth.default()
+    
+    # Refresh credentials to ensure we have a valid token
+    auth_req = requests.Request()
+    credentials.refresh(auth_req)
+    
+    # Get service account email - compute engine credentials have this attribute
+    signing_email = getattr(credentials, 'service_account_email', None)
+    if not signing_email:
+        # Fallback: construct the default compute SA email
+        signing_email = f"{project}-compute@developer.gserviceaccount.com"
+    
+    return signing_email, credentials
 
 def generate_upload_signed_url(
     filename: str, 
@@ -16,6 +41,8 @@ def generate_upload_signed_url(
     """
     Generates a secure V4 Signed URL. 
     The frontend uses this URL to PUT the file directly to Google Cloud Storage.
+    
+    Uses IAM SignBlob API for Cloud Run environments where credentials lack private keys.
     """
     client = get_storage_client()
     bucket = client.bucket(settings.STORAGE_BUCKET_NAME)
@@ -25,7 +52,10 @@ def generate_upload_signed_url(
     blob_name = f"uploads/{organization_id}/{case_id}/{filename}"
     blob = bucket.blob(blob_name)
 
-    # Generate the URL
+    # Get signing credentials for IAM SignBlob API
+    signing_email, credentials = get_signing_credentials()
+
+    # Generate the URL using IAM SignBlob API
     url = blob.generate_signed_url(
         version="v4",
         # Allow PUT requests (uploads)
@@ -34,7 +64,10 @@ def generate_upload_signed_url(
         expiration=datetime.timedelta(minutes=15),
         content_type=content_type,
         # Enforce size limit at the GCS ingress layer to prevent "Infinite Cost" attacks
-        headers={"x-goog-content-length-range": f"0,{settings.MAX_FILE_SIZE_BYTES}"}
+        headers={"x-goog-content-length-range": f"0,{settings.MAX_FILE_SIZE_BYTES}"},
+        # Use IAM SignBlob API instead of local signing
+        service_account_email=signing_email,
+        access_token=credentials.token,
     )
 
     return {
@@ -84,6 +117,8 @@ def generate_download_signed_url(gcs_path: str) -> str:
     """
     Generates a secure V4 Signed URL for downloading a file.
     Valid for 15 minutes.
+    
+    Uses IAM SignBlob API for Cloud Run environments where credentials lack private keys.
     """
     client = get_storage_client()
     
@@ -98,10 +133,16 @@ def generate_download_signed_url(gcs_path: str) -> str:
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
 
+    # Get signing credentials for IAM SignBlob API
+    signing_email, credentials = get_signing_credentials()
+
     url = blob.generate_signed_url(
         version="v4",
         method="GET",
         expiration=datetime.timedelta(minutes=15),
+        # Use IAM SignBlob API instead of local signing
+        service_account_email=signing_email,
+        access_token=credentials.token,
     )
     
     return url
