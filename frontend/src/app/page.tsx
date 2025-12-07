@@ -270,8 +270,8 @@ function LandingPage() {
               </form>
             )}
 
-            {/* GOOGLE LOGIN - show in check, login, signup modes */}
-            {(mode === "check" || mode === "login" || mode === "signup") && (
+            {/* GOOGLE LOGIN - show in login, signup modes only */}
+            {(mode === "login" || mode === "signup") && (
               <>
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
