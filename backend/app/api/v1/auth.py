@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.db.database import get_raw_db
 from app.api.dependencies import get_current_user_token, get_registration_db
 from app.models import AllowedEmail, Organization, User
 from app.schemas.enums import UserRole
@@ -60,7 +61,7 @@ class CheckStatusResponse(BaseModel):
 )
 def check_user_status(
     request: CheckStatusRequest,
-    db: Session = Depends(get_registration_db)
+    db: Session = Depends(get_raw_db)
 ) -> CheckStatusResponse:
     """Check email status before authentication."""
     email = request.email.lower().strip()
