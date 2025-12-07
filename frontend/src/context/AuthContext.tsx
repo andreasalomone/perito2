@@ -17,7 +17,7 @@ interface AuthContextType {
     loginWithEmail: (email: string, password: string) => Promise<void>;
     resetPassword: (email: string) => Promise<void>;
     logout: () => Promise<void>;
-    getToken: () => Promise<string | undefined>;
+    getToken: () => Promise<string>;
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
@@ -149,8 +149,9 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
         }
     };
 
-    const getToken = async () => {
-        return user?.getIdToken();
+    const getToken = async (): Promise<string> => {
+        if (!user) throw new Error("Not authenticated");
+        return user.getIdToken();
     };
 
     // PREVENT "ZOMBIE REQUESTS":
