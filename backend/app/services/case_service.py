@@ -24,7 +24,7 @@ from pathlib import Path
 
 # Limit concurrent extractions to prevent filling up memory/disk
 # Use asyncio.Semaphore for async contexts.
-extraction_semaphore = asyncio.Semaphore(5)
+extraction_semaphore = asyncio.Semaphore(9)  # Increased for 30-50 doc batch workloads
 
 logger = logging.getLogger(__name__)
 
@@ -402,8 +402,8 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: AsyncSessio
         finally:
             shutil.rmtree(tmp_dir)
 
-    # 4. Check for Case Completion (Fan-in)
-    await _check_and_trigger_generation(db, doc.case_id, org_id, is_async=True)
+    # Auto-generation disabled: User must click "Genera con IA" to trigger report.
+    logger.info(f"Document {doc.id} extraction complete. Awaiting user action.")
 
 
 

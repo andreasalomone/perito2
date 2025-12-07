@@ -38,51 +38,67 @@ export default function CaseWorkspace() {
     const docInputRef = useRef<HTMLInputElement>(null);
     const finalInputRef = useRef<HTMLInputElement>(null);
 
-    // Handlers
+    // Handlers - Multi-file upload support
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files?.length) return;
-        const file = e.target.files[0];
-        const toastId = toast.loading("Caricamento in corso...");
+        const files = Array.from(e.target.files);
+        const toastId = toast.loading(`Caricamento di ${files.length} file...`);
 
-        try {
-            const token = await getToken();
-            // 1. Get Signed URL
-            const signRes = await axios.post(`${apiUrl}/api/v1/cases/${caseId}/documents/upload-url`,
-                null,
-                {
-                    headers: { Authorization: `Bearer ${token}` },
-                    params: { filename: file.name, content_type: file.type }
-                }
-            );
+        let successCount = 0;
+        let failCount = 0;
+        const maxFileSize = 50 * 1024 * 1024; // 50MB
 
-            // 2. Upload to GCS
-            // The x-goog-content-length-range header must match what was signed in the URL
-            const maxFileSize = 50 * 1024 * 1024; // 50MB - must match backend settings.MAX_FILE_SIZE_MB
-            await axios.put(signRes.data.upload_url, file, {
-                headers: {
-                    "Content-Type": file.type,
-                    "x-goog-content-length-range": `0,${maxFileSize}`
-                }
-            });
+        for (const file of files) {
+            try {
+                // Refresh token per file to prevent expiration during long batches
+                const token = await getToken();
 
-            // 3. Register & Update State Locally
-            await axios.post<Document>(`${apiUrl}/api/v1/cases/${caseId}/documents/register`,
-                {
-                    filename: file.name,
-                    gcs_path: signRes.data.gcs_path,
-                    mime_type: file.type
-                },
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
+                // Update progress
+                toast.loading(`Caricamento ${successCount + failCount + 1}/${files.length}: ${file.name}`, { id: toastId });
 
-            toast.success("Documento caricato con successo", { id: toastId });
-            mutate(); // Refresh data
-        } catch (error) {
-            handleApiError(error, "Errore durante il caricamento");
-            toast.dismiss(toastId);
-        } finally {
-            if (docInputRef.current) docInputRef.current.value = ""; // Reset input
+                // 1. Get Signed URL
+                const signRes = await axios.post(`${apiUrl}/api/v1/cases/${caseId}/documents/upload-url`,
+                    null,
+                    {
+                        headers: { Authorization: `Bearer ${token}` },
+                        params: { filename: file.name, content_type: file.type }
+                    }
+                );
+
+                // 2. Upload to GCS
+                await axios.put(signRes.data.upload_url, file, {
+                    headers: {
+                        "Content-Type": file.type,
+                        "x-goog-content-length-range": `0,${maxFileSize}`
+                    }
+                });
+
+                // 3. Register document (triggers Cloud Task for extraction)
+                await axios.post<Document>(`${apiUrl}/api/v1/cases/${caseId}/documents/register`,
+                    {
+                        filename: file.name,
+                        gcs_path: signRes.data.gcs_path,
+                        mime_type: file.type
+                    },
+                    { headers: { Authorization: `Bearer ${token}` } }
+                );
+
+                successCount++;
+            } catch (error) {
+                console.error(`Failed to upload ${file.name}:`, error);
+                failCount++;
+            }
         }
+
+        // Show final result
+        if (failCount === 0) {
+            toast.success(`${successCount} documenti caricati`, { id: toastId });
+        } else {
+            toast.warning(`${successCount} ok, ${failCount} falliti`, { id: toastId });
+        }
+
+        mutate(); // Refresh data once after all uploads
+        if (docInputRef.current) docInputRef.current.value = "";
     };
 
     const handleGenerate = async () => {
@@ -250,6 +266,7 @@ export default function CaseWorkspace() {
                                 onChange={handleFileUpload}
                                 className="hidden"
                                 accept=".pdf,.docx,.xlsx,.txt,.eml,.png,.jpg,.jpeg,.webp,.gif"
+                                multiple
                             />
                             <Button
                                 size="sm"

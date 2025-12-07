@@ -77,39 +77,18 @@ def handle_extraction_errors(
 
 @handle_extraction_errors()
 def prepare_pdf_for_llm(pdf_path: str) -> List[Dict[str, Any]]:
-    parts = []
+    """
+    Prepares a PDF for LLM processing.
     
-    # 1. Vision Part (Always included)
-    parts.append({
+    PDFs are sent directly as vision assets. The LLM (Gemini) handles 
+    text extraction via its native OCR, eliminating redundant PyMuPDF parsing.
+    """
+    return [{
         "type": "vision",
         "path": pdf_path,
         "mime_type": "application/pdf",
         "filename": sanitize_filename(os.path.basename(pdf_path)),
-    })
-
-    # 2. Text Part (Optional, if text exists)
-    try:
-        doc = fitz.open(pdf_path)
-        text_content = "".join(page.get_text() for page in doc)
-        doc.close()
-        
-        # Improved check: Just check if there is any non-whitespace text
-        if text_content.strip():
-            parts.append({
-                "type": "text",
-                "content": text_content,
-                "filename": f"{sanitize_filename(os.path.basename(pdf_path))} (extracted text)",
-            })
-    except Exception as e:
-        logger.warning(f"Could not extract text from PDF: {e}")
-        # Return an error object so the failure is visible in the extracted data
-        parts.append({
-            "type": "error",
-            "filename": f"{sanitize_filename(os.path.basename(pdf_path))} (text extraction)",
-            "message": f"Text extraction failed: {e}",
-        })
-
-    return parts
+    }]
 
 @handle_extraction_errors()
 def prepare_image_for_llm(image_path: str) -> List[Dict[str, Any]]:
