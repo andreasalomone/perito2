@@ -388,3 +388,61 @@ def rescue_stuck_cases(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Rescue operation failed: {str(e)}"
         )
+
+
+@router.post(
+    "/reprocess-pending-documents",
+    response_model=dict,
+    summary="Reprocess Pending Documents"
+)
+def reprocess_pending_documents(
+    superadmin: User = Depends(get_superadmin_user),
+    db: Session = Depends(get_raw_db)
+) -> dict:
+    """
+    Superadmin only: Re-enqueue Cloud Tasks for all documents stuck in PENDING status.
+    
+    Use this after fixing Cloud Tasks authentication issues to process documents
+    that got stuck because their original tasks exhausted retries.
+    """
+    from app.services import case_service
+    from app.schemas.enums import ExtractionStatus
+    
+    try:
+        # Find all PENDING documents
+        pending_docs = db.query(Document).filter(
+            Document.ai_status == ExtractionStatus.PENDING.value
+        ).all()
+        
+        if not pending_docs:
+            return {
+                "status": "success",
+                "message": "No pending documents found",
+                "requeued_count": 0
+            }
+        
+        requeued_count = 0
+        errors = []
+        
+        for doc in pending_docs:
+            try:
+                case_service.trigger_extraction_task(doc.id, str(doc.organization_id))
+                requeued_count += 1
+                logger.info(f"Requeued extraction task for document {doc.id}")
+            except Exception as e:
+                errors.append({"doc_id": str(doc.id), "error": str(e)})
+                logger.error(f"Failed to requeue document {doc.id}: {e}")
+        
+        return {
+            "status": "success",
+            "requeued_count": requeued_count,
+            "total_pending": len(pending_docs),
+            "errors": errors[:10]  # Limit to first 10 errors
+        }
+        
+    except Exception as e:
+        logger.error(f"Reprocess pending documents failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Reprocess operation failed: {str(e)}"
+        )
