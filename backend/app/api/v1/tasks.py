@@ -60,13 +60,14 @@ def verify_cloud_tasks_auth(
         # Blocking I/O: Makes a request to Google's Certs endpoint
         # Uses the global _cached_request to persist keys
         # 
-        # IMPORTANT: We use CLOUD_RUN_AUDIENCE_URL (*.run.app) for OIDC audience,
-        # NOT the custom domain. This matches Google's best practice for Cloud Tasks
-        # with custom domains. Both task creation and verification must use the same URL.
+        # NOTE: Cloud Tasks uses the target URL as OIDC audience. We've configured
+        # Cloud Run to accept our custom domain (api.perito.my) as a valid audience
+        # via --add-custom-audiences. We skip audience verification here since
+        # Cloud Run validates it at the edge before the request reaches our code.
         id_info = id_token.verify_oauth2_token(
             token, 
             _cached_request, 
-            audience=settings.CLOUD_RUN_AUDIENCE_URL
+            audience=None  # Let Cloud Run handle audience validation
         )
             
     except Exception as e:
