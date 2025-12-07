@@ -27,7 +27,8 @@ export default function CaseWorkspace() {
         isLoading,
         isError,
         mutate,
-        isGenerating,
+        isGeneratingReport,
+        isProcessingDocs,
         setIsGenerating
     } = useCaseDetail(caseId);
 
@@ -236,11 +237,11 @@ export default function CaseWorkspace() {
                         <Button
                             size="sm"
                             onClick={handleGenerate}
-                            disabled={isGenerating || documents.length === 0}
+                            disabled={isGeneratingReport || isProcessingDocs || documents.length === 0}
                             className="bg-blue-600 hover:bg-blue-700 text-white"
                         >
-                            {isGenerating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
-                            {isGenerating ? "Generazione in corso..." : "Genera con IA"}
+                            {(isGeneratingReport || isProcessingDocs) ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
+                            {isGeneratingReport ? "Generazione in corso..." : isProcessingDocs ? "Elaborazione documenti..." : "Genera con IA"}
                         </Button>
                     </CardHeader>
                     <CardContent className="flex-1 overflow-y-auto max-h-[500px] space-y-4">

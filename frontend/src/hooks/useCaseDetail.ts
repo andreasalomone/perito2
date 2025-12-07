@@ -32,10 +32,15 @@ export function useCaseDetail(id: string | undefined) {
     // 2. Determine if we need to poll based on case state
     useEffect(() => {
         if (!caseData) return;
-        const isBusy =
+
+        const isGeneratingReport =
             caseData.status === "GENERATING" ||
-            caseData.status === "PROCESSING" ||
+            caseData.status === "PROCESSING";
+
+        const isProcessingDocs =
             caseData.documents.some(d => ["PROCESSING", "PENDING"].includes(d.ai_status));
+
+        const isBusy = isGeneratingReport || isProcessingDocs;
 
         if (isBusy && !shouldPoll) {
             setPollingStart(Date.now());
@@ -111,12 +116,18 @@ export function useCaseDetail(id: string | undefined) {
         ? { ...caseData, status: statusData.status, documents: statusData.documents }
         : caseData;
 
+    const isGeneratingReport = caseData?.status === "GENERATING" || caseData?.status === "PROCESSING";
+    const isProcessingDocs = caseData?.documents.some(d => ["PROCESSING", "PENDING"].includes(d.ai_status));
+
+    // Explicit return to avoid object literal syntax errors
     return {
         caseData: displayData,
         isLoading,
         isError: caseError,
         mutate: safeRefresh,
-        isGenerating: shouldPoll,
+        isGeneratingReport: isGeneratingReport || (shouldPoll && !isProcessingDocs), // optimistic UI fallback
+        isProcessingDocs: isProcessingDocs,
+        isBusy: shouldPoll || isGeneratingReport || isProcessingDocs,
         setIsGenerating: setShouldPoll // Allow manual trigger from UI
     };
 }
