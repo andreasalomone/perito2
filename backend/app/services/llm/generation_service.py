@@ -78,7 +78,9 @@ def build_generation_config(cache_name: Optional[str]) -> types.GenerateContentC
         "max_output_tokens": settings.LLM_MAX_TOKENS,
         "temperature": settings.LLM_TEMPERATURE,
         "safety_settings": INSURANCE_SAFETY_SETTINGS,
-        "response_mime_type": "application/json",  # Force JSON for programmatic parsing
+        # NOTE: Do NOT set response_mime_type to JSON!
+        # The docx_generator expects plain text with Italian sections like:
+        # "Oggetto:", "1 – DATI GENERALI", etc.
     }
 
     if cache_name:

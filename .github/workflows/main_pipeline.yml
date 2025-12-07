@@ -39,6 +39,7 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      migrations: ${{ steps.filter.outputs.migrations }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -52,6 +53,9 @@ jobs:
             frontend:
               - 'frontend/**'
               - 'shared/**'
+            migrations:
+              - 'backend/alembic/**'
+              - 'backend/alembic.ini'
 
   # JOB 2: Backend Delivery (Build → Migrate → Deploy)
   backend-delivery:
@@ -101,8 +105,9 @@ jobs:
           TRIVY_USERNAME: oauth2accesstoken
           TRIVY_PASSWORD: ${{ steps.auth.outputs.access_token }}
 
-      # Database Migrations (Robust Logic)
+      # Database Migrations - Only run when alembic files change
       - name: Run Database Migrations
+        if: needs.changes.outputs.migrations == 'true'
         run: |
           # Variable for repeated flags to ensure consistency
           JOB_FLAGS="--image ${{ env.ARTIFACT_REGISTRY }}/${{ env.PROJECT_ID }}/app/backend:${{ github.sha }} \

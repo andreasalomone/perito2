@@ -8,7 +8,8 @@ steps:
       - '--context=.'
       - '--destination=${_AR_REGISTRY}/${PROJECT_ID}/app/backend:${_TAG}'
       - '--cache=true'
-      - '--cache-ttl=24h'
+      - '--cache-ttl=168h'
+      - '--cache-repo=${_AR_REGISTRY}/${PROJECT_ID}/cache/backend'
 
 substitutions:
   _AR_REGISTRY: 'europe-west1-docker.pkg.dev'
