@@ -142,18 +142,23 @@ class Settings(BaseSettings):
         MUST be the Cloud Run-generated URL (*.run.app), NOT the custom domain.
         Google Cloud Tasks sets the token audience to this URL, and verification must match.
         
+        NOTE: Cloud Run URLs use a unique hash (e.g., robotperizia-backend-up7vxwjklq-ew.a.run.app),
+        NOT the project number. Since Cloud Run doesn't expose its own URL as an env var,
+        we use an environment variable that should be set during deployment.
+        
         Reference: https://cloud.google.com/tasks/docs/creating-http-target-tasks#oidc_token
         """
-        # Always use Cloud Run URL for audience, never the custom domain
-        project_number = os.getenv("K_PROJECT_NUMBER", "738291935960")  # Fallback to known value
-        service_name = os.getenv("K_SERVICE", "robotperizia-backend")
-        
         # In development, allow local testing
         if self.RUN_LOCALLY:
             return "http://localhost:8000"
         
-        # Cloud Run URL format: https://{service}-{project_number}.{region}.run.app
-        return f"https://{service_name}-{project_number}.{self.GOOGLE_CLOUD_REGION}.run.app"
+        # Use the Cloud Run-generated URL (must be set as env var during deploy)
+        # Fallback to the known URL for this service
+        cloud_run_url = os.getenv(
+            "CLOUD_RUN_URL", 
+            "https://robotperizia-backend-up7vxwjklq-ew.a.run.app"
+        )
+        return cloud_run_url.rstrip("/")
 
     @property
     def MAX_FILE_SIZE_BYTES(self) -> int:

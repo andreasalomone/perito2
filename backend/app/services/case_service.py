@@ -298,6 +298,7 @@ def trigger_extraction_task(doc_id: UUID, org_id: str):
         }
         
         logger.info(f"🚀 Enqueuing extraction task for doc {doc_id} to {parent}")
+        logger.info(f"🔑 OIDC Audience: {settings.CLOUD_RUN_AUDIENCE_URL}")
         
         # ACTUAL ENQUEUE
         response = client.create_task(request={"parent": parent, "task": task})
