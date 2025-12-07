@@ -111,12 +111,9 @@ async def process_case_logic(case_id: str, organization_id: str, db: AsyncSessio
         return
 
     # 3. Dispatch Tasks
-    all_processed = True
     for doc in documents:
         if doc.ai_status == ExtractionStatus.SUCCESS:
             continue
-            
-        all_processed = False
         
         # For local dev, process inline instead of dispatching tasks
         if settings.RUN_LOCALLY:
@@ -125,11 +122,9 @@ async def process_case_logic(case_id: str, organization_id: str, db: AsyncSessio
         else:
             # Dispatch Cloud Task
             case_service.trigger_extraction_task(doc.id, organization_id)
-        
-    # 4. Optimization: If all were already processed (e.g. retry), trigger generation immediately
-    if all_processed:
-        logger.info(f"All documents for case {case_id} already processed. Triggering generation immediately.")
-        await trigger_generation_task(case_id, organization_id)
+    
+    # NOTE: We do NOT auto-trigger generation here.
+    # Users must explicitly click "Genera con IA" when ready.
 
 
 async def trigger_generation_task(case_id: str, organization_id: str):

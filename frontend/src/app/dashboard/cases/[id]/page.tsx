@@ -1,23 +1,25 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useRef, useCallback } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useConfig } from "@/context/ConfigContext";
-import { Document, ReportVersion } from "@/types";
+import { ReportVersion } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { UploadCloud, FileText, Play, CheckCircle, Loader2, AlertCircle, RefreshCw } from "lucide-react";
+import { UploadCloud, FileText, Play, CheckCircle, Loader2, AlertCircle, RefreshCw, Trash2 } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
 import { handleApiError } from "@/lib/error";
 import { DocumentItem } from "@/components/cases/DocumentItem";
 import { VersionItem, TemplateType } from "@/components/cases/VersionItem";
 import { useCaseDetail } from "@/hooks/useCaseDetail";
+import { api } from "@/lib/api";
 
 export default function CaseWorkspace() {
     const { id } = useParams();
+    const router = useRouter();
     const { getToken } = useAuth();
     const { apiUrl } = useConfig();
     const caseId = Array.isArray(id) ? id[0] : id;
@@ -110,7 +112,37 @@ export default function CaseWorkspace() {
         } catch (e) {
             handleApiError(e, "Errore durante il download");
         }
-    }, [caseId, getToken]);
+    }, [caseId, getToken, apiUrl]);
+
+    const handleDeleteDocument = useCallback(async (docId: string) => {
+        if (!caseId) return;
+        const id = caseId as string; // Type narrowing for TypeScript
+        if (!confirm("Sei sicuro di voler eliminare questo documento?")) return;
+
+        try {
+            const token = await getToken();
+            await api.cases.deleteDocument(token, id, docId);
+            toast.success("Documento eliminato");
+            mutate();
+        } catch (error) {
+            handleApiError(error, "Errore durante l'eliminazione");
+        }
+    }, [caseId, getToken, mutate]);
+
+    const handleDeleteCase = useCallback(async () => {
+        if (!caseId) return;
+        const id = caseId as string; // Type narrowing for TypeScript
+        if (!confirm("Sei sicuro di voler eliminare questo caso e tutti i documenti associati?")) return;
+
+        try {
+            const token = await getToken();
+            await api.cases.deleteCase(token, id);
+            toast.success("Caso eliminato");
+            router.push("/dashboard");
+        } catch (error) {
+            handleApiError(error, "Errore durante l'eliminazione");
+        }
+    }, [caseId, getToken, router]);
 
     const handleFinalize = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files?.length) return;
@@ -190,9 +222,20 @@ export default function CaseWorkspace() {
                     <h1 className="text-3xl font-bold tracking-tight">{caseData.reference_code}</h1>
                     <p className="text-muted-foreground">Cliente: <span className="font-medium text-foreground">{caseData.client_name || "N/A"}</span></p>
                 </div>
-                <Badge variant={caseData.status === "OPEN" ? "default" : "secondary"} className="text-sm px-3 py-1">
-                    {caseData.status.toUpperCase()}
-                </Badge>
+                <div className="flex items-center gap-3">
+                    <Badge variant={caseData.status === "OPEN" ? "default" : "secondary"} className="text-sm px-3 py-1">
+                        {caseData.status.toUpperCase()}
+                    </Badge>
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleDeleteCase}
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        title="Elimina caso"
+                    >
+                        <Trash2 className="h-4 w-4" />
+                    </Button>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -225,7 +268,7 @@ export default function CaseWorkspace() {
                                 <p>Nessun documento caricato</p>
                             </div>
                         ) : (
-                            documents.map(doc => <DocumentItem key={doc.id} doc={doc} />)
+                            documents.map(doc => <DocumentItem key={doc.id} doc={doc} onDelete={handleDeleteDocument} />)
                         )}
                     </CardContent>
                 </Card>

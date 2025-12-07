@@ -3,9 +3,14 @@
 import { memo } from "react";
 import { Document } from "@/types";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle, AlertCircle, Clock, File as FileIcon } from "lucide-react";
+import { Loader2, CheckCircle, AlertCircle, Clock, File as FileIcon, X } from "lucide-react";
 
-export const DocumentItem = memo(({ doc }: { doc: Document }) => {
+interface DocumentItemProps {
+    doc: Document;
+    onDelete?: (docId: string) => void;
+}
+
+export const DocumentItem = memo(({ doc, onDelete }: DocumentItemProps) => {
     const getStatusColor = (status: string) => {
         switch (status) {
             case "SUCCESS": return "default"; // Black/Primary
@@ -23,15 +28,26 @@ export const DocumentItem = memo(({ doc }: { doc: Document }) => {
     };
 
     return (
-        <div className="flex items-center justify-between p-3 border rounded-md bg-background hover:bg-muted/10 transition-colors">
+        <div className="flex items-center justify-between p-3 border rounded-md bg-background hover:bg-muted/10 transition-colors group">
             <div className="flex items-center gap-3 overflow-hidden">
                 <FileIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                 <span className="truncate text-sm font-medium" title={doc.filename}>{doc.filename}</span>
             </div>
-            <Badge variant={getStatusColor(doc.ai_status) as any} className="text-xs flex items-center">
-                {getStatusIcon(doc.ai_status)}
-                {doc.ai_status}
-            </Badge>
+            <div className="flex items-center gap-2">
+                <Badge variant={getStatusColor(doc.ai_status) as any} className="text-xs flex items-center">
+                    {getStatusIcon(doc.ai_status)}
+                    {doc.ai_status}
+                </Badge>
+                {onDelete && (
+                    <button
+                        onClick={() => onDelete(doc.id)}
+                        className="p-1 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
+                        title="Elimina documento"
+                    >
+                        <X className="h-4 w-4" />
+                    </button>
+                )}
+            </div>
         </div>
     );
 });

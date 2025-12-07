@@ -112,7 +112,19 @@ export const api = {
                 `${getBaseUrl()}/api/v1/cases/${id}/status`,
                 token,
                 CaseStatusSchema
-            )
+            ),
+
+        deleteCase: async (token: string, caseId: string): Promise<void> => {
+            await axios.delete(`${getBaseUrl()}/api/v1/cases/${caseId}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+        },
+
+        deleteDocument: async (token: string, caseId: string, docId: string): Promise<void> => {
+            await axios.delete(`${getBaseUrl()}/api/v1/cases/${caseId}/documents/${docId}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+        }
     },
     clients: {
         search: (token: string, query: string) =>

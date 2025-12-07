@@ -191,6 +191,30 @@ Finalize case with uploaded DOCX.
 
 ---
 
+### DELETE `/cases/{case_id}`
+Soft-delete a case and permanently delete all associated documents from GCS.
+
+**Response:** `204 No Content`
+
+**Effects:**
+- Case is soft-deleted (marked with `deleted_at` timestamp)
+- All documents are hard-deleted from database
+- All document files are removed from GCS
+
+---
+
+### DELETE `/cases/{case_id}/documents/{doc_id}`
+Hard-delete a single document from database and GCS.
+
+**Response:** `204 No Content`
+
+**Errors:**
+| Code | Detail |
+|------|--------|
+| 404 | Document not found or doesn't belong to case |
+
+---
+
 ## Documents
 
 ### POST `/cases/{case_id}/documents/upload-url`

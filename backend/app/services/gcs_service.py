@@ -169,3 +169,37 @@ def tag_blob_as_finalized(gcs_path: str):
     # Set metadata to mark as registered/finalized
     blob.metadata = {"status": "finalized"}
     blob.patch()  # Update only metadata without re-uploading the file
+
+
+def delete_blob(gcs_path: str) -> bool:
+    """
+    Deletes a blob from GCS.
+    
+    Args:
+        gcs_path: Full GCS path (e.g., "gs://bucket/uploads/org_id/case_id/file.pdf")
+        
+    Returns:
+        True if deleted, False if blob didn't exist.
+    """
+    client = get_storage_client()
+    
+    # Parse gs://bucket_name/blob_name
+    if gcs_path.startswith("gs://"):
+        path_parts = gcs_path.replace("gs://", "").split("/", 1)
+        bucket_name = path_parts[0]
+        blob_name = path_parts[1] if len(path_parts) > 1 else ""
+    else:
+        bucket_name = settings.STORAGE_BUCKET_NAME
+        blob_name = gcs_path
+    
+    # Security: Validate bucket
+    if bucket_name != settings.STORAGE_BUCKET_NAME:
+        raise ValueError(f"Cannot delete from unauthorized bucket: {bucket_name}")
+    
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+    
+    if blob.exists():
+        blob.delete()
+        return True
+    return False

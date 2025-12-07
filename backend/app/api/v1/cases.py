@@ -391,19 +391,68 @@ def delete_case(
     db: Annotated[Session, Depends(get_db)]
 ):
     """
-    Soft-deletes a case.
+    Soft-deletes a case and hard-deletes all associated documents and report versions from GCS.
     """
     case = db.get(Case, case_id)
     if not case or case.deleted_at:
         raise HTTPException(status_code=404, detail="Case not found")
-        
-    # Check permissions? 
-    # Current RLS allows owner/org member. 
-    # Maybe only creator should delete? 
-    # For now, org level access is assumed fine.
     
+    # 1. Delete all documents from GCS and DB
+    docs = db.scalars(select(Document).where(Document.case_id == case_id)).all()
+    for doc in docs:
+        if doc.gcs_path:
+            try:
+                gcs_service.delete_blob(doc.gcs_path)
+                logger.info(f"Deleted GCS blob: {doc.gcs_path}")
+            except Exception as e:
+                logger.warning(f"Failed to delete GCS blob {doc.gcs_path}: {e}")
+        db.delete(doc)
+    
+    # 2. Delete all report versions from GCS and DB
+    versions = db.scalars(select(ReportVersion).where(ReportVersion.case_id == case_id)).all()
+    for v in versions:
+        if v.docx_storage_path:
+            try:
+                gcs_service.delete_blob(v.docx_storage_path)
+                logger.info(f"Deleted GCS blob: {v.docx_storage_path}")
+            except Exception as e:
+                logger.warning(f"Failed to delete GCS blob {v.docx_storage_path}: {e}")
+        db.delete(v)
+    
+    # 3. Soft-delete the case
     from datetime import datetime
     case.deleted_at = datetime.utcnow()
     db.commit()
-    logger.info(f"Case {case_id} soft-deleted.")
+    logger.info(f"Case {case_id} soft-deleted with {len(docs)} docs and {len(versions)} versions removed.")
+    return
+
+
+@router.delete("/{case_id}/documents/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_document(
+    case_id: UUID,
+    doc_id: UUID,
+    db: Annotated[Session, Depends(get_db)]
+):
+    """
+    Hard-deletes a single document from DB and GCS.
+    """
+    # Verify document belongs to case
+    doc = db.scalar(
+        select(Document).where(Document.id == doc_id, Document.case_id == case_id)
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Delete from GCS
+    if doc.gcs_path:
+        try:
+            gcs_service.delete_blob(doc.gcs_path)
+            logger.info(f"Deleted GCS blob: {doc.gcs_path}")
+        except Exception as e:
+            logger.warning(f"Failed to delete GCS blob {doc.gcs_path}: {e}")
+    
+    # Hard delete from DB
+    db.delete(doc)
+    db.commit()
+    logger.info(f"Document {doc_id} deleted from case {case_id}.")
     return
