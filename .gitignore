@@ -58,3 +58,5 @@ generate_migration.sh
 frontend/src/app/dashboard/cases/\[id]/Page.test.tsx
 backend/scripts/check_rls.py
 backend/check_constraints.sql
+start_db_and_migrate.sh
+overview.md
