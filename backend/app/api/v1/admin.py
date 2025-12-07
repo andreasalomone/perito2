@@ -353,8 +353,9 @@ def rescue_stuck_cases(
     This endpoint finds them and marks them as ERROR so users can retry.
     """
     try:
-        # Define cutoff time (30 minutes ago)
-        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=30)
+        # Define cutoff time (2 hours ago - generous to avoid false positives)
+        # NOTE: Using created_at instead of updated_at since cases table has no updated_at column
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=2)
         
         # SCALABILITY FIX: Use Bulk Update instead of Fetch-Loop-Save
         # This prevents loading thousands of objects into memory.
@@ -364,7 +365,7 @@ def rescue_stuck_cases(
             update(Case)
             .where(
                 Case.status == CaseStatus.GENERATING,
-                Case.updated_at < cutoff_time
+                Case.created_at < cutoff_time
             )
             .values(status=CaseStatus.ERROR)
         )

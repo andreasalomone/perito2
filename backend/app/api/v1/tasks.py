@@ -164,7 +164,8 @@ async def generate_report(
 
 @router.post("/flush-outbox")
 def flush_outbox_endpoint(
-    db: Session = Depends(get_db) # This dependency blocks!
+    db: Session = Depends(get_db),
+    _: bool = Depends(verify_cloud_tasks_auth)  # Require Cloud Tasks OIDC auth
 ):
     """
     Sync Worker: Flushes DB Outbox.
