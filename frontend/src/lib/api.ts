@@ -67,6 +67,12 @@ async function fetchWithValidation<T>(
 }
 
 export const api = {
+    auth: {
+        checkStatus: async (email: string): Promise<{ status: 'registered' | 'invited' | 'denied' }> => {
+            const res = await axios.post(`${getBaseUrl()}/api/v1/auth/check-status`, { email });
+            return res.data;
+        },
+    },
     cases: {
         list: (token: string, params: {
             skip?: number;

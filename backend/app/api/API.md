@@ -40,6 +40,27 @@ All endpoints require a valid Firebase ID token in the `Authorization` header:
 Authorization: Bearer <firebase_id_token>
 ```
 
+### POST `/auth/check-status` (Public)
+Check if an email is registered, invited, or denied. **No authentication required.**
+
+**Request Body:**
+```json
+{ "email": "user@example.com" }
+```
+
+**Response:**
+```json
+{ "status": "registered" | "invited" | "denied" }
+```
+
+| Status | Meaning |
+|--------|---------|
+| `registered` | User exists → show login form |
+| `invited` | Whitelisted → show signup form |
+| `denied` | Not allowed → show error |
+
+---
+
 ### POST `/auth/sync`
 Syncs Firebase user to the internal database. Called on first login.
 
@@ -49,9 +70,15 @@ Syncs Firebase user to the internal database. Called on first login.
   "id": "firebase_uid",
   "email": "user@example.com",
   "organization_id": "uuid",
-  "role": "MEMBER"
+  "role": "MEMBER",
+  "first_name": "Mario",
+  "last_name": "Rossi",
+  "is_profile_complete": true
 }
 ```
+
+> **Note:** `is_profile_complete` is `false` when `first_name` or `last_name` is null.
+> New users must complete their profile via `PATCH /users/me` before accessing the dashboard.
 
 **Errors:**
 | Code | Detail |
@@ -266,6 +293,38 @@ Invite user to your organization (org-scoped admin).
 |------|--------|
 | 403 | Insufficient permissions (not ADMIN) |
 | 409 | User already registered or invited |
+
+---
+
+### PATCH `/users/me`
+Update current user's profile (first name and last name).
+
+**Request Body:**
+```json
+{
+  "first_name": "Mario",
+  "last_name": "Rossi"
+}
+```
+
+**Response:** `UserProfileResponse`
+```json
+{
+  "id": "firebase_uid",
+  "email": "user@example.com",
+  "organization_id": "uuid",
+  "role": "MEMBER",
+  "first_name": "Mario",
+  "last_name": "Rossi",
+  "is_profile_complete": true
+}
+```
+
+**Errors:**
+| Code | Detail |
+|------|--------|
+| 401 | Invalid authentication token |
+| 404 | User not found |
 
 ---
 

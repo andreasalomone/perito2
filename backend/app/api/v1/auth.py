@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -38,8 +38,49 @@ class UserRead(BaseModel):
     class Config:
         from_attributes = True
 
+
+class CheckStatusRequest(BaseModel):
+    """Request for pre-auth email status check."""
+    email: EmailStr
+
+
+class CheckStatusResponse(BaseModel):
+    """Response for pre-auth email status check."""
+    status: Literal["registered", "invited", "denied"]
+
 # -----------------------------------------------------------------------------
-# 2. The Refactored Endpoint
+# 2. Pre-Auth Email Check (Public Endpoint)
+# -----------------------------------------------------------------------------
+@router.post(
+    "/check-status",
+    response_model=CheckStatusResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Check Email Status",
+    description="Public endpoint to check if an email is registered, invited, or denied."
+)
+def check_user_status(
+    request: CheckStatusRequest,
+    db: Session = Depends(get_registration_db)
+) -> CheckStatusResponse:
+    """Check email status before authentication."""
+    email = request.email.lower().strip()
+    
+    # 1. Check if registered
+    user = db.scalar(select(User).where(User.email == email))
+    if user:
+        return CheckStatusResponse(status="registered")
+    
+    # 2. Check if invited (whitelisted)
+    invite = db.scalar(select(AllowedEmail).where(AllowedEmail.email == email))
+    if invite:
+        return CheckStatusResponse(status="invited")
+    
+    # 3. Not allowed
+    return CheckStatusResponse(status="denied")
+
+
+# -----------------------------------------------------------------------------
+# 3. The Refactored Sync Endpoint
 # -----------------------------------------------------------------------------
 @router.post(
     "/sync",
