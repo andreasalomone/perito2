@@ -60,3 +60,11 @@ backend/scripts/check_rls.py
 backend/check_constraints.sql
 start_db_and_migrate.sh
 overview.md
+
+backend/apply_rls.py
+backend/test_persistence.py
+backend/test_persistence.sh
+backend/verify_rls_proxy.py
+backend/verify_rls.py
+.gitignore
+backend/verify_rls.sh

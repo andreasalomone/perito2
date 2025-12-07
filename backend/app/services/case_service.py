@@ -140,6 +140,24 @@ def create_case_with_client(
         
         db.add(new_case)
         db.commit()
+
+        # RE-APPLY RLS CONTEXT
+        # db.commit() releases the connection to the pool.
+        # db.refresh() starts a new transaction, potentially on a cleaner/different connection.
+        # We must ensure app.current_org_id is set to allow visibility of the new row.
+        try:
+            db.execute(
+                text("SELECT set_config('app.current_org_id', :oid, false)"), 
+                {"oid": str(user_org_id)}
+            )
+            # Re-apply user_uid too just in case (though org_id is the key for row visibility)
+            db.execute(
+                text("SELECT set_config('app.current_user_uid', :uid, false)"), 
+                {"uid": user_uid}
+            )
+        except Exception as e:
+            logger.warning(f"Failed to re-apply RLS context before refresh: {e}")
+
         db.refresh(new_case)
         
         # 4. Reload relationships for Pydantic

@@ -14,28 +14,29 @@ ALTER TABLE clients FORCE ROW LEVEL SECURITY;
 -- 3. Create the Isolation Policy with missing_ok=true
 -- This policy says: "A user can only see/modify rows where organization_id matches the session variable 'app.current_org_id'"
 -- The second parameter 'true' makes current_setting return NULL instead of error when variable is not set
+-- NULLIF(..., '') handles the case where the variable is set to an empty string, preventing UUID cast errors.
 -- FOR ALL applies to all operations (SELECT, INSERT, UPDATE, DELETE)
 -- WITH CHECK ensures new rows also match the policy
 
 CREATE POLICY tenant_isolation_policy ON cases
     FOR ALL
-    USING (organization_id = current_setting('app.current_org_id', true)::uuid)
-    WITH CHECK (organization_id = current_setting('app.current_org_id', true)::uuid);
+    USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid)
+    WITH CHECK (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
 
 CREATE POLICY tenant_isolation_policy ON documents
     FOR ALL
-    USING (organization_id = current_setting('app.current_org_id', true)::uuid)
-    WITH CHECK (organization_id = current_setting('app.current_org_id', true)::uuid);
+    USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid)
+    WITH CHECK (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
 
 CREATE POLICY tenant_isolation_policy ON report_versions
     FOR ALL
-    USING (organization_id = current_setting('app.current_org_id', true)::uuid)
-    WITH CHECK (organization_id = current_setting('app.current_org_id', true)::uuid);
+    USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid)
+    WITH CHECK (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
 
 CREATE POLICY tenant_isolation_policy ON clients
     FOR ALL
-    USING (organization_id = current_setting('app.current_org_id', true)::uuid)
-    WITH CHECK (organization_id = current_setting('app.current_org_id', true)::uuid);
+    USING (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid)
+    WITH CHECK (organization_id = NULLIF(current_setting('app.current_org_id', true), '')::uuid);
 
 -- 4. (Important) Allow the 'users' table to be read to find the org_id initially
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
