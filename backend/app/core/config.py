@@ -132,6 +132,28 @@ class Settings(BaseSettings):
         
         # Local development fallback
         return "http://localhost:8000"
+    
+    @property
+    def CLOUD_RUN_AUDIENCE_URL(self) -> str:
+        """
+        Returns the Cloud Run-generated URL for OIDC token audience verification.
+        
+        IMPORTANT: When using custom domains with Cloud Tasks OIDC tokens, the audience
+        MUST be the Cloud Run-generated URL (*.run.app), NOT the custom domain.
+        Google Cloud Tasks sets the token audience to this URL, and verification must match.
+        
+        Reference: https://cloud.google.com/tasks/docs/creating-http-target-tasks#oidc_token
+        """
+        # Always use Cloud Run URL for audience, never the custom domain
+        project_number = os.getenv("K_PROJECT_NUMBER", "738291935960")  # Fallback to known value
+        service_name = os.getenv("K_SERVICE", "robotperizia-backend")
+        
+        # In development, allow local testing
+        if self.RUN_LOCALLY:
+            return "http://localhost:8000"
+        
+        # Cloud Run URL format: https://{service}-{project_number}.{region}.run.app
+        return f"https://{service_name}-{project_number}.{self.GOOGLE_CLOUD_REGION}.run.app"
 
     @property
     def MAX_FILE_SIZE_BYTES(self) -> int:

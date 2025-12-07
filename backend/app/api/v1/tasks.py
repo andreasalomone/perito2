@@ -60,21 +60,14 @@ def verify_cloud_tasks_auth(
         # Blocking I/O: Makes a request to Google's Certs endpoint
         # Uses the global _cached_request to persist keys
         # 
-        # IMPORTANT: Cloud Tasks sets OIDC token audience to the FULL request URL
-        # (e.g., https://api.perito.my/api/v1/tasks/process-document)
-        # NOT the base URL. So we verify without audience restriction first,
-        # then manually check the audience starts with our backend URL.
+        # IMPORTANT: We use CLOUD_RUN_AUDIENCE_URL (*.run.app) for OIDC audience,
+        # NOT the custom domain. This matches Google's best practice for Cloud Tasks
+        # with custom domains. Both task creation and verification must use the same URL.
         id_info = id_token.verify_oauth2_token(
             token, 
             _cached_request, 
-            audience=None  # Don't verify audience automatically
+            audience=settings.CLOUD_RUN_AUDIENCE_URL
         )
-        
-        # Manual audience validation: must start with our backend URL
-        token_audience = id_info.get("aud", "")
-        expected_base = settings.RESOLVED_BACKEND_URL
-        if not token_audience.startswith(expected_base):
-            raise ValueError(f"Token audience '{token_audience}' doesn't match expected base '{expected_base}'")
             
     except Exception as e:
         logger.warning(f"Auth Failed: {e}")

@@ -155,7 +155,7 @@ async def trigger_generation_task(case_id: str, organization_id: str):
                 "headers": {"Content-Type": "application/json"},
                 "oidc_token": {
                     "service_account_email": settings.CLOUD_TASKS_SA_EMAIL,
-                    "audience": settings.RESOLVED_BACKEND_URL,
+                    "audience": settings.CLOUD_RUN_AUDIENCE_URL,  # Use Cloud Run URL, not custom domain
                 },
                 "body": json.dumps({
                     "case_id": str(case_id),
