@@ -107,6 +107,17 @@ export const api = {
                 }
             ),
 
+        update: (token: string, id: string, data: Partial<CaseDetail>) =>
+            fetchWithValidation<CaseDetail>(
+                `${getBaseUrl()}/api/v1/cases/${id}`,
+                token,
+                CaseDetailSchema,
+                {
+                    method: "PATCH",
+                    data
+                }
+            ),
+
         getStatus: (token: string, id: string) =>
             fetchWithValidation<CaseStatus>(
                 `${getBaseUrl()}/api/v1/cases/${id}/status`,

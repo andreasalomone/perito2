@@ -42,7 +42,7 @@ def handle_extraction_errors(
         def wrapper(file_path: str, *args: Any, **kwargs: Any) -> Any:
             try:
                 return func(file_path, *args, **kwargs)
-            except (ValueError, fitz.FileDataError, openpyxl.utils.exceptions.InvalidFileException) as e:
+            except (ValueError, fitz.FileDataError, openpyxl.utils.exceptions.InvalidFileException, zipfile.BadZipFile) as e:
                 # Domain errors: Return error dict for user visibility
                 logger.warning(f"Domain error processing {file_path}: {e}")
                 return [{

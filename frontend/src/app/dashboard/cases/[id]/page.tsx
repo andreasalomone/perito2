@@ -14,7 +14,8 @@ import { toast } from "sonner";
 import { handleApiError } from "@/lib/error";
 import { DocumentItem } from "@/components/cases/DocumentItem";
 import { VersionItem, TemplateType } from "@/components/cases/VersionItem";
-import { SummaryCard } from "@/components/cases/SummaryCard";
+import CaseDetailsPanel from "@/components/cases/CaseDetailsPanel";
+import { CaseFileUploader } from "@/components/cases/CaseFileUploader";
 import { useCaseDetail } from "@/hooks/useCaseDetail";
 import { api } from "@/lib/api";
 
@@ -36,74 +37,9 @@ export default function CaseWorkspace() {
     } = useCaseDetail(caseId);
 
     // Refs for hidden inputs
-    const docInputRef = useRef<HTMLInputElement>(null);
     const finalInputRef = useRef<HTMLInputElement>(null);
 
-    // Handlers - Multi-file upload support with batched parallelism
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!e.target.files?.length) return;
-        const files = Array.from(e.target.files);
-        const toastId = toast.loading(`Caricamento di ${files.length} file...`);
 
-        try {
-            const { batchUploadFiles } = await import("@/utils/batchUpload");
-
-            const { successCount, failCount } = await batchUploadFiles(files, {
-                getToken,
-                getSignedUrl: async (filename, contentType) => {
-                    const token = await getToken();
-                    const res = await axios.post(`${apiUrl}/api/v1/cases/${caseId}/documents/upload-url`,
-                        null,
-                        {
-                            headers: { Authorization: `Bearer ${token}` },
-                            params: { filename, content_type: contentType }
-                        }
-                    );
-                    return res.data;
-                },
-                uploadToGcs: async (url, file, contentType) => {
-                    const maxFileSize = 50 * 1024 * 1024; // 50MB
-                    await axios.put(url, file, {
-                        headers: {
-                            "Content-Type": contentType,
-                            "x-goog-content-length-range": `0,${maxFileSize}`
-                        }
-                    });
-                },
-                registerDocument: async (filename, gcsPath, mimeType) => {
-                    const token = await getToken();
-                    await axios.post<Document>(`${apiUrl}/api/v1/cases/${caseId}/documents/register`,
-                        {
-                            filename,
-                            gcs_path: gcsPath,
-                            mime_type: mimeType
-                        },
-                        { headers: { Authorization: `Bearer ${token}` } }
-                    );
-                },
-                onProgress: (current, total) => {
-                    // Update progress toast (e.g., 1-4/50)
-                    // We only know the start of the batch here, batch logic handles concurrency
-                    const BATCH_SIZE = 4;
-                    const end = Math.min(current + BATCH_SIZE - 1, total);
-                    toast.loading(`Caricamento ${current}-${end}/${total}...`, { id: toastId });
-                }
-            });
-
-            // Show final result
-            if (failCount === 0) {
-                toast.success(`${successCount} documenti caricati`, { id: toastId });
-            } else {
-                toast.warning(`${successCount} ok, ${failCount} falliti`, { id: toastId });
-            }
-        } catch (error) {
-            console.error('Unexpected upload error:', error);
-            toast.error('Errore imprevisto durante il caricamento', { id: toastId });
-        } finally {
-            mutate(); // Refresh data regardless of outcome
-            if (docInputRef.current) docInputRef.current.value = "";
-        }
-    };
 
     const handleGenerate = async () => {
         setIsGenerating(true);
@@ -263,24 +199,10 @@ export default function CaseWorkspace() {
                 <Card className="h-full flex flex-col">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
                         <CardTitle className="text-lg">Documenti ({documents.length})</CardTitle>
-                        <div>
-                            <input
-                                type="file"
-                                ref={docInputRef}
-                                onChange={handleFileUpload}
-                                className="hidden"
-                                accept=".pdf,.docx,.xlsx,.txt,.eml,.png,.jpg,.jpeg,.webp,.gif"
-                                multiple
-                            />
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => docInputRef.current?.click()}
-                            >
-                                <UploadCloud className="h-4 w-4 mr-2" />
-                                Carica
-                            </Button>
-                        </div>
+                        <CaseFileUploader
+                            caseId={caseId as string}
+                            onUploadComplete={mutate}
+                        />
                     </CardHeader>
                     <CardContent className="flex-1 overflow-y-auto max-h-[500px] space-y-2">
                         {documents.length === 0 ? (
@@ -351,8 +273,14 @@ export default function CaseWorkspace() {
                 </Card>
             </div>
 
-            {/* Summary Card - Full Width Below Grid */}
-            <SummaryCard summary={caseData.ai_summary} />
+            {/* Case Details Panel - Replaces SummaryCard */}
+            <CaseDetailsPanel
+                caseDetail={caseData}
+                onUpdate={(updated) => {
+                    // Update the local SWR cache immediately with the new data
+                    mutate(updated, false);
+                }}
+            />
         </div>
     );
 }

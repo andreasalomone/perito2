@@ -178,6 +178,58 @@ def get_case_detail(
     return case
 
 
+@router.patch("/{case_id}", response_model=schemas.CaseDetail)
+def update_case(
+    case_id: UUID,
+    update_data: schemas.CaseUpdate,
+    db: Annotated[Session, Depends(get_db)]
+) -> Case:
+    """
+    Update case fields. Supports partial updates (PATCH).
+    
+    If client_name is provided, performs fuzzy matching against existing clients
+    or creates a new one.
+    """
+    from app.services.client_matcher import find_or_create_client
+    
+    case = db.get(Case, case_id)
+    if not case or case.deleted_at:
+        raise HTTPException(status_code=404, detail="Case not found")
+    
+    # Get update data (exclude None values for partial update)
+    update_dict = update_data.model_dump(exclude_unset=True)
+    
+    # Handle client_name specially - fuzzy match or create
+    if "client_name" in update_dict:
+        client_name = update_dict.pop("client_name")
+        if client_name:
+            client = find_or_create_client(db, case.organization_id, client_name)
+            if client:
+                case.client_id = client.id
+    
+    # Apply all other updates
+    for field, value in update_dict.items():
+        if hasattr(case, field):
+            setattr(case, field, value)
+    
+    db.commit()
+    
+    # Re-apply RLS context before refresh
+    from sqlalchemy import text
+    try:
+        db.execute(
+            text("SELECT set_config('app.current_org_id', :oid, false)"),
+            {"oid": str(case.organization_id)}
+        )
+    except Exception as e:
+        logger.warning(f"Failed to re-apply RLS context: {e}")
+    
+    db.refresh(case)
+    
+    logger.info(f"Updated case {case_id} with fields: {list(update_dict.keys())}")
+    return case
+
+
 @router.post("/{case_id}/documents/upload-url")
 def get_doc_upload_url(
     case_id: UUID, 

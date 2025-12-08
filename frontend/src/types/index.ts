@@ -36,6 +36,34 @@ export const CaseBaseSchema = z.object({
     client_name: z.string().optional().nullable(), // Handle Python None
     status: z.enum(["OPEN", "CLOSED", "ARCHIVED", "PROCESSING", "GENERATING", "ERROR"]),
     created_at: z.string().datetime(),
+
+    // Business fields
+    ns_rif: z.number().int().optional().nullable(),
+    polizza: z.string().optional().nullable(),
+    tipo_perizia: z.string().optional().nullable(),
+    merce: z.string().optional().nullable(),
+    descrizione_merce: z.string().optional().nullable(),
+    riserva: z.number().optional().nullable(),
+    importo_liquidato: z.number().optional().nullable(),
+    perito: z.string().optional().nullable(),
+    cliente: z.string().optional().nullable(),
+    rif_cliente: z.string().optional().nullable(),
+    gestore: z.string().optional().nullable(),
+    assicurato: z.string().optional().nullable(),
+    riferimento_assicurato: z.string().optional().nullable(),
+    mittenti: z.string().optional().nullable(),
+    broker: z.string().optional().nullable(),
+    riferimento_broker: z.string().optional().nullable(),
+    destinatari: z.string().optional().nullable(),
+    mezzo_di_trasporto: z.string().optional().nullable(),
+    descrizione_mezzo_di_trasporto: z.string().optional().nullable(),
+    luogo_intervento: z.string().optional().nullable(),
+    genere_lavorazione: z.string().optional().nullable(),
+    data_sinistro: z.string().optional().nullable(), // YYYY-MM-DD
+    data_incarico: z.string().optional().nullable(), // YYYY-MM-DD
+    note: z.string().optional().nullable(),
+
+    // AI
     ai_summary: z.string().optional().nullable(), // AI-generated markdown summary
 });
 

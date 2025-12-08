@@ -28,6 +28,8 @@ from app.schemas.email_intake import BrevoInboundWebhook, BrevoEmailItem, BrevoA
 from app.schemas.enums import CaseStatus, ExtractionStatus
 from app.services.gcs_service import get_storage_client
 from app.services.case_service import trigger_extraction_task
+from app.services.email_ai_extractor import extract_case_data, CaseExtractionResult
+from app.services.client_matcher import find_or_create_client
 
 
 logger = logging.getLogger(__name__)
@@ -105,19 +107,46 @@ class EmailIntakeService:
             # 5. Create email processing log entry
             email_log = self._create_email_log(email_item, user, status="authorized")
             
-            # 6. Parse subject for case reference
-            reference_code = self._parse_subject_line(email_item.Subject or "")
+            # 6. AI EXTRACTION
+            markdown_body = email_item.ExtractedMarkdownMessage or email_item.RawTextBody
+            subject_line = email_item.Subject
+            try:
+                extracted = extract_case_data(
+                    email_body=markdown_body,
+                    subject=subject_line,
+                    sender_email=sender_email
+                )
+            except Exception as e:
+                logger.error(f"AI Extraction failed: {e}")
+                extracted = None
             
-            # 7. Find or create case
-            case = self._find_or_create_case(
+            # Log extraction result
+            if extracted and extracted.extraction_success:
+                logger.info(f"AI extracted: ref={extracted.reference_code}, cliente={extracted.cliente}")
+            elif extracted:
+                logger.warning(f"AI extraction failed: {extracted.error_message}")
+            else:
+                logger.warning("AI extraction could not be performed due to an error.")
+            
+            # 7. Fuzzy match or create client
+            client = None
+            if extracted.cliente:
+                client = find_or_create_client(self.db, org_id, extracted.cliente)
+            
+            # 8. Get reference code (AI extracted or parsed from subject)
+            reference_code = extracted.reference_code or self._parse_subject_line(email_item.Subject or "")
+            
+            # 9. Find or create case with AI-extracted fields
+            case = self._find_or_create_case_with_data(
                 org_id=org_id,
                 creator_id=user.id,
                 reference_code=reference_code,
-                subject=email_item.Subject
+                extracted=extracted,
+                client=client
             )
             email_log.case_id = case.id
             
-            # 8. Process attachments
+            # 10. Process attachments
             documents_created = 0
             for attachment in email_item.Attachments:
                 try:
@@ -281,7 +310,7 @@ class EmailIntakeService:
         reference_code: Optional[str],
         subject: Optional[str]
     ) -> Case:
-        """Find existing case by reference code or create new one."""
+        """Find existing case by reference code or create new one (legacy)."""
         
         if reference_code:
             # Try to find existing case with this reference code
@@ -309,6 +338,119 @@ class EmailIntakeService:
         
         logger.info(f"Created new case {case.id} for email")
         return case
+    
+    def _find_or_create_case_with_data(
+        self,
+        org_id: UUID,
+        creator_id: str,
+        reference_code: Optional[str],
+        extracted: CaseExtractionResult,
+        client: Optional['Client']
+    ) -> Case:
+        """
+        Find existing case by reference code or create new one with AI-extracted fields.
+        
+        Applies all 25 business fields from AI extraction.
+        """
+        from app.models import Client
+        
+        if reference_code:
+            # Try to find existing case with this reference code
+            result = self.db.execute(
+                select(Case).where(
+                    Case.organization_id == org_id,
+                    Case.reference_code == reference_code,
+                    Case.deleted_at.is_(None)
+                )
+            )
+            existing = result.scalar_one_or_none()
+            if existing:
+                # Update existing case with AI-extracted fields (if not already set)
+                self._apply_extracted_fields(existing, extracted, client)
+                logger.info(f"Updated existing case {existing.id} with AI-extracted data")
+                return existing
+        
+        # Create new case with all AI-extracted fields
+        case = Case(
+            organization_id=org_id,
+            creator_id=creator_id,
+            reference_code=reference_code or self._generate_email_reference(),
+            status=CaseStatus.OPEN,
+            # Client link
+            client_id=client.id if client else None,
+            # All 25 business fields from AI extraction
+            ns_rif=extracted.ns_rif,
+            polizza=extracted.polizza,
+            tipo_perizia=extracted.tipo_perizia,
+            merce=extracted.merce,
+            descrizione_merce=extracted.descrizione_merce,
+            riserva=extracted.riserva,
+            importo_liquidato=extracted.importo_liquidato,
+            perito=extracted.perito,
+            cliente=extracted.cliente,
+            rif_cliente=extracted.rif_cliente,
+            gestore=extracted.gestore,
+            assicurato=extracted.assicurato,
+            riferimento_assicurato=extracted.riferimento_assicurato,
+            mittenti=extracted.mittenti,
+            broker=extracted.broker,
+            riferimento_broker=extracted.riferimento_broker,
+            destinatari=extracted.destinatari,
+            mezzo_di_trasporto=extracted.mezzo_di_trasporto,
+            descrizione_mezzo_di_trasporto=extracted.descrizione_mezzo_di_trasporto,
+            luogo_intervento=extracted.luogo_intervento,
+            genere_lavorazione=extracted.genere_lavorazione,
+            data_sinistro=extracted.data_sinistro,
+            data_incarico=extracted.data_incarico,
+            note=extracted.note,
+            ai_summary=extracted.ai_summary,
+        )
+        self.db.add(case)
+        self.db.flush()
+        
+        logger.info(f"Created new case {case.id} with AI-extracted data")
+        return case
+    
+    def _apply_extracted_fields(
+        self,
+        case: Case,
+        extracted: CaseExtractionResult,
+        client: Optional['Client']
+    ):
+        """Apply AI-extracted fields to existing case (only if field is empty)."""
+        # Only update fields that are currently empty
+        field_updates = [
+            ('client_id', client.id if client else None),
+            ('ns_rif', extracted.ns_rif),
+            ('polizza', extracted.polizza),
+            ('tipo_perizia', extracted.tipo_perizia),
+            ('merce', extracted.merce),
+            ('descrizione_merce', extracted.descrizione_merce),
+            ('riserva', extracted.riserva),
+            ('importo_liquidato', extracted.importo_liquidato),
+            ('perito', extracted.perito),
+            ('cliente', extracted.cliente),
+            ('rif_cliente', extracted.rif_cliente),
+            ('gestore', extracted.gestore),
+            ('assicurato', extracted.assicurato),
+            ('riferimento_assicurato', extracted.riferimento_assicurato),
+            ('mittenti', extracted.mittenti),
+            ('broker', extracted.broker),
+            ('riferimento_broker', extracted.riferimento_broker),
+            ('destinatari', extracted.destinatari),
+            ('mezzo_di_trasporto', extracted.mezzo_di_trasporto),
+            ('descrizione_mezzo_di_trasporto', extracted.descrizione_mezzo_di_trasporto),
+            ('luogo_intervento', extracted.luogo_intervento),
+            ('genere_lavorazione', extracted.genere_lavorazione),
+            ('data_sinistro', extracted.data_sinistro),
+            ('data_incarico', extracted.data_incarico),
+            ('note', extracted.note),
+            ('ai_summary', extracted.ai_summary),
+        ]
+        
+        for field_name, new_value in field_updates:
+            if new_value is not None and getattr(case, field_name, None) is None:
+                setattr(case, field_name, new_value)
     
     def _generate_email_reference(self) -> str:
         """Generate a unique reference code for emails without one."""

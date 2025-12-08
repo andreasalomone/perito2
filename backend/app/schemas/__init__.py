@@ -44,9 +44,43 @@ class CaseBase(BaseModel):
     data_sinistro: Optional[date] = None
     data_incarico: Optional[date] = None
     note: Optional[str] = None
+    # ai_summary REMOVED from Base to avoid bloat in List View
 
 class CaseCreate(CaseBase):
     client_name: Optional[str] = None # Helper to find/create Client
+
+
+# --- CASE UPDATE (for PATCH endpoint) ---
+class CaseUpdate(BaseModel):
+    """Schema for PATCH /cases/{id} - all fields optional."""
+    reference_code: Optional[str] = None
+    client_name: Optional[str] = None  # To update client relationship
+    ns_rif: Optional[int] = None
+    polizza: Optional[str] = None
+    tipo_perizia: Optional[str] = None
+    merce: Optional[str] = None
+    descrizione_merce: Optional[str] = None
+    riserva: Optional[Decimal] = None
+    importo_liquidato: Optional[Decimal] = None
+    perito: Optional[str] = None
+    cliente: Optional[str] = None
+    rif_cliente: Optional[str] = None
+    gestore: Optional[str] = None
+    mezzo_di_trasporto: Optional[str] = None
+    descrizione_mezzo_di_trasporto: Optional[str] = None
+    luogo_intervento: Optional[str] = None
+    assicurato: Optional[str] = None
+    riferimento_assicurato: Optional[str] = None
+    mittenti: Optional[str] = None
+    broker: Optional[str] = None
+    riferimento_broker: Optional[str] = None
+    destinatari: Optional[str] = None
+    genere_lavorazione: Optional[str] = None
+    data_sinistro: Optional[date] = None
+    data_incarico: Optional[date] = None
+    note: Optional[str] = None
+    ai_summary: Optional[str] = None
+    status: Optional[CaseStatus] = None
 
 class CaseSummary(CaseBase):
     id: UUID
@@ -99,7 +133,7 @@ class VersionRead(BaseModel):
 class CaseDetail(CaseSummary):
     documents: List[DocumentRead] = []
     report_versions: List[VersionRead] = []
-    ai_summary: Optional[str] = None  # AI-generated markdown summary (only in detail view)
+    ai_summary: Optional[str] = None  # Moved here from Base
 
 # --- LIGHTWEIGHT STATUS ---
 class CaseStatusRead(BaseModel):

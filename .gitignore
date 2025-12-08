@@ -69,3 +69,4 @@ backend/verify_rls.py
 .gitignore
 backend/verify_rls.sh
 frontend/src/utils/batchUpload.test.ts
+frontend/src/components/cases/CaseFileUploader.test.tsx
