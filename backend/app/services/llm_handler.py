@@ -84,8 +84,9 @@ class ProcessedFile(BaseModel):
     Strict validation prevents passing arbitrary system paths.
     """
     filename: str
-    file_type: str = Field(alias="type")
-    content: Optional[bytes] = None
+    file_type: str = Field(alias="type")  # Category label: "vision", "text", "error"
+    mime_type: Optional[str] = None  # Actual MIME type: "application/pdf", "image/jpeg"
+    content: Optional[str] = None  # Text content for text files (changed from bytes)
     gcs_uri: Optional[str] = None
     local_path: Optional[str] = None
 
@@ -407,9 +408,17 @@ class GeminiReportGenerator:
             if not is_vision:
                 continue
             
+            # Use actual mime_type if available, otherwise fallback to file_type
+            # This fixes the 'vision' mimeType bug (vision is a category, not a MIME type)
+            actual_mime_type = f.mime_type or f.file_type
+            if actual_mime_type == "vision":
+                # Fallback for legacy data without mime_type
+                logger.warning(f"Missing mime_type for {f.filename}, defaulting to application/octet-stream")
+                actual_mime_type = "application/octet-stream"
+            
             candidate = self.file_upload_service.UploadCandidate(
                 file_path=local_path or gcs_uri,
-                mime_type=f.file_type,
+                mime_type=actual_mime_type,
                 display_name=f.filename,
                 is_vision_asset=True,
                 gcs_uri=gcs_uri

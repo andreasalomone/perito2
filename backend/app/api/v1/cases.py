@@ -241,15 +241,24 @@ def get_doc_upload_url(
     if not case or case.deleted_at:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    # 1. Sanitize Filename (Strict Regex)
-    clean_filename = Path(filename).name
-    # Use the regex from case_service or a local constant if not exported? 
-    # Just use basic check here or import. 
-    if not re.match(r"^[a-zA-Z0-9_\-\. ]+$", clean_filename):
-         raise HTTPException(status_code=400, detail="Invalid filename characters.")
+    # 1. Sanitize Filename (Accept all characters, sanitize for storage)
+    # Import the robust sanitizer that handles special chars like apostrophes and accents
+    from app.services.document_processor import sanitize_filename
+    
+    # Keep original for extension detection, apply sanitization for storage
+    original_basename = Path(filename).name
+    clean_filename = sanitize_filename(original_basename)
+    
+    # Ensure we still have a valid filename after sanitization
+    if not clean_filename or clean_filename == ".":
+        clean_filename = "document"
+    
+    # Preserve the original extension
+    ext = Path(original_basename).suffix.lower()
+    if ext and not clean_filename.endswith(ext):
+        clean_filename = Path(clean_filename).stem + ext
 
     # 2. Validate Extension & MIME
-    ext = Path(clean_filename).suffix.lower()
     if ext not in settings.ALLOWED_MIME_TYPES:
         raise HTTPException(status_code=400, detail=f"Unsupported file extension: {ext}")
     
