@@ -115,7 +115,8 @@ from decimal import InvalidOperation
 def extract_case_data(
     email_body: str,
     subject: Optional[str] = None,
-    sender_email: Optional[str] = None
+    sender_email: Optional[str] = None,
+    attachments: Optional[list[Dict[str, Any]]] = None  # New argument
 ) -> CaseExtractionResult:
     """
     Extract structured case data from email using Gemini Flash-Lite.
@@ -124,44 +125,96 @@ def extract_case_data(
         email_body: The email body text (markdown preferred)
         subject: Email subject line
         sender_email: Sender's email address
+        attachments: List of processed attachment dicts (from document_processor)
         
     Returns:
         CaseExtractionResult with extracted fields
     """
-    if not email_body and not subject:
+    if not email_body and not subject and not attachments:
         return CaseExtractionResult(
             extraction_success=False,
             error_message="No content to extract from"
         )
     
-    # Build prompt
-    prompt = f"""You are an insurance case data extractor. Analyze this email and extract structured data.
+    # Initialize prompt parts
+    prompt_text = f"""You are an insurance case data extractor. Analyze this email and any attached documents to extract structured data.
 
 EMAIL SUBJECT: {subject or 'N/A'}
 SENDER: {sender_email or 'N/A'}
 
 EMAIL BODY:
 {email_body or 'N/A'}
+"""
 
+    # Create client first (needed for uploads)
+    try:
+        client = genai.Client(
+            vertexai=True,
+            project=settings.GOOGLE_CLOUD_PROJECT,
+            location=settings.GOOGLE_CLOUD_REGION
+        )
+    except Exception as e:
+        logger.error(f"Failed to initialize Gemini client: {e}")
+        return CaseExtractionResult(extraction_success=False, error_message=str(e))
+
+    model_contents = []
+    uploaded_files_to_cleanup = []
+
+    try:
+        # Process attachments
+        if attachments:
+            prompt_text += "\n\n--- ATTACHED DOCUMENTS CONTENT ---\n"
+            
+            for idx, att in enumerate(attachments):
+                att_type = att.get("type", "text")
+                
+                if att_type == "text":
+                    # Append text content directly to the prompt
+                    content = att.get("content", "")
+                    
+                    # SAFETY: Truncate massive text files to prevent context overload/timeouts
+                    # Gemini Flash-Lite is generous (1M tokens), but let's be reasonable (e.g. ~500k chars)
+                    # to keep latency and error rates down.
+                    if len(content) > 500_000:
+                        content = content[:500_000] + "\n...[TRUNCATED]..."
+                        
+                    filename = att.get("source_file", f"attachment_{idx}")
+                    prompt_text += f"\n[DOCUMENT: {filename}]\n{content}\n"
+                    
+                elif att_type == "vision":
+                    # Upload to Gemini File API (Ephemeral)
+                    path = att.get("path")
+                    if path:
+                        try:
+                            # Upload file
+                            uploaded_file = client.files.upload(path=path)
+                            logger.info(f"Uploaded attachment {path} to Gemini File API: {uploaded_file.name}")
+                            
+                            # Track for cleanup
+                            uploaded_files_to_cleanup.append(uploaded_file.name)
+                            
+                            # Add as content part
+                            model_contents.append(types.Part.from_uri(
+                                file_uri=uploaded_file.uri,
+                                mime_type=uploaded_file.mime_type
+                            ))
+                        except Exception as upload_err:
+                            logger.warning(f"Failed to upload vision attachment {path}: {upload_err}")
+                    
+        # Add the text prompt as the final part
+        prompt_text += f"""
 ---
 
 {CASE_EXTRACTION_SCHEMA}
 
 Return ONLY valid JSON, no explanation or markdown code blocks.
 """
+        model_contents.append(types.Part.from_text(text=prompt_text))
 
-    try:
-        # Create client using existing pattern
-        client = genai.Client(
-            vertexai=True,
-            project=settings.GOOGLE_CLOUD_PROJECT,
-            location=settings.GOOGLE_CLOUD_REGION
-        )
-        
         # Use the summary/extraction model (cheapest)
         response = client.models.generate_content(
             model=settings.LLM_SUMMARY_MODEL_NAME,
-            contents=prompt,
+            contents=model_contents,
             config=types.GenerateContentConfig(
                 temperature=0.1,  # Low temp for structured output
                 max_output_tokens=2000,
@@ -227,3 +280,13 @@ Return ONLY valid JSON, no explanation or markdown code blocks.
             extraction_success=False,
             error_message=str(e)
         )
+    finally:
+        # CLEANUP: Delete uploaded files from Gemini to prevent accumulation/quota issues
+        if uploaded_files_to_cleanup:
+            logger.info(f"Cleaning up {len(uploaded_files_to_cleanup)} temporary Gemini files...")
+            for fname in uploaded_files_to_cleanup:
+                try:
+                    client.files.delete(name=fname)
+                    logger.debug(f"Deleted Gemini file: {fname}")
+                except Exception as cleanup_err:
+                    logger.warning(f"Failed to delete Gemini file {fname}: {cleanup_err}")
