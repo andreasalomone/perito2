@@ -351,14 +351,22 @@ async def trigger_generation(
 
     if settings.RUN_LOCALLY:
         # LOCAL DEV
+        # Update status immediately for UI responsiveness
+        case.status = CaseStatus.GENERATING
+        db.commit()
+        
         background_tasks.add_task(
-            generation_service.process_case_logic,
+            generation_service.run_generation_task,
             case_id=str(case.id),
             organization_id=str(case.organization_id)
         )
     else:
         # PROD: Cloud Tasks
-        case_service.trigger_case_processing_task(str(case.id), str(case.organization_id))
+        # Update status immediately for UI responsiveness
+        case.status = CaseStatus.GENERATING
+        db.commit()
+        
+        await generation_service.trigger_generation_task(str(case.id), str(case.organization_id))
     
     return {"status": "generation_started"}
 
