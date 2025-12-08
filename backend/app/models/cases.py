@@ -25,6 +25,7 @@ from app.schemas.enums import CaseStatus
 if TYPE_CHECKING:
     from app.models.documents import Document, ReportVersion
     from app.models.users import Organization, User
+    from app.models.email_intake import EmailProcessingLog
 
 
 class Client(Base):
@@ -173,3 +174,4 @@ class Case(Base):
         back_populates="case", 
         cascade="all, delete-orphan"
     )
+    email_logs: Mapped[List["EmailProcessingLog"]] = relationship(back_populates="case")

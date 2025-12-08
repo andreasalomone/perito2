@@ -19,6 +19,7 @@ from app.schemas.enums import UserRole
 if TYPE_CHECKING:
     from app.models.cases import Case
     from app.models.client import Client
+    from app.models.email_intake import EmailProcessingLog
 
 class Organization(Base):
     """
@@ -101,6 +102,7 @@ class User(Base):
     
     organization: Mapped["Organization"] = relationship(back_populates="users")
     cases: Mapped[List["Case"]] = relationship(back_populates="creator")
+    email_logs: Mapped[List["EmailProcessingLog"]] = relationship(back_populates="user")
     
     @property
     def is_profile_complete(self) -> bool:

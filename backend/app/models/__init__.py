@@ -5,6 +5,7 @@ from app.models.documents import Document, ReportVersion
 from app.models.ml import MLTrainingPair
 from app.models.audit import AuditLog
 from app.models.outbox import OutboxMessage
+from app.models.email_intake import EmailProcessingLog, EmailAttachment, BrevoWebhookLog
 
 # Export all for convenience
 __all__ = [
@@ -19,4 +20,7 @@ __all__ = [
     "MLTrainingPair",
     "AuditLog",
     "OutboxMessage",
+    "EmailProcessingLog",
+    "EmailAttachment",
+    "BrevoWebhookLog",
 ]
