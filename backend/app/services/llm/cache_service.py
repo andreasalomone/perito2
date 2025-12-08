@@ -148,7 +148,10 @@ def get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
             )
             return None
         except Exception as e:
-            logger.error(f"Failed to create new prompt cache: {e}", exc_info=True)
+            logger.warning(
+                f"Cache creation failed (IAM permission?): {e}. "
+                "Proceeding without cache - no cost savings on system prompt."
+            )
             return None
 
     return active_cache_name

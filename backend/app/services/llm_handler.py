@@ -572,11 +572,13 @@ class GeminiReportGenerator:
         if not meta:
             return TokenUsage()
 
+        # NOTE: Vertex AI SDK may return explicit None for some fields (not missing),
+        # so getattr's default won't help. Use 'or 0' to coalesce None -> 0.
         return TokenUsage(
-            prompt_tokens=getattr(meta, "prompt_token_count", 0),
-            candidate_tokens=getattr(meta, "candidates_token_count", 0),
-            total_tokens=getattr(meta, "total_token_count", 0),
-            cached_tokens=getattr(meta, "cached_content_token_count", 0),
+            prompt_tokens=getattr(meta, "prompt_token_count", 0) or 0,
+            candidate_tokens=getattr(meta, "candidates_token_count", 0) or 0,
+            total_tokens=getattr(meta, "total_token_count", 0) or 0,
+            cached_tokens=getattr(meta, "cached_content_token_count", 0) or 0,
         )
 
 # -----------------------------------------------------------------------------
