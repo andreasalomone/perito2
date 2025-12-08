@@ -220,10 +220,14 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
     1. Save new version.
     2. Mark as Final.
     3. Create ML Training Pair.
+    4. Set case status to CLOSED.
     """
     # 1. Create Final Version
     # LOCK the Case to prevent version race conditions
-    db.query(Case).filter(Case.id == case_id).with_for_update().first()
+    # FIX: Capture the case object to update its status later
+    case = db.query(Case).filter(Case.id == case_id).with_for_update().first()
+    if not case:
+        raise ValueError(f"Case {case_id} not found")
 
     from sqlalchemy import func
     max_ver = db.query(func.max(ReportVersion.version_number)).filter(ReportVersion.case_id == case_id).scalar()
@@ -264,6 +268,11 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
         logger.info(f"Created ML training pair: AI version {ai_version.version_number} -> Final version {next_version}")
     else:
         logger.warning(f"No AI draft version found for case {case_id}. ML training pair not created.")
+    
+    # 4. CRITICAL FIX: Set case status to CLOSED
+    # This enables proper workflow step detection in the frontend
+    case.status = CaseStatus.CLOSED
+    logger.info(f"Case {case_id} finalized and set to CLOSED status")
         
     db.commit()
     return final_version
