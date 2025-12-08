@@ -24,8 +24,9 @@ export function useCaseDetail(id: string | undefined) {
             return api.cases.get(token, id!);
         },
         {
-            revalidateOnFocus: true, // Re-fetch full data when tab focused
-            refreshInterval: 0       // DO NOT POLL HEAVY DATA
+            revalidateOnFocus: true,   // Re-fetch full data when tab focused
+            refreshInterval: 0,        // DO NOT POLL HEAVY DATA
+            keepPreviousData: true     // FIX: Prevent blank screen during refetch/mutation
         }
     );
 
