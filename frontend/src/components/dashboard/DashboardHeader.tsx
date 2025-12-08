@@ -31,7 +31,7 @@ export function DashboardHeader({
                     </p>
                 </div>
                 <Link href="/dashboard/create">
-                    <Button className="gap-2 shadow-lg shadow-primary/20 w-full sm:w-auto">
+                    <Button className="gap-2 w-full sm:w-auto">
                         <Plus className="h-4 w-4" />
                         Nuovo Fascicolo
                     </Button>

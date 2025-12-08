@@ -224,9 +224,9 @@ export default function CaseWorkspace() {
                         <CardTitle className="text-lg">Report Generati</CardTitle>
                         <Button
                             size="sm"
+                            variant="brand"
                             onClick={handleGenerate}
                             disabled={isGeneratingReport || isProcessingDocs || documents.length === 0}
-                            className="bg-blue-600 hover:bg-blue-700 text-white"
                         >
                             {(isGeneratingReport || isProcessingDocs) ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
                             {isGeneratingReport ? "Generazione in corso..." : isProcessingDocs ? "Elaborazione documenti..." : "Genera con IA"}
@@ -261,8 +261,8 @@ export default function CaseWorkspace() {
                                         accept=".docx,.pdf"
                                     />
                                     <Button
-                                        variant="secondary"
-                                        className="w-full border-green-200 bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
+                                        variant="success"
+                                        className="w-full"
                                         onClick={() => finalInputRef.current?.click()}
                                     >
                                         <CheckCircle className="h-4 w-4 mr-2" />

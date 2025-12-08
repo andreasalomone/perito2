@@ -16,6 +16,13 @@ jest.mock('framer-motion', () => ({
     AnimatePresence: ({ children }) => children,
 }))
 
+// Mock react-markdown (ESM-only module that Jest cannot parse)
+jest.mock('react-markdown', () => {
+    return function ReactMarkdown({ children }) {
+        return require('react').createElement('div', { 'data-testid': 'markdown' }, children);
+    };
+})
+
 global.TextEncoder = TextEncoder
 global.TextDecoder = TextDecoder
 
