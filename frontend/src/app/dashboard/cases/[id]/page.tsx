@@ -12,6 +12,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import { handleApiError } from "@/lib/error";
 import { TemplateType } from "@/components/cases/VersionItem";
+import { cn } from "@/lib/utils";
 
 import { useCaseDetail, WorkflowStep } from "@/hooks/useCaseDetail";
 import { api } from "@/lib/api";
@@ -259,9 +260,51 @@ export default function CaseWorkspace() {
             </div>
 
             {/* Workflow Layout: Stepper + Content */}
+
+            {/* Mobile: Compact horizontal stepper */}
+            <div className="lg:hidden mb-6">
+                <div className="flex items-center justify-between px-2">
+                    {[1, 2, 3, 4].map((step, index) => {
+                        const isCompleted = typeof displayStep === 'number' && step < displayStep;
+                        const isActive = displayStep === step;
+                        const isError = displayStep === 'ERROR';
+
+                        return (
+                            <div key={step} className="flex items-center">
+                                <div
+                                    className={cn(
+                                        "w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium",
+                                        isError ? "bg-red-500 text-white" :
+                                            isCompleted ? "bg-green-500 text-white" :
+                                                isActive ? "bg-primary text-primary-foreground" :
+                                                    "bg-muted text-muted-foreground"
+                                    )}
+                                >
+                                    {isCompleted ? "✓" : step}
+                                </div>
+                                {index < 3 && (
+                                    <div
+                                        className={cn(
+                                            "w-8 h-1 mx-1",
+                                            isCompleted ? "bg-green-500" : "bg-muted"
+                                        )}
+                                    />
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+                <p className="text-center text-sm text-muted-foreground mt-2">
+                    {displayStep === 'ERROR' ? 'Errore' :
+                        displayStep === 1 ? 'Acquisizione' :
+                            displayStep === 2 ? 'Elaborazione' :
+                                displayStep === 3 ? 'Revisione' : 'Chiusura'}
+                </p>
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-8">
-                {/* Sidebar: Stepper */}
-                <aside className="lg:sticky lg:top-4 lg:self-start">
+                {/* Sidebar: Stepper (hidden on mobile) */}
+                <aside className="hidden lg:block lg:sticky lg:top-4 lg:self-start">
                     <WorkflowStepper
                         currentStep={displayStep}
                         onStepClick={handleStepClick}
