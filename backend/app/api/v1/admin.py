@@ -347,10 +347,10 @@ def rescue_stuck_cases(
     db: Session = Depends(get_raw_db)
 ) -> dict:
     """
-    Superadmin only: Reset cases stuck in 'GENERATING' state for > 30 minutes.
+    Superadmin only: Reset cases stuck in 'GENERATING' or 'PROCESSING' state for > 2 hours.
     
     These "zombie" cases occur if a worker crashes (OOM/Timeout) before updating the status.
-    This endpoint finds them and marks them as ERROR so users can retry.
+    This endpoint finds them and resets them to OPEN so users can retry.
     """
     try:
         # Define cutoff time (2 hours ago - generous to avoid false positives)
@@ -364,17 +364,17 @@ def rescue_stuck_cases(
         stmt = (
             update(Case)
             .where(
-                Case.status == CaseStatus.GENERATING,
+                Case.status.in_([CaseStatus.GENERATING, CaseStatus.PROCESSING]),
                 Case.created_at < cutoff_time
             )
-            .values(status=CaseStatus.ERROR)
+            .values(status=CaseStatus.OPEN)  # Reset to OPEN so users can retry
         )
         
         result = db.execute(stmt)
         rescued_count = result.rowcount
         db.commit()
         
-        logger.info(f"Zombie rescue completed: {rescued_count} cases reset to ERROR")
+        logger.info(f"Zombie rescue completed: {rescued_count} cases reset to OPEN")
         
         return {
             "status": "success",

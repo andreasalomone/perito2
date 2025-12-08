@@ -155,6 +155,9 @@ class Case(Base):
     
     # Notes
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
+    # AI-generated summary of the report (markdown format)
+    ai_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # -------------------------------------------------------------------------
     # Relationships

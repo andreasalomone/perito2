@@ -36,6 +36,7 @@ export const CaseBaseSchema = z.object({
     client_name: z.string().optional().nullable(), // Handle Python None
     status: z.enum(["OPEN", "CLOSED", "ARCHIVED", "PROCESSING", "GENERATING", "ERROR"]),
     created_at: z.string().datetime(),
+    ai_summary: z.string().optional().nullable(), // AI-generated markdown summary
 });
 
 // 1. Summary (List View) - NO documents/versions

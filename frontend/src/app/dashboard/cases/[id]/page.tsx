@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { handleApiError } from "@/lib/error";
 import { DocumentItem } from "@/components/cases/DocumentItem";
 import { VersionItem, TemplateType } from "@/components/cases/VersionItem";
+import { SummaryCard } from "@/components/cases/SummaryCard";
 import { useCaseDetail } from "@/hooks/useCaseDetail";
 import { api } from "@/lib/api";
 
@@ -349,7 +350,9 @@ export default function CaseWorkspace() {
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Summary Card - Full Width Below Grid */}
+            <SummaryCard summary={caseData.ai_summary} />
         </div>
     );
 }
-

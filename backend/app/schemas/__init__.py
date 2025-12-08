@@ -99,6 +99,7 @@ class VersionRead(BaseModel):
 class CaseDetail(CaseSummary):
     documents: List[DocumentRead] = []
     report_versions: List[VersionRead] = []
+    ai_summary: Optional[str] = None  # AI-generated markdown summary (only in detail view)
 
 # --- LIGHTWEIGHT STATUS ---
 class CaseStatusRead(BaseModel):

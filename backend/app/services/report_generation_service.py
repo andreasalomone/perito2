@@ -125,6 +125,18 @@ async def process_case_logic(case_id: str, organization_id: str, db: AsyncSessio
     # NOTE: We do NOT auto-trigger generation here.
     # Users must explicitly click "Genera con IA" when ready.
 
+    # Reset status back to OPEN after dispatching all tasks
+    # The PROCESSING status was set to prevent duplicate dispatch attempts (race condition guard).
+    # Now that dispatch is complete, the case should be OPEN while documents are processed.
+    result = await db.execute(
+        select(Case).filter(Case.id == case_id).with_for_update()
+    )
+    case = result.scalars().first()
+    if case and case.status == CaseStatus.PROCESSING:
+        case.status = CaseStatus.OPEN
+        await db.commit()
+        logger.info(f"Case {case_id} status reset to OPEN after dispatching document tasks")
+
 
 async def trigger_generation_task(case_id: str, organization_id: str):
     """
@@ -436,6 +448,17 @@ async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSes
             await db.rollback()
             logger.error(f"IntegrityError saving Version 1 for case {case_id}. Likely race condition.")
             raise
+        
+        # 6. Generate Summary (non-blocking - failures don't affect main report)
+        try:
+            from app.services import summary_service
+            summary = await summary_service.generate_summary(report_text)
+            if summary:
+                case.ai_summary = summary
+                await db.commit()
+                logger.info(f"✅ Summary generated for case {case_id}")
+        except Exception as e:
+            logger.warning(f"⚠️ Summary generation failed (non-critical): {e}")
 
     except Exception as e:
         logger.error(f"❌ Error during generation: {e}", exc_info=True)

@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     # LLM Configuration
     LLM_MODEL_NAME: str = "gemini-2.5-pro" 
     LLM_FALLBACK_MODEL_NAME: str = "gemini-2.5-flash-lite"
+    LLM_SUMMARY_MODEL_NAME: str = "gemini-2.5-flash-lite"  # Low-cost model for summaries
     LLM_TEMPERATURE: float = 0.5
     LLM_MAX_TOKENS: int = 64000
     LLM_API_RETRY_ATTEMPTS: int = 2
