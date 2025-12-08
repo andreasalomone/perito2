@@ -15,6 +15,8 @@ import { handleApiError } from "@/lib/error";
 import { DocumentItem } from "@/components/cases/DocumentItem";
 import { VersionItem, TemplateType } from "@/components/cases/VersionItem";
 import CaseDetailsPanel from "@/components/cases/CaseDetailsPanel";
+import { SummaryCard } from "@/components/cases/SummaryCard";
+
 import { CaseFileUploader } from "@/components/cases/CaseFileUploader";
 import { useCaseDetail } from "@/hooks/useCaseDetail";
 import { api } from "@/lib/api";
@@ -273,7 +275,10 @@ export default function CaseWorkspace() {
                 </Card>
             </div>
 
-            {/* Case Details Panel - Replaces SummaryCard */}
+            {/* Summary Card */}
+            {caseData.ai_summary && <SummaryCard summary={caseData.ai_summary} />}
+
+            {/* Case Details Panel */}
             <CaseDetailsPanel
                 caseDetail={caseData}
                 onUpdate={(updated) => {
