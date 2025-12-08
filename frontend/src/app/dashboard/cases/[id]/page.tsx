@@ -20,6 +20,7 @@ import { SummaryCard } from "@/components/cases/SummaryCard";
 import { CaseFileUploader } from "@/components/cases/CaseFileUploader";
 import { useCaseDetail } from "@/hooks/useCaseDetail";
 import { api } from "@/lib/api";
+import { mutate as globalMutate } from 'swr';
 
 export default function CaseWorkspace() {
     const { id } = useParams();
@@ -74,28 +75,47 @@ export default function CaseWorkspace() {
 
     const handleDeleteDocument = useCallback(async (docId: string) => {
         if (!caseId) return;
-        const id = caseId as string; // Type narrowing for TypeScript
+        const id = caseId as string;
         if (!confirm("Sei sicuro di voler eliminare questo documento?")) return;
+
+        // Optimistic update: remove document from local state immediately
+        const optimisticData = caseData ? {
+            ...caseData,
+            documents: caseData.documents.filter(d => d.id !== docId)
+        } : undefined;
 
         try {
             const token = await getToken();
+            // Apply optimistic update before API call
+            mutate(optimisticData, false);
             await api.cases.deleteDocument(token, id, docId);
             toast.success("Documento eliminato");
+            // Revalidate to confirm server state
             mutate();
         } catch (error) {
             handleApiError(error, "Errore durante l'eliminazione");
+            // Revert on error by refetching
+            mutate();
         }
-    }, [caseId, getToken, mutate]);
+    }, [caseId, getToken, mutate, caseData]);
 
     const handleDeleteCase = useCallback(async () => {
         if (!caseId) return;
-        const id = caseId as string; // Type narrowing for TypeScript
+        const id = caseId as string;
         if (!confirm("Sei sicuro di voler eliminare questo caso e tutti i documenti associati?")) return;
 
         try {
             const token = await getToken();
             await api.cases.deleteCase(token, id);
             toast.success("Caso eliminato");
+
+            // Invalidate all cases list caches before redirect
+            globalMutate(
+                (key) => Array.isArray(key) && key[0] === 'cases',
+                undefined,
+                { revalidate: true }
+            );
+
             router.push("/dashboard");
         } catch (error) {
             handleApiError(error, "Errore durante l'eliminazione");
