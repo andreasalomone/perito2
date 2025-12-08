@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { CaseDetail } from "@/types";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { useAuth } from "@/context/AuthContext";
 import ReactMarkdown from "react-markdown";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChevronDown, ChevronUp, Pencil } from "lucide-react";
