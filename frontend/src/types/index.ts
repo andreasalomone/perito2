@@ -105,4 +105,8 @@ export interface DBUser {
     first_name?: string | null;
     last_name?: string | null;
     is_profile_complete: boolean;
+    organization_name: string;
+    created_at: string;
+    last_login?: string | null;
 }
+

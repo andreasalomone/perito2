@@ -8,6 +8,7 @@ export const UserProfileResponseSchema = z.object({
     first_name: z.string().nullable().optional(),
     last_name: z.string().nullable().optional(),
     is_profile_complete: z.boolean(),
+    organization_name: z.string(),
 });
 
 export type UserProfileResponse = z.infer<typeof UserProfileResponseSchema>;

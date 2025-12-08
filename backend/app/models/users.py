@@ -108,6 +108,11 @@ class User(Base):
     def is_profile_complete(self) -> bool:
         """Returns True if both first_name and last_name are set."""
         return bool(self.first_name and self.last_name)
+
+    @property
+    def organization_name(self) -> str:
+        """Returns the name of the organization the user belongs to."""
+        return self.organization.name if self.organization else ""
     
 
 

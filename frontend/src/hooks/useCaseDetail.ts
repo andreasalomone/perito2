@@ -104,11 +104,11 @@ export function useCaseDetail(id: string | undefined) {
     );
 
     // Enhanced mutate wrapper that invalidates polling cache
-    const safeRefresh = useCallback(() => {
+    const safeRefresh = useCallback((data?: any, opts?: any) => {
         // Clear polling cache before full re-fetch (prevents race condition)
         globalMutate(['case-status', id], undefined, { revalidate: false });
         setPollingStart(null);
-        mutateCase();
+        return mutateCase(data, opts);
     }, [id, mutateCase]);
 
     // FIXED: Only merge if statusData exists and is not being invalidated

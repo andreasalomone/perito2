@@ -35,6 +35,11 @@ class UserRead(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     is_profile_complete: bool
+    organization_name: str
+    
+    # Audit fields required by frontend
+    created_at: datetime
+    last_login: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -118,7 +123,10 @@ def sync_user(
 
     # 2. Fast Path: User Already Exists
     # Use scalar queries for modern SQLAlchemy 2.0 style
-    stmt = select(User).where(User.id == uid)
+    # Use scalar queries for modern SQLAlchemy 2.0 style
+    # FIX: Eager load organization to prevent N+1 on property access
+    from sqlalchemy.orm import joinedload
+    stmt = select(User).options(joinedload(User.organization)).where(User.id == uid)
     db_user = db.scalar(stmt)
 
     if db_user:

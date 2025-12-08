@@ -56,6 +56,11 @@ class UserProfileResponse(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     is_profile_complete: bool
+    organization_name: str
+    
+    # Audit fields required by frontend
+    created_at: Any  # Allowing Any for simplicity, or we can import datetime
+    last_login: Optional[Any] = None
 
     class Config:
         from_attributes = True
@@ -171,7 +176,8 @@ def update_my_profile(
             detail="Invalid authentication token."
         )
     
-    user = db.scalar(select(User).where(User.id == uid))
+    from sqlalchemy.orm import joinedload
+    user = db.scalar(select(User).options(joinedload(User.organization)).where(User.id == uid))
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

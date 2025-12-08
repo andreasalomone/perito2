@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ShieldCheck, LayoutDashboard, FilePlus, LogOut } from "lucide-react";
+import { ShieldCheck, LayoutDashboard, FilePlus, LogOut, User as UserIcon } from "lucide-react";
 import { User } from "firebase/auth";
 import { DBUser } from "@/types";
 import { cn } from "@/lib/utils";
@@ -32,6 +32,7 @@ export function Sidebar({
     const navItems = [
         { href: "/dashboard", label: "I Miei Report", icon: LayoutDashboard },
         { href: "/dashboard/create", label: "Nuova Perizia", icon: FilePlus },
+        { href: "/dashboard/profile", label: "Profilo", icon: UserIcon },
     ];
 
     return (
