@@ -162,7 +162,7 @@ class Settings(BaseSettings):
         # Fallback to the known URL for this service
         cloud_run_url = os.getenv(
             "CLOUD_RUN_URL", 
-            "https://robotperizia-backend-up7vxwjklq-ew.a.run.app"
+            "https://robotperizia-backend-738291935960.europe-west1.run.app"
         )
         return cloud_run_url.rstrip("/")
 
