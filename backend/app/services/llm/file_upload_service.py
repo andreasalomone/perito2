@@ -94,6 +94,29 @@ def _sanitize_path(path: str) -> str:
     """Returns the basename of a path for logging to avoid PII leakage."""
     return os.path.basename(path)
 
+
+def create_gcs_direct_part(gcs_uri: str, mime_type: str) -> types.Part:
+    """
+    Creates a Gemini Part directly from a GCS URI.
+    
+    This eliminates the need to:
+    1. Download file from GCS to /tmp
+    2. Upload file to Gemini Files API
+    
+    Requirements:
+    - GCS bucket must be in the same GCP project as the Gemini API
+    - OR bucket must have public read access
+    
+    Args:
+        gcs_uri: The GCS path (gs://bucket/path/to/file)
+        mime_type: The MIME type of the file
+        
+    Returns:
+        A types.Part that can be used directly in prompts
+    """
+    logger.debug(f"Creating direct GCS Part for: {gcs_uri}")
+    return types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type)
+
 # --- Public Async Interface ---
 
 async def upload_single_file(

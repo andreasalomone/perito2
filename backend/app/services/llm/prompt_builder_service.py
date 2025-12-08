@@ -45,7 +45,7 @@ class PromptBuilderService:
     def build_prompt_parts(
         self,
         processed_files: List[Dict[str, Any]],
-        uploaded_file_objects: List[types.File],
+        uploaded_file_objects: List[Union[types.Part, types.File]],  # Phase 3: Now includes GCS direct Parts
         upload_error_messages: List[str],
         use_cache: bool,
     ) -> List[Union[str, types.Part, types.File]]:

@@ -308,36 +308,51 @@ class GeminiReportGenerator:
 
     async def _generate_internal(self, processed_files: List[ProcessedFile]) -> ReportResult:
         """Internal generation logic (protected by semaphore)."""
-        uploaded_files: List[Any] = []
+        vision_parts: List[Any] = []  # Combined: types.Part (GCS) + types.File (uploaded)
         upload_errors: List[str] = []
         cache_name: Optional[str] = None
 
         try:
             # 1. Context Caching
-            # Offload blocking IO to thread if necessary, though genai client is async usually
             cache_name = self.cache_service.get_or_create_prompt_cache(self.client)
 
-            # 2. Upload Vision Assets
-            upload_candidates = self._prepare_upload_candidates(processed_files)
+            # 2. Prepare Vision Assets
+            # Separate GCS files (use Part.from_uri) from local files (upload)
+            gcs_candidates, upload_candidates = self._prepare_vision_assets(processed_files)
+            
+            # 2a. GCS Direct Parts - No download/upload needed
+            from app.services.llm.file_upload_service import create_gcs_direct_part
+            for candidate in gcs_candidates:
+                try:
+                    part = create_gcs_direct_part(candidate.gcs_uri, candidate.mime_type)
+                    vision_parts.append(part)
+                    logger.debug(f"Created GCS direct part for: {candidate.display_name}")
+                except Exception as e:
+                    error_msg = f"GCS direct access failed for {candidate.display_name}: {e}"
+                    logger.warning(error_msg)
+                    upload_errors.append(error_msg)
 
+            # 2b. Upload non-GCS files to Gemini Files API
             if upload_candidates:
                 upload_results = await self.file_upload_service.upload_vision_files_batch(
                     self.client, upload_candidates
                 )
                 uploaded_files = [res.gemini_file for res in upload_results if res.success]
-                # Collect errors but do not halt; prompt builder handles missing files
-                upload_errors = [
+                vision_parts.extend(uploaded_files)
+                upload_errors.extend([
                     res.error_message
                     for res in upload_results
                     if not res.success and res.error_message
-                ]
+                ])
+            else:
+                uploaded_files = []
 
             # 3. Execute Generation
             file_dicts = [f.model_dump(by_alias=True) for f in processed_files]
 
             response = await self._execute_generation_strategy(
                 processed_files=file_dicts,
-                uploaded_files=uploaded_files,
+                uploaded_files=vision_parts,  # Now contains both Part and File objects
                 upload_errors=upload_errors,
                 cache_name=cache_name,
             )
@@ -353,16 +368,26 @@ class GeminiReportGenerator:
             raise LLMGenerationError(f"Report generation failed: {str(e)}") from e
 
         finally:
-            # 5. Cleanup
-            # We schedule cleanup immediately regardless of success/fail
-            self._schedule_cleanup(uploaded_files)
+            # 5. Cleanup - Only for uploaded files (not GCS direct parts)
+            # Filter to get only types.File objects (have 'name' attribute)
+            files_to_cleanup = [f for f in vision_parts if hasattr(f, 'name')]
+            self._schedule_cleanup(files_to_cleanup)
 
-    def _prepare_upload_candidates(
+    def _prepare_vision_assets(
         self, processed_files: List[ProcessedFile]
-    ) -> List[FileUploadServiceProtocol.UploadCandidate]:
-        candidates = []
+    ) -> Tuple[List[FileUploadServiceProtocol.UploadCandidate], List[FileUploadServiceProtocol.UploadCandidate]]:
+        """
+        Separates vision assets into two groups:
+        1. GCS Direct: Files with GCS URIs that can use Part.from_uri() 
+        2. Upload Required: Local-only files that need Gemini Files API upload
+        
+        Returns:
+            Tuple of (gcs_candidates, upload_candidates)
+        """
+        gcs_candidates = []
+        upload_candidates = []
+        
         for f in processed_files:
-            # Determine path source
             local_path = f.local_path
             gcs_uri = f.gcs_uri
             
@@ -377,19 +402,37 @@ class GeminiReportGenerator:
                 )
                 continue
 
-            # Only upload vision assets (skip JSON/Text that goes into prompt)
+            # Only process vision assets (skip JSON/Text that goes into prompt)
             is_vision = f.file_type != "application/json"
+            if not is_vision:
+                continue
             
-            candidates.append(
-                self.file_upload_service.UploadCandidate(
-                    file_path=local_path or gcs_uri, # Use GCS URI as path identifier if local missing
-                    mime_type=f.file_type,
-                    display_name=f.filename,
-                    is_vision_asset=is_vision,
-                    gcs_uri=gcs_uri
-                )
+            candidate = self.file_upload_service.UploadCandidate(
+                file_path=local_path or gcs_uri,
+                mime_type=f.file_type,
+                display_name=f.filename,
+                is_vision_asset=True,
+                gcs_uri=gcs_uri
             )
-        return candidates
+            
+            # If we have a GCS URI, use Part.from_uri() (no download needed)
+            # Otherwise, fall back to Gemini Files API upload
+            if gcs_uri:
+                gcs_candidates.append(candidate)
+                logger.debug(f"GCS direct access for: {f.filename}")
+            else:
+                upload_candidates.append(candidate)
+                logger.debug(f"Upload required for: {f.filename}")
+        
+        logger.info(f"Vision assets: {len(gcs_candidates)} GCS direct, {len(upload_candidates)} upload required")
+        return gcs_candidates, upload_candidates
+
+    def _prepare_upload_candidates(
+        self, processed_files: List[ProcessedFile]
+    ) -> List[FileUploadServiceProtocol.UploadCandidate]:
+        """DEPRECATED: Use _prepare_vision_assets instead."""
+        _, upload_candidates = self._prepare_vision_assets(processed_files)
+        return upload_candidates
 
     def _is_safe_path(self, path_str: str) -> bool:
         """
@@ -575,17 +618,21 @@ class LazyGeminiProxy:
             if self._delegate:
                 return self._delegate
 
-            if not settings.GEMINI_API_KEY:
-                logger.error("Attempted to use LLM without GEMINI_API_KEY configured.")
-                raise ValueError("GEMINI_API_KEY is not configured. Cannot generate report.")
 
-            logger.info("Initializing Gemini Service (Lazy Load)...")
+            # GEMINI_API_KEY check removed - Vertex AI uses ADC (Application Default Credentials)
+            # which are automatically available in Cloud Run
+
+            logger.info("Initializing Gemini Service via Vertex AI (Lazy Load)...")
             
-            # Create Client
+            # Create Client - Use Vertex AI mode for direct GCS access
             try:
-                _client = genai.Client(api_key=settings.GEMINI_API_KEY)
+                _client = genai.Client(
+                    vertexai=True,
+                    project=settings.GOOGLE_CLOUD_PROJECT,
+                    location=settings.GOOGLE_CLOUD_REGION
+                )
             except Exception as e:
-                 logger.critical(f"Failed to create Google GenAI Client: {e}")
+                 logger.critical(f"Failed to create Vertex AI Client: {e}")
                  raise
 
             # Create Generator

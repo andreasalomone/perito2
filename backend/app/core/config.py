@@ -1,4 +1,5 @@
 from typing import Optional
+from pydantic import Field
 from pydantic_settings import BaseSettings
 import os
 
@@ -101,6 +102,10 @@ class Settings(BaseSettings):
     
     # Superadmin Access
     SUPERADMIN_EMAILS: str = ""  # Comma-separated list
+
+    # Brevo (Email Service) - Optional, only needed for email intake feature
+    BREVO_API_KEY: str = ""
+    BREVO_WEBHOOK_SECRET: str = ""
     
     @property
     def SUPERADMIN_EMAIL_LIST(self) -> list[str]:

@@ -1,12 +1,16 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal
 from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import (
+    Date,
     DateTime,
     ForeignKey,
     Index,
+    Numeric,
     String,
+    Text,
     UniqueConstraint,
     Uuid,
     func,
@@ -104,8 +108,56 @@ class Case(Base):
         DateTime(timezone=True),
         nullable=True
     )
+    
+    # -------------------------------------------------------------------------
+    # Business Fields (Claim Details)
+    # -------------------------------------------------------------------------
+    
+    # Reference number (internal)
+    ns_rif: Mapped[Optional[int]] = mapped_column(nullable=True)
+    
+    # Policy & Type
+    polizza: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    tipo_perizia: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    
+    # Goods
+    merce: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    descrizione_merce: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    
+    # Financial
+    riserva: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 2), nullable=True)
+    importo_liquidato: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 2), nullable=True)
+    
+    # People & Roles
+    perito: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    cliente: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    rif_cliente: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    gestore: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    assicurato: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    riferimento_assicurato: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    mittenti: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    broker: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    riferimento_broker: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    destinatari: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    
+    # Transport
+    mezzo_di_trasporto: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    descrizione_mezzo_di_trasporto: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    
+    # Location & Processing
+    luogo_intervento: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    genere_lavorazione: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    
+    # Dates
+    data_sinistro: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    data_incarico: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    
+    # Notes
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # -------------------------------------------------------------------------
     # Relationships
+    # -------------------------------------------------------------------------
     organization: Mapped["Organization"] = relationship(back_populates="cases")
     client: Mapped[Optional["Client"]] = relationship(back_populates="cases")
     

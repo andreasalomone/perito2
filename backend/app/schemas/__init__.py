@@ -1,6 +1,7 @@
 from pydantic import BaseModel, ConfigDict, computed_field, Field
 from typing import List, Optional, Any
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from uuid import UUID
 from enum import Enum
 
@@ -18,6 +19,31 @@ class DocumentRead(BaseModel):
 # --- BASE ---
 class CaseBase(BaseModel):
     reference_code: str
+    # Business fields
+    ns_rif: Optional[int] = None
+    polizza: Optional[str] = None
+    tipo_perizia: Optional[str] = None
+    merce: Optional[str] = None
+    descrizione_merce: Optional[str] = None
+    riserva: Optional[Decimal] = None
+    importo_liquidato: Optional[Decimal] = None
+    perito: Optional[str] = None
+    cliente: Optional[str] = None
+    rif_cliente: Optional[str] = None
+    gestore: Optional[str] = None
+    mezzo_di_trasporto: Optional[str] = None
+    descrizione_mezzo_di_trasporto: Optional[str] = None
+    luogo_intervento: Optional[str] = None
+    assicurato: Optional[str] = None
+    riferimento_assicurato: Optional[str] = None
+    mittenti: Optional[str] = None
+    broker: Optional[str] = None
+    riferimento_broker: Optional[str] = None
+    destinatari: Optional[str] = None
+    genere_lavorazione: Optional[str] = None
+    data_sinistro: Optional[date] = None
+    data_incarico: Optional[date] = None
+    note: Optional[str] = None
 
 class CaseCreate(CaseBase):
     client_name: Optional[str] = None # Helper to find/create Client

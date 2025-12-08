@@ -27,8 +27,7 @@ import threading
 
 logger = logging.getLogger(__name__)
 
-# Limit concurrent downloads during generation to prevent filling up memory/disk
-download_semaphore = asyncio.Semaphore(5)
+# NOTE: Phase 3 optimization removed the download step - we now use Part.from_uri() directly
 
 async def run_generation_task(case_id: str, organization_id: str):
     """
@@ -280,7 +279,7 @@ async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSes
 
     processed_data_for_llm = []
     failed_docs = []  # Track failed documents for user visibility
-    temp_files_to_cleanup: list[str] = []  # Track temp files for cleanup
+    # NOTE: Phase 3 optimization removed temp file downloads - GCS direct access via Part.from_uri()
     
     try:
         # 1. Fetch Processed Data (Re-query as we released the session)
@@ -317,27 +316,11 @@ async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSes
 
                         if target_gcs_path:
                             # Pass the GCS URI to the LLM handler.
-                            # The file_upload_service will handle downloading it on-demand
-                            # to a temp file, uploading to Gemini, and cleaning up.
-                            # This prevents loading all files into disk/RAM at once.
+                            # Phase 3 Optimization: llm_handler uses Part.from_uri() directly
+                            # so NO download is needed here anymore.
                             item["gcs_uri"] = target_gcs_path
-                            item["local_path"] = None # Ensure we don't rely on stale local paths
-                            try:
-                                logger.info(f"Re-downloading {target_gcs_path} for generation...")
-                                async with download_semaphore:
-                                    # Use the helper that handles gs:// parsing
-                                    # [FIX] Generate a valid temp path
-                                    fd, local_path = tempfile.mkstemp(suffix=f"_{item.get('filename', 'asset')}")
-                                    os.close(fd) # Close the file descriptor immediately
-                                    temp_files_to_cleanup.append(local_path)  # Track for cleanup
-                                    
-                                    item["local_path"] = local_path # Update the dict
-                                    
-                                    await asyncio.to_thread(download_file_to_temp, target_gcs_path, local_path)
-                            except Exception as e:
-                                logger.error(f"Failed to re-download {target_gcs_path} for generation: {e}")
-                                item["type"] = "error"
-                                item["error"] = f"Failed to download: {e}"
+                            item["local_path"] = None  # No local file needed
+                            logger.debug(f"Using GCS direct access for {item.get('filename', 'asset')}: {target_gcs_path}")
                         else:
                             logger.warning(f"Item {item.get('filename', 'unknown')} has no GCS source.")
                             item["type"] = "error"
@@ -484,15 +467,7 @@ async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSes
         logger.critical(f"🛑 Stopping Cloud Task retry loop for case {case_id} due to error: {e}")
         return # Return success to Cloud Tasks so it marks the task as completed.
     finally:
-        # CRITICAL: Clean up temp files to prevent memory exhaustion on Cloud Run
-        # On Cloud Run Gen 2, /tmp is an in-memory filesystem (tmpfs)
-        for temp_path in temp_files_to_cleanup:
-            try:
-                if os.path.exists(temp_path):
-                    os.remove(temp_path)
-                    logger.debug(f"Cleaned up temp file: {temp_path}")
-            except Exception as cleanup_error:
-                logger.warning(f"Failed to cleanup temp file {temp_path}: {cleanup_error}")
+        pass  # Phase 3 optimization removed temp file cleanup - no longer needed
 
 async def generate_docx_variant(
     version_id: str, 
