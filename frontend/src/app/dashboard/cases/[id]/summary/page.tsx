@@ -177,8 +177,10 @@ export default function CaseSummaryPage() {
 
             {/* Case Details Panel - Still Editable */}
             <CaseDetailsPanel
-                caseData={caseData}
-                onUpdate={mutate}
+                caseDetail={caseData}
+                onUpdate={(updatedCase) => {
+                    mutate(updatedCase, false);
+                }}
             />
         </div>
     );

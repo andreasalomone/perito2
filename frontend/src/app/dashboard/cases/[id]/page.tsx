@@ -1,26 +1,31 @@
 "use client";
 
-import { useRef, useCallback, useEffect } from "react";
+import { useRef, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useConfig } from "@/context/ConfigContext";
 import { ReportVersion } from "@/types";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { UploadCloud, FileText, Play, CheckCircle, Loader2, AlertCircle, RefreshCw, Trash2 } from "lucide-react";
+import { AlertCircle, RefreshCw, Trash2 } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
 import { handleApiError } from "@/lib/error";
-import { DocumentItem } from "@/components/cases/DocumentItem";
-import { VersionItem, TemplateType } from "@/components/cases/VersionItem";
-import CaseDetailsPanel from "@/components/cases/CaseDetailsPanel";
-import { SummaryCard } from "@/components/cases/SummaryCard";
+import { TemplateType } from "@/components/cases/VersionItem";
 
-import { CaseFileUploader } from "@/components/cases/CaseFileUploader";
-import { useCaseDetail } from "@/hooks/useCaseDetail";
+import { useCaseDetail, WorkflowStep } from "@/hooks/useCaseDetail";
 import { api } from "@/lib/api";
 import { mutate as globalMutate } from 'swr';
+
+// Workflow components
+import {
+    WorkflowStepper,
+    ErrorStateOverlay,
+    Step1_Ingestion,
+    Step2_Intelligence,
+    Step3_Review,
+    Step4_Closure,
+} from "@/components/cases/workflow";
 
 export default function CaseWorkspace() {
     const { id } = useParams();
@@ -28,6 +33,9 @@ export default function CaseWorkspace() {
     const { getToken } = useAuth();
     const { apiUrl } = useConfig();
     const caseId = Array.isArray(id) ? id[0] : id;
+
+    // For backward navigation: allow manual step override (only numeric steps 1-4)
+    const [manualStep, setManualStep] = useState<1 | 2 | 3 | 4 | null>(null);
 
     const {
         caseData,
@@ -37,14 +45,13 @@ export default function CaseWorkspace() {
         isGeneratingReport,
         isProcessingDocs,
         setIsGenerating,
-        currentStep, // NEW: Workflow step for routing
+        currentStep,
     } = useCaseDetail(caseId);
 
     // Redirect CLOSED/finalized cases to summary page
     useEffect(() => {
         if (!caseData || isLoading) return;
 
-        // Check if case is closed or has a final version
         const isClosed = caseData.status === 'CLOSED';
         const hasFinalVersion = caseData.report_versions?.some(v => v.is_final);
 
@@ -53,10 +60,20 @@ export default function CaseWorkspace() {
         }
     }, [caseData, isLoading, caseId, router]);
 
-    // Refs for hidden inputs
-    const finalInputRef = useRef<HTMLInputElement>(null);
+    // Reset manual step when actual step changes
+    useEffect(() => {
+        if (manualStep !== null && currentStep !== 'ERROR') {
+            // If we moved past the manual step, clear it
+            if (typeof currentStep === 'number' && currentStep > manualStep) {
+                setManualStep(null);
+            }
+        }
+    }, [currentStep, manualStep]);
 
+    // Determine which step to display (manualStep overrides currentStep when set)
+    const displayStep: WorkflowStep = manualStep ?? currentStep;
 
+    // --- Handlers ---
 
     const handleGenerate = async () => {
         setIsGenerating(true);
@@ -66,7 +83,7 @@ export default function CaseWorkspace() {
                 headers: { Authorization: `Bearer ${token}` }
             });
             toast.success("Generazione avviata! Il sistema ti avviserà al termine.");
-            mutate(); // Trigger immediate refresh to potentially see status change
+            mutate();
         } catch (error) {
             handleApiError(error, "Errore durante l'avvio della generazione");
             setIsGenerating(false);
@@ -90,9 +107,7 @@ export default function CaseWorkspace() {
     const handleDeleteDocument = useCallback(async (docId: string) => {
         if (!caseId) return;
         const id = caseId as string;
-        if (!confirm("Sei sicuro di voler eliminare questo documento?")) return;
 
-        // Optimistic update: remove document from local state immediately
         const optimisticData = caseData ? {
             ...caseData,
             documents: caseData.documents.filter(d => d.id !== docId)
@@ -100,15 +115,12 @@ export default function CaseWorkspace() {
 
         try {
             const token = await getToken();
-            // Apply optimistic update before API call
             mutate(optimisticData, false);
             await api.cases.deleteDocument(token, id, docId);
             toast.success("Documento eliminato");
-            // Revalidate to confirm server state
             mutate();
         } catch (error) {
             handleApiError(error, "Errore durante l'eliminazione");
-            // Revert on error by refetching
             mutate();
         }
     }, [caseId, getToken, mutate, caseData]);
@@ -122,23 +134,18 @@ export default function CaseWorkspace() {
             const token = await getToken();
             await api.cases.deleteCase(token, id);
             toast.success("Caso eliminato");
-
-            // Invalidate all cases list caches before redirect
             globalMutate(
                 (key) => Array.isArray(key) && key[0] === 'cases',
                 undefined,
                 { revalidate: true }
             );
-
             router.push("/dashboard");
         } catch (error) {
             handleApiError(error, "Errore durante l'eliminazione");
         }
     }, [caseId, getToken, router]);
 
-    const handleFinalize = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!e.target.files?.length) return;
-        const file = e.target.files[0];
+    const handleFinalize = async (file: File) => {
         const toastId = toast.loading("Caricamento versione finale...");
 
         try {
@@ -151,7 +158,7 @@ export default function CaseWorkspace() {
                 }
             );
 
-            const maxFileSize = 50 * 1024 * 1024; // 50MB - must match backend
+            const maxFileSize = 50 * 1024 * 1024;
             await axios.put(signRes.data.upload_url, file, {
                 headers: {
                     "Content-Type": file.type,
@@ -166,12 +173,28 @@ export default function CaseWorkspace() {
 
             toast.success("Versione finale caricata", { id: toastId });
             mutate();
+            // Redirect will happen via useEffect when status changes
         } catch (error) {
             handleApiError(error, "Errore caricamento finale");
             toast.dismiss(toastId);
-        } finally {
-            if (finalInputRef.current) finalInputRef.current.value = "";
+            throw error;
         }
+    };
+
+    const handleStepClick = (step: number) => {
+        // Only allow going back to step 1 from step 3
+        if (step === 1 && currentStep === 3) {
+            setManualStep(1);
+        }
+    };
+
+    const handleProceedToClosure = () => {
+        // Move to step 4 (manual override since we don't have a version marked as "ready for closure")
+        setManualStep(4);
+    };
+
+    const handleGoBackToIngestion = () => {
+        setManualStep(1);
     };
 
     // --- Render States ---
@@ -180,8 +203,8 @@ export default function CaseWorkspace() {
         return (
             <div className="space-y-6 max-w-6xl mx-auto p-4 animate-pulse">
                 <div className="h-8 w-1/3 bg-muted rounded"></div>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <div className="h-96 bg-muted rounded-lg"></div>
+                <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-8">
+                    <div className="h-64 bg-muted rounded-lg"></div>
                     <div className="h-96 bg-muted rounded-lg"></div>
                 </div>
             </div>
@@ -202,20 +225,25 @@ export default function CaseWorkspace() {
         );
     }
 
-    // Guard Rails: Ensure arrays exist
-    const documents = caseData.documents || [];
-    const versions = caseData.report_versions || [];
+    // --- Main Render ---
 
     return (
-        <div className="space-y-6 max-w-6xl mx-auto p-4">
+        <div className="max-w-6xl mx-auto p-4 space-y-6">
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">{caseData.reference_code}</h1>
-                    <p className="text-muted-foreground">Cliente: <span className="font-medium text-foreground">{caseData.client_name || "N/A"}</span></p>
+                    {caseData.client_name && (
+                        <p className="text-muted-foreground">
+                            Cliente: <span className="font-medium text-foreground">{caseData.client_name}</span>
+                        </p>
+                    )}
                 </div>
                 <div className="flex items-center gap-3">
-                    <Badge variant={caseData.status === "OPEN" ? "default" : "secondary"} className="text-sm px-3 py-1">
+                    <Badge
+                        variant={caseData.status === "OPEN" ? "default" : caseData.status === "ERROR" ? "destructive" : "secondary"}
+                        className="text-sm px-3 py-1"
+                    >
                         {caseData.status.toUpperCase()}
                     </Badge>
                     <Button
@@ -230,96 +258,51 @@ export default function CaseWorkspace() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* LEFT: Documents */}
-                <Card className="h-full flex flex-col">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-lg">Documenti ({documents.length})</CardTitle>
-                        <CaseFileUploader
+            {/* Workflow Layout: Stepper + Content */}
+            <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-8">
+                {/* Sidebar: Stepper */}
+                <aside className="lg:sticky lg:top-4 lg:self-start">
+                    <WorkflowStepper
+                        currentStep={displayStep}
+                        onStepClick={handleStepClick}
+                    />
+                </aside>
+
+                {/* Main: Step Content */}
+                <main className="min-h-[500px]">
+                    {displayStep === 'ERROR' ? (
+                        <ErrorStateOverlay
+                            caseData={caseData}
+                            onDeleteDocument={handleDeleteDocument}
+                            onRetryGeneration={handleGenerate}
+                        />
+                    ) : displayStep === 1 ? (
+                        <Step1_Ingestion
+                            caseData={caseData}
                             caseId={caseId as string}
                             onUploadComplete={mutate}
+                            onGenerate={handleGenerate}
+                            onDeleteDocument={handleDeleteDocument}
+                            isGenerating={isGeneratingReport ?? false}
+                            isProcessingDocs={isProcessingDocs ?? false}
                         />
-                    </CardHeader>
-                    <CardContent className="flex-1 overflow-y-auto max-h-[500px] space-y-2">
-                        {documents.length === 0 ? (
-                            <div className="text-center py-10 text-muted-foreground border-2 border-dashed rounded-lg">
-                                <UploadCloud className="h-10 w-10 mx-auto mb-2 opacity-20" />
-                                <p>Nessun documento caricato</p>
-                            </div>
-                        ) : (
-                            documents.map(doc => <DocumentItem key={doc.id} doc={doc} onDelete={handleDeleteDocument} />)
-                        )}
-                    </CardContent>
-                </Card>
-
-                {/* RIGHT: Versions */}
-                <Card className="h-full flex flex-col">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-lg">Report Generati</CardTitle>
-                        <Button
-                            size="sm"
-                            variant="brand"
-                            onClick={handleGenerate}
-                            disabled={isGeneratingReport || isProcessingDocs || documents.length === 0}
-                        >
-                            {(isGeneratingReport || isProcessingDocs) ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
-                            {isGeneratingReport ? "Generazione in corso..." : isProcessingDocs ? "Elaborazione documenti..." : "Genera con IA"}
-                        </Button>
-                    </CardHeader>
-                    <CardContent className="flex-1 overflow-y-auto max-h-[500px] space-y-4">
-                        {versions.length === 0 && (
-                            <div className="text-center py-10 text-muted-foreground border-2 border-dashed rounded-lg">
-                                <FileText className="h-10 w-10 mx-auto mb-2 opacity-20" />
-                                <p>Nessun report generato.</p>
-                            </div>
-                        )}
-
-                        {versions.map(v => (
-                            <VersionItem
-                                key={v.id}
-                                version={v}
-                                onDownload={handleDownload}
-                            />
-                        ))}
-
-                        {/* Finalize Action */}
-                        {versions.length > 0 && (
-                            <div className="mt-6 pt-6 border-t">
-                                <p className="text-sm font-medium text-muted-foreground mb-3">Hai completato il report?</p>
-                                <div>
-                                    <input
-                                        type="file"
-                                        ref={finalInputRef}
-                                        onChange={handleFinalize}
-                                        className="hidden"
-                                        accept=".docx,.pdf"
-                                    />
-                                    <Button
-                                        variant="success"
-                                        className="w-full"
-                                        onClick={() => finalInputRef.current?.click()}
-                                    >
-                                        <CheckCircle className="h-4 w-4 mr-2" />
-                                        Carica Versione Firmata
-                                    </Button>
-                                </div>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+                    ) : displayStep === 2 ? (
+                        <Step2_Intelligence caseData={caseData} />
+                    ) : displayStep === 3 ? (
+                        <Step3_Review
+                            caseData={caseData}
+                            onDownload={handleDownload}
+                            onProceedToClosure={handleProceedToClosure}
+                            onGoBackToIngestion={handleGoBackToIngestion}
+                        />
+                    ) : displayStep === 4 ? (
+                        <Step4_Closure
+                            caseData={caseData}
+                            onFinalize={handleFinalize}
+                        />
+                    ) : null}
+                </main>
             </div>
-
-            {/* Summary Card */}
-            {caseData.ai_summary && <SummaryCard summary={caseData.ai_summary} />}
-
-            {/* Case Details Panel */}
-            <CaseDetailsPanel
-                caseDetail={caseData}
-                onUpdate={(updated) => {
-                    // Update the local SWR cache immediately with the new data
-                    mutate(updated, false);
-                }}
-            />
         </div>
     );
 }
