@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useConfig } from "@/context/ConfigContext";
@@ -36,8 +36,22 @@ export default function CaseWorkspace() {
         mutate,
         isGeneratingReport,
         isProcessingDocs,
-        setIsGenerating
+        setIsGenerating,
+        currentStep, // NEW: Workflow step for routing
     } = useCaseDetail(caseId);
+
+    // Redirect CLOSED/finalized cases to summary page
+    useEffect(() => {
+        if (!caseData || isLoading) return;
+
+        // Check if case is closed or has a final version
+        const isClosed = caseData.status === 'CLOSED';
+        const hasFinalVersion = caseData.report_versions?.some(v => v.is_final);
+
+        if (isClosed || hasFinalVersion) {
+            router.replace(`/dashboard/cases/${caseId}/summary`);
+        }
+    }, [caseData, isLoading, caseId, router]);
 
     // Refs for hidden inputs
     const finalInputRef = useRef<HTMLInputElement>(null);
