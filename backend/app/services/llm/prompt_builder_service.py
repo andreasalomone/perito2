@@ -2,7 +2,7 @@
 
 import html
 import logging
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Union, Optional
 
 from google.genai import types
 from pydantic import BaseModel, ValidationError
@@ -27,7 +27,7 @@ class ProcessedContent(BaseModel):
     """
 
     filename: str
-    content: str
+    content: Optional[str] = None
     type: str  # 'text', 'error', 'unsupported'
     message: str = ""  # Optional error/warning message
 
