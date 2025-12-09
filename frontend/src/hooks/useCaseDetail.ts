@@ -2,8 +2,11 @@ import useSWR, { mutate as globalMutate } from 'swr';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/lib/api';
 import { CaseDetail, CaseStatus } from '@/types';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
+
+// Workflow step type for the new case workflow
+export type WorkflowStep = 1 | 2 | 3 | 4 | 'ERROR';
 
 export function useCaseDetail(id: string | undefined) {
     const { user, getToken } = useAuth();
@@ -120,6 +123,38 @@ export function useCaseDetail(id: string | undefined) {
     const isGeneratingReport = caseData?.status === "GENERATING" || caseData?.status === "PROCESSING";
     const isProcessingDocs = caseData?.documents.some(d => ["PROCESSING", "PENDING"].includes(d.ai_status));
 
+    // 7. Derive current workflow step from displayData (merged, most up-to-date)
+    // NOTE: Step 4 (Closure) is NOT derived automatically - it's reached via manualStep
+    // CLOSED cases are redirected to /summary page, so they never show in the workflow
+    const currentStep = useMemo((): WorkflowStep => {
+        if (!displayData) return 1;
+
+        // ERROR state takes priority - show error UI
+        if (displayData.status === 'ERROR') {
+            return 'ERROR';
+        }
+
+        // CLOSED cases should redirect to /summary, but return 3 as fallback
+        // The page.tsx handles the actual redirect
+        if (displayData.status === 'CLOSED' ||
+            displayData.report_versions?.some(v => v.is_final)) {
+            return 3; // Will redirect, but show Step 3 if redirect fails
+        }
+
+        // Step 3: Draft exists but not finalized
+        if (displayData.report_versions && displayData.report_versions.length > 0) {
+            return 3;
+        }
+
+        // Step 2: Report is being generated or docs are processing
+        if (['GENERATING', 'PROCESSING'].includes(displayData.status) || isProcessingDocs) {
+            return 2;
+        }
+
+        // Step 1: Ingestion (default)
+        return 1;
+    }, [displayData, isProcessingDocs]);
+
     // Explicit return to avoid object literal syntax errors
     return {
         caseData: displayData,
@@ -129,6 +164,7 @@ export function useCaseDetail(id: string | undefined) {
         isGeneratingReport: isGeneratingReport || (shouldPoll && !isProcessingDocs), // optimistic UI fallback
         isProcessingDocs: isProcessingDocs,
         isBusy: shouldPoll || isGeneratingReport || isProcessingDocs,
-        setIsGenerating: setShouldPoll // Allow manual trigger from UI
+        setIsGenerating: setShouldPoll, // Allow manual trigger from UI
+        currentStep, // NEW: Workflow step for case workflow redesign
     };
 }

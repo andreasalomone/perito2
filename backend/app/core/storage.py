@@ -10,6 +10,9 @@ from google.api_core.exceptions import GoogleAPICallError
 # Google Cloud Imports
 from google.cloud import storage
 
+# Google Cloud Imports
+from google.cloud import storage  # type: ignore[attr-defined]
+
 from app.core.config import settings
 
 # Configure structured logging

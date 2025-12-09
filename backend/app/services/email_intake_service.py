@@ -10,7 +10,7 @@ import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Dict, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 from uuid import UUID
 
 import httpx
@@ -36,6 +36,10 @@ from app.services.case_service import trigger_extraction_task
 from app.services.client_matcher import find_or_create_client
 from app.services.email_ai_extractor import CaseExtractionResult, extract_case_data
 from app.services.gcs_service import get_storage_client
+
+if TYPE_CHECKING:
+    from app.models import Client
+
 
 logger = logging.getLogger(__name__)
 
@@ -191,8 +195,9 @@ class EmailIntakeService:
                 subject_line = email_item.Subject
                 try:
                     # Pass the processed attachments to the extractor
+                    email_body = markdown_body or ""
                     extracted = extract_case_data(
-                        email_body=markdown_body,
+                        email_body=email_body,
                         subject=subject_line,
                         sender_email=sender_email,
                         attachments=processed_attachments_for_llm,  # <--- NEW ARGUMENT

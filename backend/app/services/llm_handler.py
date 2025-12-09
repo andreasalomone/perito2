@@ -1,7 +1,6 @@
 import asyncio
 import heapq
 import logging
-import mimetypes
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone

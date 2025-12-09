@@ -226,10 +226,14 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
     1. Save new version.
     2. Mark as Final.
     3. Create ML Training Pair.
+    4. Set case status to CLOSED.
     """
     # 1. Create Final Version
     # LOCK the Case to prevent version race conditions
-    db.query(Case).filter(Case.id == case_id).with_for_update().first()
+    # FIX: Capture the case object to update its status later
+    case = db.query(Case).filter(Case.id == case_id).with_for_update().first()
+    if not case:
+        raise ValueError(f"Case {case_id} not found")
 
     from sqlalchemy import func
 
@@ -265,7 +269,7 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
         .filter(
             ReportVersion.case_id == case_id,
             ReportVersion.is_final.is_(False),
-            ReportVersion.ai_raw_output.is_not(None),  # Ensure it has AI content
+            ReportVersion.ai_raw_output.isnot(None),  # Ensure it has AI content
         )
         .order_by(ReportVersion.version_number.desc())
         .first()
@@ -286,6 +290,11 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
         logger.warning(
             f"No AI draft version found for case {case_id}. ML training pair not created."
         )
+
+    # 4. CRITICAL FIX: Set case status to CLOSED
+    # This enables proper workflow step detection in the frontend
+    case.status = CaseStatus.CLOSED
+    logger.info(f"Case {case_id} finalized and set to CLOSED status")
 
     db.commit()
     return final_version
@@ -415,13 +424,13 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: AsyncSessio
                 await asyncio.to_thread(_perform_extraction_logic, doc, tmp_dir)
 
             # 3. Save to DB
-            doc.ai_status = ExtractionStatus.SUCCESS.value
+            doc.ai_status = ExtractionStatus.SUCCESS
             await db.commit()
             logger.info(f"Extraction complete for {doc.id}")
 
         except Exception as e:
             logger.error(f"Error extracting document {doc.id}: {e}")
-            doc.ai_status = ExtractionStatus.ERROR.value
+            doc.ai_status = ExtractionStatus.ERROR
             await db.commit()
         finally:
             shutil.rmtree(tmp_dir)
@@ -465,7 +474,7 @@ def _perform_extraction_logic(doc: Document, tmp_dir: str):
             item["item_gcs_path"] = f"gs://{bucket_name}/{blob_name}"
 
     # Update doc object (in memory, caller saves to DB)
-    doc.ai_extracted_data = processed
+    doc.ai_extracted_data = processed  # type: ignore[assignment]
 
 
 async def _check_and_trigger_generation(
@@ -480,6 +489,11 @@ async def _check_and_trigger_generation(
             select(Case).filter(Case.id == case_id).with_for_update()
         )
         case = result.scalars().first()
+
+        # Null check for case
+        if not case:
+            logger.warning(f"Case {case_id} not found for generation check.")
+            return
 
         # Check if we are already generating to fail fast
         if case.status == CaseStatus.GENERATING:
@@ -530,7 +544,9 @@ async def _check_and_trigger_generation(
 
                 outbox_entry = OutboxMessage(
                     topic="generate_report",
-                    organization_id=str(org_id),  # For tenant isolation
+                    organization_id=(
+                        UUID(org_id) if isinstance(org_id, str) else org_id
+                    ),  # For tenant isolation
                     payload={"case_id": str(case_id), "organization_id": str(org_id)},
                 )
                 db.add(outbox_entry)

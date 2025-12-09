@@ -78,7 +78,7 @@ def get_current_user_token(
     token = creds.credentials
     try:
         # verify_id_token checks signature, expiration, and format
-        decoded_token = auth.verify_id_token(token, check_revoked=True)
+        decoded_token: dict[str, Any] = auth.verify_id_token(token, check_revoked=True)
         return decoded_token
     except auth.ExpiredIdTokenError:
         raise HTTPException(

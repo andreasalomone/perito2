@@ -14,7 +14,7 @@ from alembic import context
 # Add the project root to python path so we can import 'app'
 sys.path.append(os.getcwd())
 
-import app.models  # noqa: F401 Ensure models are registered with Base.metadata
+import app.models  # noqa: F401 - Ensure models are registered with Base.metadata
 from app.core.config import settings
 from app.db.database import Base  # Import the declarative base from our refactored file
 

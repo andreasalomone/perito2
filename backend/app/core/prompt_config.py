@@ -93,15 +93,16 @@ def _load_prompt_from_file(file_path: str) -> str:
 # These are loaded once at startup.
 # If dynamic updates are needed during runtime without restart,
 # the app should use prompt_manager.get_prompt_content() instead.
-SYSTEM_INSTRUCTION: str = _load_prompt_from_file(
-    prompt_manager.get_prompt_path("system_instruction")
-)
-GUIDA_STILE_TERMINOLOGIA_ED_ESEMPI: str = _load_prompt_from_file(
-    prompt_manager.get_prompt_path("style_guide")
-)
-SCHEMA_REPORT: str = _load_prompt_from_file(
-    prompt_manager.get_prompt_path("schema_report")
-)
+_system_instruction_path = prompt_manager.get_prompt_path("system_instruction")
+_style_guide_path = prompt_manager.get_prompt_path("style_guide")
+_schema_report_path = prompt_manager.get_prompt_path("schema_report")
+assert _system_instruction_path is not None
+assert _style_guide_path is not None
+assert _schema_report_path is not None
+
+SYSTEM_INSTRUCTION: str = _load_prompt_from_file(_system_instruction_path)
+GUIDA_STILE_TERMINOLOGIA_ED_ESEMPI: str = _load_prompt_from_file(_style_guide_path)
+SCHEMA_REPORT: str = _load_prompt_from_file(_schema_report_path)
 
 # Backwards-compatible aliases
 PREDEFINED_STYLE_REFERENCE_TEXT: str = GUIDA_STILE_TERMINOLOGIA_ED_ESEMPI

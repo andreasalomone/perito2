@@ -109,10 +109,15 @@ class CaseSummary(CaseBase):
         without manual dict construction.
         """
         if self.client:
-            return self.client.name
+            name: Optional[str] = self.client.name
+            return name
         return None
 
-    @computed_field
+    # Expose client_name via computed_field for serialization
+    _computed_client_name = computed_field(return_type=Optional[str])(
+        lambda self: self.client_name
+    )
+
     @property
     def creator_email(self) -> Optional[str]:
         """
@@ -121,9 +126,14 @@ class CaseSummary(CaseBase):
         # Note: We access the ORM relationship 'creator' defined on the model
         # We need to ensure eager loading in the query options to avoid N+1
         if hasattr(self, "creator") and self.creator:
-            return self.creator.email
+            email: Optional[str] = self.creator.email
+            return email
         return None
 
+    # Expose creator_email via computed_field for serialization
+    _computed_creator_email = computed_field(return_type=Optional[str])(
+        lambda self: self.creator_email
+    )
 
 # --- VERSIONS ---
 class VersionRead(BaseModel):

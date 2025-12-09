@@ -98,6 +98,11 @@ AsyncSessionLocal = async_sessionmaker(
     bind=async_engine, class_=AsyncSession, expire_on_commit=False
 )
 
+# Base is imported from app.models.base to avoid circular imports
+from app.models.base import (  # noqa: F401 - Required for SQLAlchemy model registration
+    Base,
+)
+
 
 # -----------------------------------------------------------------------------
 # 4. FastAPI Dependency (unchanged)

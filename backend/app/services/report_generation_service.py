@@ -405,7 +405,7 @@ async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSes
             processed_files=processed_files_models
         )
         report_text = report_result.content
-        report_text = report_result.content
+        # Token usage available in report_result.usage if needed for logging
 
         # 3. Generate DOCX
         logger.info("Generating DOCX...")

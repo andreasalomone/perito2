@@ -91,7 +91,7 @@ class EmailProcessingLog(Base):
     )
 
     # Relationships
-    organization: Mapped[Optional["Organization"]] = relationship()
+    organization: Mapped[Optional["Organization"]] = relationship("Organization")
     user: Mapped[Optional["User"]] = relationship(back_populates="email_logs")
     case: Mapped[Optional["Case"]] = relationship(back_populates="email_logs")
     attachments: Mapped[List["EmailAttachment"]] = relationship(
@@ -152,8 +152,8 @@ class EmailAttachment(Base):
 
     # Relationships
     email_log: Mapped["EmailProcessingLog"] = relationship(back_populates="attachments")
-    organization: Mapped[Optional["Organization"]] = relationship()
-    document: Mapped[Optional["Document"]] = relationship()
+    organization: Mapped[Optional["Organization"]] = relationship("Organization")
+    document: Mapped[Optional["Document"]] = relationship("Document")
 
 
 class BrevoWebhookLog(Base):
