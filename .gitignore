@@ -73,3 +73,4 @@ frontend/src/components/cases/CaseFileUploader.test.tsx
 backend/clean.sh
 .gitignore
 .gitignore
+backend/sonar-project.properties

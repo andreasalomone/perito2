@@ -39,3 +39,4 @@ instance/
 # IDEs
 .idea/
 .vscode/
+.scannerwork/

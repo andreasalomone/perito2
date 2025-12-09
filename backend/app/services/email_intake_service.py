@@ -10,7 +10,7 @@ import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import Dict, Optional
 from uuid import UUID
 
 import httpx
@@ -37,8 +37,7 @@ from app.services.client_matcher import find_or_create_client
 from app.services.email_ai_extractor import CaseExtractionResult, extract_case_data
 from app.services.gcs_service import get_storage_client
 
-if TYPE_CHECKING:
-    from app.models import Client
+# Client is already imported above from app.models
 
 
 logger = logging.getLogger(__name__)

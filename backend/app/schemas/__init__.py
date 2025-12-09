@@ -101,7 +101,6 @@ class CaseSummary(CaseBase):
     model_config = ConfigDict(from_attributes=True)
 
     @computed_field
-    @property
     def client_name(self) -> Optional[str]:
         """
         Efficiently extracts client name from the ORM relationship.
@@ -113,12 +112,7 @@ class CaseSummary(CaseBase):
             return name
         return None
 
-    # Expose client_name via computed_field for serialization
-    _computed_client_name = computed_field(return_type=Optional[str])(
-        lambda self: self.client_name
-    )
-
-    @property
+    @computed_field
     def creator_email(self) -> Optional[str]:
         """
         Extracts creator email from relationship.
@@ -130,10 +124,6 @@ class CaseSummary(CaseBase):
             return email
         return None
 
-    # Expose creator_email via computed_field for serialization
-    _computed_creator_email = computed_field(return_type=Optional[str])(
-        lambda self: self.creator_email
-    )
 
 # --- VERSIONS ---
 class VersionRead(BaseModel):

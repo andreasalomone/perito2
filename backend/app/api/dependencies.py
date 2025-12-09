@@ -98,7 +98,9 @@ def get_current_user_token(
             detail="Invalid token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    except Exception as e:
+    except (auth.AuthError, ValueError) as e:
+        # AuthError: base class for Firebase auth exceptions not caught above
+        # ValueError: malformed token structure
         logger.error(f"Authentication error: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

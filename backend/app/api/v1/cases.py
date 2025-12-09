@@ -478,9 +478,9 @@ def delete_case(case_id: UUID, db: Annotated[Session, Depends(get_db)]):
         db.delete(v)
 
     # 3. Soft-delete the case
-    from datetime import datetime
+    from datetime import datetime, timezone
 
-    case.deleted_at = datetime.utcnow()
+    case.deleted_at = datetime.now(timezone.utc)
     db.commit()
     logger.info(
         f"Case {case_id} soft-deleted with {len(docs)} docs and {len(versions)} versions removed."

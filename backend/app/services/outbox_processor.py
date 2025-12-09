@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,7 +36,7 @@ async def process_message(message_id, db: AsyncSession):
             )
 
         msg.status = "PROCESSED"
-        msg.processed_at = datetime.utcnow()
+        msg.processed_at = datetime.now(timezone.utc)
         await db.commit()
 
     except Exception as e:
