@@ -99,7 +99,9 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 # Base is imported from app.models.base to avoid circular imports
-from app.models.base import Base  # noqa: F401 - Required for SQLAlchemy model registration
+from app.models.base import (  # noqa: F401 - Required for SQLAlchemy model registration
+    Base,
+)
 
 
 # -----------------------------------------------------------------------------

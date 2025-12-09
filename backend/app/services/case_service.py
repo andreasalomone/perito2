@@ -268,8 +268,8 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
         db.query(ReportVersion)
         .filter(
             ReportVersion.case_id == case_id,
-            ReportVersion.is_final == False,
-            ReportVersion.ai_raw_output != None,  # Ensure it has AI content
+            ReportVersion.is_final.is_(False),
+            ReportVersion.ai_raw_output.isnot(None),  # Ensure it has AI content
         )
         .order_by(ReportVersion.version_number.desc())
         .first()

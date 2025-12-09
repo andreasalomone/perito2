@@ -1,11 +1,10 @@
-import asyncio
 import logging
 import os
 import sys
 from logging.config import fileConfig
 
 from google.cloud.sql.connector import Connector, IPTypes
-from sqlalchemy import create_engine, engine_from_config, pool
+from sqlalchemy import create_engine, pool
 
 from alembic import context
 
@@ -15,7 +14,7 @@ from alembic import context
 # Add the project root to python path so we can import 'app'
 sys.path.append(os.getcwd())
 
-import app.models  # Ensure models are registered with Base.metadata
+import app.models  # noqa: F401 - Ensure models are registered with Base.metadata
 from app.core.config import settings
 from app.db.database import Base  # Import the declarative base from our refactored file
 
