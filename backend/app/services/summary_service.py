@@ -39,24 +39,26 @@ Il riassunto deve:
 async def generate_summary(report_text: str) -> Optional[str]:
     """
     Generates a markdown summary of the report using gemini-2.5-flash-lite.
-    
+
     Args:
         report_text: The raw AI-generated report text
-        
+
     Returns:
         A concise markdown summary in Italian, or None if generation fails
     """
     if not report_text or len(report_text.strip()) < 100:
         logger.warning("Report text too short for summarization")
         return None
-    
+
     try:
         # Initialize client
         client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        
+
         # Build prompt
-        prompt = SUMMARY_PROMPT.format(report_text=report_text[:50000])  # Limit input size
-        
+        prompt = SUMMARY_PROMPT.format(
+            report_text=report_text[:50000]
+        )  # Limit input size
+
         # Generate with configurable summary model
         response = await client.aio.models.generate_content(
             model=settings.LLM_SUMMARY_MODEL_NAME,
@@ -64,9 +66,9 @@ async def generate_summary(report_text: str) -> Optional[str]:
             config=types.GenerateContentConfig(
                 temperature=0.3,  # Lower temperature for more focused summaries
                 max_output_tokens=2000,
-            )
+            ),
         )
-        
+
         # Extract text
         if response and response.text:
             summary = response.text.strip()
@@ -75,7 +77,7 @@ async def generate_summary(report_text: str) -> Optional[str]:
         else:
             logger.warning("Empty response from summary model")
             return None
-            
+
     except Exception as e:
         logger.error(f"Summary generation failed: {e}", exc_info=True)
         return None

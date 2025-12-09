@@ -1,6 +1,5 @@
 """Cache service for managing Gemini API prompt caching."""
 
-
 import logging
 import os
 from datetime import datetime, timezone
@@ -8,7 +7,7 @@ from typing import Optional
 
 from google import genai
 from google.api_core import exceptions as google_exceptions
-from google.genai import types, errors
+from google.genai import errors, types
 from tenacity import (
     RetryError,
     retry,
@@ -35,9 +34,6 @@ RETRIABLE_GEMINI_EXCEPTIONS = (
 )
 
 
-
-
-
 def get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
     """Retrieves an existing prompt cache or creates a new one.
 
@@ -53,7 +49,7 @@ def get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
     """
     display_name = settings.CACHE_DISPLAY_NAME
     model_name = settings.LLM_MODEL_NAME
-    
+
     # Ensure model name for cache creation is just the model ID
     model_id_for_creation = model_name
     if model_id_for_creation.startswith("models/"):
@@ -61,7 +57,9 @@ def get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
 
     active_cache_name: Optional[str] = None
 
-    logger.info(f"Looking for existing cache with display_name: {display_name} for model: {model_name}")
+    logger.info(
+        f"Looking for existing cache with display_name: {display_name} for model: {model_name}"
+    )
 
     try:
         # List caches and find match
@@ -76,13 +74,15 @@ def get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
             return list(client.caches.list())
 
         caches = _list_caches_with_retry()
-        
+
         for cache in caches:
             # Check if display name matches and model matches
             # Note: cache.model might be full resource name "models/gemini-..."
-            if (getattr(cache, 'display_name', '') == display_name and 
-                (cache.model == model_name or cache.model.endswith(f"/{model_id_for_creation}"))):
-                
+            if getattr(cache, "display_name", "") == display_name and (
+                cache.model == model_name
+                or cache.model.endswith(f"/{model_id_for_creation}")
+            ):
+
                 # Check expiration
                 expire_time = getattr(cache, "expire_time", None)
                 is_expired = False
@@ -90,7 +90,7 @@ def get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
                     now = datetime.now(timezone.utc)
                     if isinstance(expire_time, datetime) and expire_time < now:
                         is_expired = True
-                
+
                 if not is_expired:
                     logger.info(f"Found valid existing cache: {cache.name}")
                     active_cache_name = cache.name

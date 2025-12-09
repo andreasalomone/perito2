@@ -1,12 +1,13 @@
-from sqlalchemy.orm import Session
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from datetime import datetime
 import asyncio
 import logging
+from datetime import datetime
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 # Import the Async Session Factory
-from app.db.database import AsyncSessionLocal 
+from app.db.database import AsyncSessionLocal
 from app.models.outbox import OutboxMessage
 from app.services import report_generation_service
 
@@ -23,7 +24,7 @@ async def process_message(message_id, db: AsyncSession):
         select(OutboxMessage).filter(OutboxMessage.id == message_id)
     )
     msg = result.scalars().first()
-    
+
     if not msg or msg.status != "PENDING":
         return
 
@@ -31,13 +32,13 @@ async def process_message(message_id, db: AsyncSession):
         if msg.topic == "generate_report":
             await report_generation_service.trigger_generation_task(
                 case_id=msg.payload["case_id"],
-                organization_id=msg.payload["organization_id"]
+                organization_id=msg.payload["organization_id"],
             )
-        
+
         msg.status = "PROCESSED"
         msg.processed_at = datetime.utcnow()
         await db.commit()
-        
+
     except Exception as e:
         logger.error(f"Failed to process outbox message {message_id}: {e}")
         msg.retry_count += 1
@@ -50,7 +51,7 @@ async def process_outbox_batch_async(db: AsyncSession, batch_size: int = 10):
     """
     Fully async version for async contexts (FastAPI endpoints, async tasks).
     Reads PENDING messages with row locking and processes them.
-    
+
     This version should be used when calling from async code to avoid
     RuntimeError: asyncio.run() cannot be called from a running event loop.
     """
@@ -80,7 +81,7 @@ def process_outbox_batch(db: Session, batch_size: int = 10):
     """
     SYNC wrapper for backwards compatibility with cron jobs.
     Creates a new event loop for async operations.
-    
+
     NOTE: Do NOT call from async contexts. Use process_outbox_batch_async instead.
     """
     # FIX BUG-2: Check if we're in an existing event loop
@@ -88,20 +89,27 @@ def process_outbox_batch(db: Session, batch_size: int = 10):
     try:
         loop = asyncio.get_running_loop()
         if loop.is_running():
-             # We are in an async context (e.g. FastAPI). We CANNOT use asyncio.run().
-             # Schedule the work on the existing loop (Fire-and-forget).
-             logger.warning("process_outbox_batch called from async context. Scheduling background task.")
-             loop.create_task(process_outbox_batch_async(AsyncSessionLocal(), batch_size))
-             return
+            # We are in an async context (e.g. FastAPI). We CANNOT use asyncio.run().
+            # Schedule the work on the existing loop (Fire-and-forget).
+            logger.warning(
+                "process_outbox_batch called from async context. Scheduling background task."
+            )
+            loop.create_task(
+                process_outbox_batch_async(AsyncSessionLocal(), batch_size)
+            )
+            return
     except RuntimeError:
         # No event loop running, safe to proceed with asyncio.run()
         pass
     # 1. Fetch pending messages with row locking (Sync)
-    messages = db.query(OutboxMessage).filter(
-        OutboxMessage.status == "PENDING"
-    ).order_by(
-        OutboxMessage.created_at.asc()
-    ).with_for_update(skip_locked=True).limit(batch_size).all()
+    messages = (
+        db.query(OutboxMessage)
+        .filter(OutboxMessage.status == "PENDING")
+        .order_by(OutboxMessage.created_at.asc())
+        .with_for_update(skip_locked=True)
+        .limit(batch_size)
+        .all()
+    )
 
     if not messages:
         return
@@ -119,6 +127,6 @@ def process_outbox_batch(db: Session, batch_size: int = 10):
                 except Exception as e:
                     logger.error(f"Batch processing error for {msg_id}: {e}")
                     # Individual error handling is done inside process_message
-    
+
     # 4. Bridge the gap
     asyncio.run(_process_batch_async())

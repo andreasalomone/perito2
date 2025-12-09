@@ -3,6 +3,7 @@ Email AI Extractor Service
 
 Uses Gemini Flash-Lite to extract structured case data from inbound emails.
 """
+
 import json
 import logging
 from dataclasses import dataclass, field
@@ -56,6 +57,7 @@ If a field cannot be determined, use null.
 @dataclass
 class CaseExtractionResult:
     """Result from AI extraction."""
+
     reference_code: Optional[str] = None
     ns_rif: Optional[int] = None
     polizza: Optional[str] = None
@@ -82,7 +84,7 @@ class CaseExtractionResult:
     data_incarico: Optional[date] = None
     note: Optional[str] = None
     ai_summary: Optional[str] = None
-    
+
     # Metadata
     raw_response: Optional[str] = field(default=None, repr=False)
     extraction_success: bool = True
@@ -116,26 +118,25 @@ def extract_case_data(
     email_body: str,
     subject: Optional[str] = None,
     sender_email: Optional[str] = None,
-    attachments: Optional[list[Dict[str, Any]]] = None  # New argument
+    attachments: Optional[list[Dict[str, Any]]] = None,  # New argument
 ) -> CaseExtractionResult:
     """
     Extract structured case data from email using Gemini Flash-Lite.
-    
+
     Args:
         email_body: The email body text (markdown preferred)
         subject: Email subject line
         sender_email: Sender's email address
         attachments: List of processed attachment dicts (from document_processor)
-        
+
     Returns:
         CaseExtractionResult with extracted fields
     """
     if not email_body and not subject and not attachments:
         return CaseExtractionResult(
-            extraction_success=False,
-            error_message="No content to extract from"
+            extraction_success=False, error_message="No content to extract from"
         )
-    
+
     # Initialize prompt parts
     prompt_text = f"""You are an insurance case data extractor. Analyze this email and any attached documents to extract structured data.
 
@@ -151,7 +152,7 @@ EMAIL BODY:
         client = genai.Client(
             vertexai=True,
             project=settings.GOOGLE_CLOUD_PROJECT,
-            location=settings.GOOGLE_CLOUD_REGION
+            location=settings.GOOGLE_CLOUD_REGION,
         )
     except Exception as e:
         logger.error(f"Failed to initialize Gemini client: {e}")
@@ -164,23 +165,23 @@ EMAIL BODY:
         # Process attachments
         if attachments:
             prompt_text += "\n\n--- ATTACHED DOCUMENTS CONTENT ---\n"
-            
+
             for idx, att in enumerate(attachments):
                 att_type = att.get("type", "text")
-                
+
                 if att_type == "text":
                     # Append text content directly to the prompt
                     content = att.get("content", "")
-                    
+
                     # SAFETY: Truncate massive text files to prevent context overload/timeouts
                     # Gemini Flash-Lite is generous (1M tokens), but let's be reasonable (e.g. ~500k chars)
                     # to keep latency and error rates down.
                     if len(content) > 500_000:
                         content = content[:500_000] + "\n...[TRUNCATED]..."
-                        
+
                     filename = att.get("source_file", f"attachment_{idx}")
                     prompt_text += f"\n[DOCUMENT: {filename}]\n{content}\n"
-                    
+
                 elif att_type == "vision":
                     # Upload to Gemini File API (Ephemeral)
                     path = att.get("path")
@@ -188,19 +189,25 @@ EMAIL BODY:
                         try:
                             # Upload file
                             uploaded_file = client.files.upload(path=path)
-                            logger.info(f"Uploaded attachment {path} to Gemini File API: {uploaded_file.name}")
-                            
+                            logger.info(
+                                f"Uploaded attachment {path} to Gemini File API: {uploaded_file.name}"
+                            )
+
                             # Track for cleanup
                             uploaded_files_to_cleanup.append(uploaded_file.name)
-                            
+
                             # Add as content part
-                            model_contents.append(types.Part.from_uri(
-                                file_uri=uploaded_file.uri,
-                                mime_type=uploaded_file.mime_type
-                            ))
+                            model_contents.append(
+                                types.Part.from_uri(
+                                    file_uri=uploaded_file.uri,
+                                    mime_type=uploaded_file.mime_type,
+                                )
+                            )
                         except Exception as upload_err:
-                            logger.warning(f"Failed to upload vision attachment {path}: {upload_err}")
-                    
+                            logger.warning(
+                                f"Failed to upload vision attachment {path}: {upload_err}"
+                            )
+
         # Add the text prompt as the final part
         prompt_text += f"""
 ---
@@ -218,21 +225,21 @@ Return ONLY valid JSON, no explanation or markdown code blocks.
             config=types.GenerateContentConfig(
                 temperature=0.1,  # Low temp for structured output
                 max_output_tokens=2000,
-                response_mime_type="application/json"
-            )
+                response_mime_type="application/json",
+            ),
         )
-        
+
         # Parse response
         response_text = response.text.strip()
-        
+
         # Clean up potential markdown code blocks
         if response_text.startswith("```"):
             response_text = response_text.split("```")[1]
             if response_text.startswith("json"):
                 response_text = response_text[4:]
-        
+
         data = json.loads(response_text)
-        
+
         # Build result
         result = CaseExtractionResult(
             reference_code=data.get("reference_code"),
@@ -262,31 +269,33 @@ Return ONLY valid JSON, no explanation or markdown code blocks.
             note=data.get("note"),
             ai_summary=data.get("ai_summary"),
             raw_response=response_text,
-            extraction_success=True
+            extraction_success=True,
         )
-        
-        logger.info(f"Extracted case data: ref={result.reference_code}, cliente={result.cliente}")
+
+        logger.info(
+            f"Extracted case data: ref={result.reference_code}, cliente={result.cliente}"
+        )
         return result
-        
+
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse LLM JSON response: {e}")
         return CaseExtractionResult(
-            extraction_success=False,
-            error_message=f"JSON parse error: {e}"
+            extraction_success=False, error_message=f"JSON parse error: {e}"
         )
     except Exception as e:
         logger.error(f"AI extraction failed: {e}", exc_info=True)
-        return CaseExtractionResult(
-            extraction_success=False,
-            error_message=str(e)
-        )
+        return CaseExtractionResult(extraction_success=False, error_message=str(e))
     finally:
         # CLEANUP: Delete uploaded files from Gemini to prevent accumulation/quota issues
         if uploaded_files_to_cleanup:
-            logger.info(f"Cleaning up {len(uploaded_files_to_cleanup)} temporary Gemini files...")
+            logger.info(
+                f"Cleaning up {len(uploaded_files_to_cleanup)} temporary Gemini files..."
+            )
             for fname in uploaded_files_to_cleanup:
                 try:
                     client.files.delete(name=fname)
                     logger.debug(f"Deleted Gemini file: {fname}")
                 except Exception as cleanup_err:
-                    logger.warning(f"Failed to delete Gemini file {fname}: {cleanup_err}")
+                    logger.warning(
+                        f"Failed to delete Gemini file {fname}: {cleanup_err}"
+                    )

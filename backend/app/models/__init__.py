@@ -1,11 +1,11 @@
+from app.models.audit import AuditLog
 from app.models.base import Base
-from app.models.users import User, Organization, AllowedEmail
 from app.models.cases import Case, Client
 from app.models.documents import Document, ReportVersion
+from app.models.email_intake import BrevoWebhookLog, EmailAttachment, EmailProcessingLog
 from app.models.ml import MLTrainingPair
-from app.models.audit import AuditLog
 from app.models.outbox import OutboxMessage
-from app.models.email_intake import EmailProcessingLog, EmailAttachment, BrevoWebhookLog
+from app.models.users import AllowedEmail, Organization, User
 
 # Export all for convenience
 __all__ = [

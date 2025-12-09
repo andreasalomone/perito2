@@ -1,12 +1,14 @@
-from pydantic import BaseModel, ConfigDict, computed_field, Field
-from typing import List, Optional, Any
 from datetime import date, datetime
 from decimal import Decimal
-from uuid import UUID
 from enum import Enum
+from typing import Any, List, Optional
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 # --- ENUMS ---
 from app.schemas.enums import CaseStatus, ExtractionStatus
+
 
 # --- DOCUMENTS ---
 class DocumentRead(BaseModel):
@@ -15,6 +17,7 @@ class DocumentRead(BaseModel):
     ai_status: ExtractionStatus
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
 
 # --- BASE ---
 class CaseBase(BaseModel):
@@ -46,13 +49,15 @@ class CaseBase(BaseModel):
     note: Optional[str] = None
     # ai_summary REMOVED from Base to avoid bloat in List View
 
+
 class CaseCreate(CaseBase):
-    client_name: Optional[str] = None # Helper to find/create Client
+    client_name: Optional[str] = None  # Helper to find/create Client
 
 
 # --- CASE UPDATE (for PATCH endpoint) ---
 class CaseUpdate(BaseModel):
     """Schema for PATCH /cases/{id} - all fields optional."""
+
     reference_code: Optional[str] = None
     client_name: Optional[str] = None  # To update client relationship
     ns_rif: Optional[int] = None
@@ -82,18 +87,19 @@ class CaseUpdate(BaseModel):
     ai_summary: Optional[str] = None
     status: Optional[CaseStatus] = None
 
+
 class CaseSummary(CaseBase):
     id: UUID
     organization_id: UUID
     client_id: Optional[UUID] = None  # Required by frontend for filtering
     status: CaseStatus
     created_at: datetime
-    
+
     # Hold the client relationship during serialization but exclude from JSON output
     client: Optional[Any] = Field(default=None, exclude=True)
-    
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     @property
     def client_name(self) -> Optional[str]:
         """
@@ -105,9 +111,11 @@ class CaseSummary(CaseBase):
             name: Optional[str] = self.client.name
             return name
         return None
-    
+
     # Expose client_name via computed_field for serialization
-    _computed_client_name = computed_field(return_type=Optional[str])(lambda self: self.client_name)
+    _computed_client_name = computed_field(return_type=Optional[str])(
+        lambda self: self.client_name
+    )
 
     @property
     def creator_email(self) -> Optional[str]:
@@ -116,14 +124,15 @@ class CaseSummary(CaseBase):
         """
         # Note: We access the ORM relationship 'creator' defined on the model
         # We need to ensure eager loading in the query options to avoid N+1
-        if hasattr(self, 'creator') and self.creator:
+        if hasattr(self, "creator") and self.creator:
             email: Optional[str] = self.creator.email
             return email
         return None
-    
-    # Expose creator_email via computed_field for serialization
-    _computed_creator_email = computed_field(return_type=Optional[str])(lambda self: self.creator_email)
 
+    # Expose creator_email via computed_field for serialization
+    _computed_creator_email = computed_field(return_type=Optional[str])(
+        lambda self: self.creator_email
+    )
 
 
 # --- VERSIONS ---
@@ -135,24 +144,29 @@ class VersionRead(BaseModel):
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
+
 # --- COMPOSITE (The "Full View") ---
 class CaseDetail(CaseSummary):
     documents: List[DocumentRead] = []
     report_versions: List[VersionRead] = []
     ai_summary: Optional[str] = None  # Moved here from Base
 
+
 # --- LIGHTWEIGHT STATUS ---
 class CaseStatusRead(BaseModel):
     id: UUID
     status: CaseStatus
     documents: List[DocumentRead]
-    is_generating: bool = False # Computed field
+    is_generating: bool = False  # Computed field
+
 
 class FinalizePayload(BaseModel):
     final_docx_path: str
 
+
 class DownloadVariantPayload(BaseModel):
-    template_type: str # "bn" | "salomone"
+    template_type: str  # "bn" | "salomone"
+
 
 class DocumentRegisterPayload(BaseModel):
     filename: str

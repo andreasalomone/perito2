@@ -61,7 +61,9 @@ def validate_response_content(response: Any, report_content: str) -> Optional[st
         logger.error(
             f"Content generation blocked. Reason from prompt_feedback: {block_reason_name}"
         )
-        return f"Error: Content generation blocked by the LLM. Reason: {block_reason_name}"
+        return (
+            f"Error: Content generation blocked by the LLM. Reason: {block_reason_name}"
+        )
 
     # 2. Check Candidate Finish Reasons
     if response.candidates:
@@ -73,19 +75,21 @@ def validate_response_content(response: Any, report_content: str) -> Optional[st
                 if hasattr(finish_reason_obj, "name")
                 else str(finish_reason_obj)
             )
-            
+
             # Critical: Fail on MAX_TOKENS even if we have partial text
             if finish_reason_name == types.FinishReason.MAX_TOKENS.name:
                 logger.warning("Content generation stopped due to MAX_TOKENS.")
                 return "Error: Content generation reached maximum token limit. The generated text may be incomplete."
-            
+
             # Fail on other non-STOP reasons (SAFETY, RECITATION, etc.)
             elif finish_reason_name != types.FinishReason.STOP.name:
                 logger.error(
                     f"Content generation stopped for reason: {finish_reason_name}."
                 )
-                return f"Error: LLM generation stopped for reason: {finish_reason_name}."
-            
+                return (
+                    f"Error: LLM generation stopped for reason: {finish_reason_name}."
+                )
+
             # If STOP, but no content, that's also an error
             elif (
                 finish_reason_name == types.FinishReason.STOP.name
