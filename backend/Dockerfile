@@ -39,6 +39,7 @@ ENV PYTHONUNBUFFERED=1 \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
+    libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user for security
@@ -59,6 +60,7 @@ USER appuser
 EXPOSE 8080
 
 # Command to run the application
-# We use the shell form to properly expand the $PORT variable provided by Cloud Run
-CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}
-
+# Use 'exec' to replace the shell process with uvicorn, ensuring signals pass through.
+# --proxy-headers: Trusts Cloud Run Load Balancer headers (IPs, proto)
+# --forwarded-allow-ips: Essential for Cloud Run to trust the hop
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --proxy-headers --forwarded-allow-ips='*'"]

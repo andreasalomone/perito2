@@ -1,4 +1,5 @@
 import base64
+import binascii
 import functools
 import io
 import logging
@@ -14,15 +15,26 @@ from typing import Any, Callable, Dict, List, Set, TypeVar
 import fitz  # PyMuPDF
 import mailparser
 import openpyxl
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 
 # --- Security Constants (External Audit) ---
 MAX_RECURSION_DEPTH = 3
 MAX_ATTACHMENT_SIZE_BYTES = 25 * 1024 * 1024  # 25 MB
-MAX_B64_STRING_LENGTH = int(MAX_ATTACHMENT_SIZE_BYTES * 1.35)  # ~33.75 MB (b64 overhead)
+MAX_B64_STRING_LENGTH = int(
+    MAX_ATTACHMENT_SIZE_BYTES * 1.35
+)  # ~33.75 MB (b64 overhead)
 TINY_IMAGE_THRESHOLD_BYTES = 5 * 1024  # 5 KB
 TINY_IMAGE_DIMENSION_PX = 100
-EXCLUDED_EXTENSIONS: Set[str] = {".gif", ".mp4", ".avi", ".mov", ".mkv", ".webm", ".exe", ".bin"}
+EXCLUDED_EXTENSIONS: Set[str] = {
+    ".gif",
+    ".mp4",
+    ".avi",
+    ".mov",
+    ".mkv",
+    ".webm",
+    ".exe",
+    ".bin",
+}
 
 
 # --- HTML Stripper (stdlib - safer than regex) ---
@@ -320,7 +332,9 @@ def process_eml_file(
     Returns a FLAT LIST of dictionaries.
     """
     if depth > MAX_RECURSION_DEPTH:
-        logger.warning(f"Max recursion depth ({MAX_RECURSION_DEPTH}) reached for {eml_path}")
+        logger.warning(
+            f"Max recursion depth ({MAX_RECURSION_DEPTH}) reached for {eml_path}"
+        )
         return [
             {
                 "type": "error",
@@ -383,11 +397,13 @@ def process_eml_file(
                         f"Attachment '{original_filename}' exceeds size limit "
                         f"(encoded size: {len(payload):,} bytes > {MAX_B64_STRING_LENGTH:,}). Skipping."
                     )
-                    all_parts.append({
-                        "type": "error",
-                        "filename": original_filename,
-                        "message": f"Attachment too large (>{MAX_ATTACHMENT_SIZE_BYTES // (1024*1024)}MB)",
-                    })
+                    all_parts.append(
+                        {
+                            "type": "error",
+                            "filename": original_filename,
+                            "message": f"Attachment too large (>{MAX_ATTACHMENT_SIZE_BYTES // (1024*1024)}MB)",
+                        }
+                    )
                     continue
 
                 # Fix base64 padding
@@ -397,8 +413,10 @@ def process_eml_file(
 
                 try:
                     decoded_payload = base64.b64decode(payload)
-                except base64.binascii.Error:
-                    logger.warning(f"Invalid base64 in attachment '{original_filename}'")
+                except binascii.Error:
+                    logger.warning(
+                        f"Invalid base64 in attachment '{original_filename}'"
+                    )
                     continue
             else:
                 # Payload might already be bytes in some parsers
@@ -410,11 +428,13 @@ def process_eml_file(
                     f"Attachment '{original_filename}' exceeds size limit "
                     f"(decoded size: {len(decoded_payload):,} bytes). Skipping."
                 )
-                all_parts.append({
-                    "type": "error",
-                    "filename": original_filename,
-                    "message": f"Attachment too large (>{MAX_ATTACHMENT_SIZE_BYTES // (1024*1024)}MB)",
-                })
+                all_parts.append(
+                    {
+                        "type": "error",
+                        "filename": original_filename,
+                        "message": f"Attachment too large (>{MAX_ATTACHMENT_SIZE_BYTES // (1024*1024)}MB)",
+                    }
+                )
                 continue
 
             # --- TINY IMAGE FILTER (Signatures/Icons) ---
@@ -423,7 +443,10 @@ def process_eml_file(
                     try:
                         with Image.open(io.BytesIO(decoded_payload)) as img:
                             width, height = img.size
-                            if width < TINY_IMAGE_DIMENSION_PX and height < TINY_IMAGE_DIMENSION_PX:
+                            if (
+                                width < TINY_IMAGE_DIMENSION_PX
+                                and height < TINY_IMAGE_DIMENSION_PX
+                            ):
                                 logger.info(
                                     f"Skipping tiny image '{original_filename}' "
                                     f"({width}x{height}, {len(decoded_payload)} bytes) in {eml_path}"

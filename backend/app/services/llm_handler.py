@@ -2,6 +2,13 @@ import asyncio
 import heapq
 import logging
 import mimetypes
+
+try:
+    import magic  # python-magic for MIME type detection via magic bytes
+
+    MAGIC_AVAILABLE = True
+except ImportError:
+    MAGIC_AVAILABLE = False
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -149,8 +156,6 @@ class CleanupRetryItem:
         return datetime.now(timezone.utc) + timedelta(minutes=wait_minutes)
 
 
-import threading
-
 # ... (imports)
 
 
@@ -163,7 +168,7 @@ class CleanupRetryQueue:
     def __init__(self, max_dead_letter_size: int = 100):
         self._queue: List[CleanupRetryItem] = []  # Heapq structure
         self._dead_letter: Deque[CleanupRetryItem] = deque(maxlen=max_dead_letter_size)
-        self._lock = threading.Lock()
+        self._lock = asyncio.Lock()  # Async-native lock for event loop compatibility
         # Track background tasks to prevent premature GC
         self._background_tasks: Set[asyncio.Task] = set()
 
@@ -178,7 +183,7 @@ class CleanupRetryQueue:
             next_retry_at=datetime.now(timezone.utc) + timedelta(minutes=1),
             last_error=error,
         )
-        with self._lock:
+        async with self._lock:
             heapq.heappush(self._queue, item)
 
         # Log count only, avoid leaking PII (filenames)
@@ -206,7 +211,7 @@ class CleanupRetryQueue:
             # triggers are frequent.
             return
 
-        with self._lock:
+        async with self._lock:
             now = datetime.now(timezone.utc)
             items_to_retry: List[CleanupRetryItem] = []
 
@@ -250,7 +255,7 @@ class CleanupRetryQueue:
             await self._move_to_dead_letter(item)
         else:
             item.next_retry_at = item.calculate_next_retry()
-            with self._lock:
+            async with self._lock:
                 heapq.heappush(self._queue, item)
 
     def create_background_task(self, coro) -> None:
@@ -285,6 +290,7 @@ class GeminiReportGenerator:
         generation_service: GenerationServiceProtocol,
         retry_queue: CleanupRetryQueue,
         allowed_file_dirs: Optional[List[Path]] = None,
+        concurrency_limit: int = 5,  # Encapsulated: controls max parallel LLM calls
     ):
         self.client = client
         self.model_name = model_name
@@ -299,6 +305,9 @@ class GeminiReportGenerator:
 
         # Security: Default to empty list (deny all) if not provided
         self.allowed_file_dirs = allowed_file_dirs or []
+
+        # Concurrency control: limits parallel LLM API calls per instance
+        self._semaphore = asyncio.Semaphore(concurrency_limit)
 
         self.retry_policy = AsyncRetrying(
             stop=stop_after_attempt(3),
@@ -315,9 +324,8 @@ class GeminiReportGenerator:
 
     async def generate(self, processed_files: List[ProcessedFile]) -> ReportResult:
         """Main entry point for report generation."""
-        # Cost Safeguard: Limit concurrent executions
-        # We access the global semaphore defined at module level
-        async with llm_generation_semaphore:
+        # Cost Safeguard: Limit concurrent executions via instance semaphore
+        async with self._semaphore:
             return await self._generate_internal(processed_files)
 
     async def _generate_internal(
@@ -334,10 +342,10 @@ class GeminiReportGenerator:
             # 1. Context Caching
             cache_name = self.cache_service.get_or_create_prompt_cache(self.client)
 
-            # 2. Prepare Vision Assets
+            # 2. Prepare Vision Assets (async for non-blocking I/O)
             # Separate GCS files (use Part.from_uri) from local files (upload)
-            gcs_candidates, upload_candidates, skipped_errors = self._prepare_vision_assets(
-                processed_files
+            gcs_candidates, upload_candidates, skipped_errors = (
+                await self._prepare_vision_assets(processed_files)
             )
             # Add skipped file errors so they appear in the prompt for user awareness
             upload_errors.extend(skipped_errors)
@@ -409,15 +417,19 @@ class GeminiReportGenerator:
             self._schedule_cleanup(files_to_cleanup)
 
     # Vertex AI supported MIME types for vision assets
-    VERTEX_SUPPORTED_MIME_TYPES = frozenset({
-        "application/pdf",
-        "image/jpeg",
-        "image/png",
-        "image/gif",
-        "image/webp",
-    })
+    VERTEX_SUPPORTED_MIME_TYPES = frozenset(
+        {
+            "application/pdf",
+            "image/jpeg",
+            "image/png",
+            "image/gif",
+            "image/webp",
+        }
+    )
 
-    def _prepare_vision_assets(self, processed_files: List[ProcessedFile]) -> Tuple[
+    async def _prepare_vision_assets(
+        self, processed_files: List[ProcessedFile]
+    ) -> Tuple[
         List[FileUploadServiceProtocol.UploadCandidate],
         List[FileUploadServiceProtocol.UploadCandidate],
         List[str],  # Added: skipped file errors for user visibility
@@ -441,8 +453,8 @@ class GeminiReportGenerator:
             if not local_path and not gcs_uri:
                 continue
 
-            # SECURITY: Strict path validation for local files
-            if local_path and not self._is_safe_path(local_path):
+            # SECURITY: Strict path validation for local files (async, non-blocking)
+            if local_path and not await self._is_safe_path(local_path):
                 logger.warning(
                     f"Skipping unsafe or unauthorized file path: {local_path}",
                     extra={"security_event": True},
@@ -455,26 +467,39 @@ class GeminiReportGenerator:
             if f.file_type not in ("vision",):
                 continue
 
-            # Determine actual MIME type - NEVER use file_type ("vision") as MIME
-            actual_mime_type = f.mime_type
+            # SECURITY: For local files, use magic bytes to detect true MIME type
+            # This prevents MIME spoofing attacks (e.g., exe renamed to jpg)
+            actual_mime_type: Optional[str] = None
+            if local_path:
+                actual_mime_type = await self._validate_magic_bytes(local_path)
 
-            # If mime_type not set, try to guess from filename
-            if not actual_mime_type or actual_mime_type in ("vision", "application/octet-stream"):
-                guessed_type, _ = mimetypes.guess_type(f.filename or "")
-                if guessed_type:
-                    actual_mime_type = guessed_type
-                else:
-                    # Manual fallback for common extensions
-                    ext = (f.filename or "").lower().rsplit(".", 1)[-1]
-                    ext_map = {
-                        "jpg": "image/jpeg", "jpeg": "image/jpeg",
-                        "png": "image/png", "gif": "image/gif",
-                        "webp": "image/webp", "pdf": "application/pdf",
-                    }
-                    actual_mime_type = ext_map.get(ext)
+            # Fallback: If magic detection unavailable/failed, use extension-based
+            if not actual_mime_type:
+                actual_mime_type = f.mime_type
+                if not actual_mime_type or actual_mime_type in (
+                    "vision",
+                    "application/octet-stream",
+                ):
+                    guessed_type, _ = mimetypes.guess_type(f.filename or "")
+                    if guessed_type:
+                        actual_mime_type = guessed_type
+                    else:
+                        ext = (f.filename or "").lower().rsplit(".", 1)[-1]
+                        ext_map = {
+                            "jpg": "image/jpeg",
+                            "jpeg": "image/jpeg",
+                            "png": "image/png",
+                            "gif": "image/gif",
+                            "webp": "image/webp",
+                            "pdf": "application/pdf",
+                        }
+                        actual_mime_type = ext_map.get(ext)
 
             # STRICT VALIDATION: Skip files with unsupported MIME types
-            if not actual_mime_type or actual_mime_type not in self.VERTEX_SUPPORTED_MIME_TYPES:
+            if (
+                not actual_mime_type
+                or actual_mime_type not in self.VERTEX_SUPPORTED_MIME_TYPES
+            ):
                 logger.warning(
                     f"Skipping '{f.filename}': unsupported MIME type '{actual_mime_type}'. "
                     f"Vertex AI requires: {self.VERTEX_SUPPORTED_MIME_TYPES}"
@@ -508,15 +533,16 @@ class GeminiReportGenerator:
         )
         return gcs_candidates, upload_candidates, skipped_errors
 
-    def _prepare_upload_candidates(
+    async def _prepare_upload_candidates(
         self, processed_files: List[ProcessedFile]
     ) -> List[FileUploadServiceProtocol.UploadCandidate]:
         """DEPRECATED: Use _prepare_vision_assets instead."""
-        _, upload_candidates, _ = self._prepare_vision_assets(processed_files)
+        _, upload_candidates, _ = await self._prepare_vision_assets(processed_files)
         return upload_candidates
 
-    def _is_safe_path(self, path_str: str) -> bool:
+    def _is_safe_path_sync(self, path_str: str) -> bool:
         """
+        Synchronous path validation. Run via asyncio.to_thread() to avoid blocking.
         Validates that the path is within the allowed directories.
         Prevents Directory Traversal attacks.
         """
@@ -537,6 +563,29 @@ class GeminiReportGenerator:
             return False
         except Exception:
             return False
+
+    async def _is_safe_path(self, path_str: str) -> bool:
+        """Async wrapper for path validation. Offloads blocking I/O to thread pool."""
+        return await asyncio.to_thread(self._is_safe_path_sync, path_str)
+
+    def _validate_magic_bytes_sync(self, path: str) -> Optional[str]:
+        """
+        Returns real MIME type if in whitelist, else None.
+        Ignores browser's claimed MIME type - trusts magic bytes only.
+        """
+        if not MAGIC_AVAILABLE:
+            return None  # Fall back to extension-based detection
+        try:
+            real_mime = magic.from_file(path, mime=True)
+            if real_mime in self.VERTEX_SUPPORTED_MIME_TYPES:
+                return real_mime
+            return None
+        except Exception:
+            return None
+
+    async def _validate_magic_bytes(self, path: str) -> Optional[str]:
+        """Async wrapper for magic byte validation."""
+        return await asyncio.to_thread(self._validate_magic_bytes_sync, path)
 
     async def _execute_generation_strategy(
         self,
@@ -731,31 +780,10 @@ class LazyGeminiProxy:
                 generation_service=generation_service,
                 retry_queue=cleanup_retry_queue,
                 allowed_file_dirs=[Path(settings.UPLOAD_FOLDER), Path("/tmp")],
+                concurrency_limit=5,  # Max parallel LLM calls per Cloud Run instance
             )
             return self._delegate
 
 
 # Export the proxy as the singleton
 gemini_generator = LazyGeminiProxy()
-
-# -----------------------------------------------------------------------------
-# 6. Concurrency Control (Cost Safeguard)
-# -----------------------------------------------------------------------------
-# Limit concurrent LLM API calls to 5 to prevent cost spikes and API overload.
-# We apply this at the module level or service level to be shared.
-# Since GeminiReportGenerator is a singleton here, we can add it to the instance
-# or wrap the call.
-#
-# For simplicity and effectiveness, we monkey-patch the generate method
-# or wrap it in the service definition.
-# A cleaner way is to use the semaphore inside the generate method of the class.
-# But since the class is defined above, let's modify the class definition in the next step
-# or just re-assign the method if we want to avoid large file edits.
-#
-# BETTER: We will modify the GeminiReportGenerator class processing logic
-# to acquire this semaphore. Since we can't easily modify the class in-place
-# without rewriting the whole file in this tool, we will use a global semaphore
-# and modify the `generate` method in the class via a separate `replace_file_content` call.
-#
-# Defining it here for now.
-llm_generation_semaphore = asyncio.Semaphore(5)

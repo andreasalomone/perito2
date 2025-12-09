@@ -113,7 +113,10 @@ async def process_case_logic(case_id: str, organization_id: str, db: AsyncSessio
             await case_service.process_document_extraction(doc.id, organization_id, db)
         else:
             # Dispatch Cloud Task
-            case_service.trigger_extraction_task(doc.id, organization_id)
+            # PERF FIX: Wrap sync function in asyncio.to_thread() to prevent blocking
+            await asyncio.to_thread(
+                case_service.trigger_extraction_task, doc.id, organization_id
+            )
 
     # NOTE: We do NOT auto-trigger generation here.
     # Users must explicitly click "Genera con IA" when ready.
@@ -163,7 +166,10 @@ async def trigger_generation_task(case_id: str, organization_id: str):
         }
 
         logger.info(f"🚀 Enqueuing generation task for case {case_id}")
-        client.create_task(request={"parent": parent, "task": task})
+        # PERF FIX: Wrap sync gRPC call in asyncio.to_thread() to prevent event loop blocking
+        await asyncio.to_thread(
+            client.create_task, request={"parent": parent, "task": task}
+        )
 
     except Exception as e:
         logger.error(f"Failed to enqueue generation task for case {case_id}: {e}")

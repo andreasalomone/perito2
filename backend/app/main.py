@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from app.core.logger import setup_logging
+from app.middleware.logging import CloudRunLoggingMiddleware
 
 # Setup Structured Logging
 logger = setup_logging()
@@ -17,6 +18,9 @@ from app.core.config import settings
 from app.db.database import lifespan
 
 app = FastAPI(title="RobotPerizia API", lifespan=lifespan)  # Connects the DB on startup
+
+# Add Logging Middleware
+app.add_middleware(CloudRunLoggingMiddleware)
 
 # CORS: Allow requests from your Next.js Frontend
 app.add_middleware(

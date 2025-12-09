@@ -28,3 +28,4 @@ cloud-sql-python-connector[asyncpg]>=1.4.0
 greenlet>=3.0.0
 flake8>=7.0.0
 Flake8-pyproject==1.2.4
+python-magic>=0.4.27

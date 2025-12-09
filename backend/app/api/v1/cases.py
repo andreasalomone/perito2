@@ -347,16 +347,24 @@ async def trigger_generation(
     background_tasks: BackgroundTasks,
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
-    case = db.get(Case, case_id)
-    if not case or case.deleted_at:
+    import asyncio
+
+    # PERF FIX: Wrap sync DB operations in asyncio.to_thread()
+    def _get_case_and_update_status():
+        case = db.get(Case, case_id)
+        if not case or case.deleted_at:
+            return None
+        case.status = CaseStatus.GENERATING
+        db.commit()
+        return case
+
+    case = await asyncio.to_thread(_get_case_and_update_status)
+
+    if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
     if settings.RUN_LOCALLY:
         # LOCAL DEV
-        # Update status immediately for UI responsiveness
-        case.status = CaseStatus.GENERATING
-        db.commit()
-
         background_tasks.add_task(
             generation_service.run_generation_task,
             case_id=str(case.id),
@@ -364,10 +372,6 @@ async def trigger_generation(
         )
     else:
         # PROD: Cloud Tasks
-        # Update status immediately for UI responsiveness
-        case.status = CaseStatus.GENERATING
-        db.commit()
-
         await generation_service.trigger_generation_task(
             str(case.id), str(case.organization_id)
         )
@@ -409,17 +413,23 @@ async def download_version(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[dict, Depends(get_current_user_token)],
 ) -> dict:
-    # Validate Case
-    case = db.get(Case, case_id)
-    if not case or case.deleted_at:
+    import asyncio
+
+    # PERF FIX: Wrap sync DB operations in asyncio.to_thread()
+    def _validate_case_and_version():
+        case = db.get(Case, case_id)
+        if not case or case.deleted_at:
+            return None, None
+        stmt = select(ReportVersion).where(
+            ReportVersion.id == version_id, ReportVersion.case_id == case_id
+        )
+        version = db.scalar(stmt)
+        return case, version
+
+    case, version = await asyncio.to_thread(_validate_case_and_version)
+
+    if not case:
         raise HTTPException(status_code=404, detail="Case not found")
-
-    # Validate Version
-    stmt = select(ReportVersion).where(
-        ReportVersion.id == version_id, ReportVersion.case_id == case_id
-    )
-    version = db.scalar(stmt)
-
     if not version:
         raise HTTPException(status_code=404, detail="Version not found")
 
@@ -428,10 +438,13 @@ async def download_version(
             if not version.docx_storage_path:
                 raise HTTPException(status_code=404, detail="File path missing.")
 
-            url = gcs_service.generate_download_signed_url(version.docx_storage_path)
+            # PERF FIX: Wrap sync GCS call in asyncio.to_thread()
+            url = await asyncio.to_thread(
+                gcs_service.generate_download_signed_url, version.docx_storage_path
+            )
             return {"download_url": url}
         else:
-            # Generate variant logic
+            # Generate variant logic (already async)
             url = await generation_service.generate_docx_variant(
                 version_id=str(version_id), template_type=payload.template_type, db=db
             )
