@@ -336,9 +336,11 @@ class GeminiReportGenerator:
 
             # 2. Prepare Vision Assets
             # Separate GCS files (use Part.from_uri) from local files (upload)
-            gcs_candidates, upload_candidates = self._prepare_vision_assets(
+            gcs_candidates, upload_candidates, skipped_errors = self._prepare_vision_assets(
                 processed_files
             )
+            # Add skipped file errors so they appear in the prompt for user awareness
+            upload_errors.extend(skipped_errors)
 
             # 2a. GCS Direct Parts - No download/upload needed
             from app.services.llm.file_upload_service import create_gcs_direct_part
@@ -406,9 +408,19 @@ class GeminiReportGenerator:
             files_to_cleanup = [f for f in vision_parts if hasattr(f, "name")]
             self._schedule_cleanup(files_to_cleanup)
 
+    # Vertex AI supported MIME types for vision assets
+    VERTEX_SUPPORTED_MIME_TYPES = frozenset({
+        "application/pdf",
+        "image/jpeg",
+        "image/png",
+        "image/gif",
+        "image/webp",
+    })
+
     def _prepare_vision_assets(self, processed_files: List[ProcessedFile]) -> Tuple[
         List[FileUploadServiceProtocol.UploadCandidate],
         List[FileUploadServiceProtocol.UploadCandidate],
+        List[str],  # Added: skipped file errors for user visibility
     ]:
         """
         Separates vision assets into two groups:
@@ -416,10 +428,11 @@ class GeminiReportGenerator:
         2. Upload Required: Local-only files that need Gemini Files API upload
 
         Returns:
-            Tuple of (gcs_candidates, upload_candidates)
+            Tuple of (gcs_candidates, upload_candidates, skipped_errors)
         """
         gcs_candidates = []
         upload_candidates = []
+        skipped_errors = []
 
         for f in processed_files:
             local_path = f.local_path
@@ -434,41 +447,43 @@ class GeminiReportGenerator:
                     f"Skipping unsafe or unauthorized file path: {local_path}",
                     extra={"security_event": True},
                 )
+                skipped_errors.append(f"Skipped '{f.filename}': invalid file path")
                 continue
 
             # Only process vision assets (skip JSON/Text that goes into prompt)
-            is_vision = f.file_type != "application/json"
-            if not is_vision:
+            # Note: file_type is the category ("vision", "text", "error"), not MIME type
+            if f.file_type not in ("vision",):
                 continue
 
-            # Use actual mime_type if available, otherwise fallback to file_type
-            # This fixes the 'vision' mimeType bug (vision is a category, not a MIME type)
-            actual_mime_type = f.mime_type or f.file_type
+            # Determine actual MIME type - NEVER use file_type ("vision") as MIME
+            actual_mime_type = f.mime_type
 
-            # Defense in depth: If mime type is invalid/generic, try to guess from filename
-            if not actual_mime_type or actual_mime_type in (
-                "vision",
-                "application/octet-stream",
-            ):
+            # If mime_type not set, try to guess from filename
+            if not actual_mime_type or actual_mime_type in ("vision", "application/octet-stream"):
                 guessed_type, _ = mimetypes.guess_type(f.filename or "")
                 if guessed_type:
                     actual_mime_type = guessed_type
                 else:
-                    # Fallback for common extensions if system mime.types is missing
-                    ext = (f.filename or "").lower().split(".")[-1]
-                    if ext in ["jpg", "jpeg"]:
-                        actual_mime_type = "image/jpeg"
-                    elif ext == "png":
-                        actual_mime_type = "image/png"
-                    elif ext == "pdf":
-                        actual_mime_type = "application/pdf"
+                    # Manual fallback for common extensions
+                    ext = (f.filename or "").lower().rsplit(".", 1)[-1]
+                    ext_map = {
+                        "jpg": "image/jpeg", "jpeg": "image/jpeg",
+                        "png": "image/png", "gif": "image/gif",
+                        "webp": "image/webp", "pdf": "application/pdf",
+                    }
+                    actual_mime_type = ext_map.get(ext)
 
-            if actual_mime_type == "vision":
-                # Fallback for legacy data/failure
+            # STRICT VALIDATION: Skip files with unsupported MIME types
+            if not actual_mime_type or actual_mime_type not in self.VERTEX_SUPPORTED_MIME_TYPES:
                 logger.warning(
-                    f"Missing mime_type for {f.filename}, defaulting to application/octet-stream"
+                    f"Skipping '{f.filename}': unsupported MIME type '{actual_mime_type}'. "
+                    f"Vertex AI requires: {self.VERTEX_SUPPORTED_MIME_TYPES}"
                 )
-                actual_mime_type = "application/octet-stream"
+                skipped_errors.append(
+                    f"Skipped '{f.filename}': unsupported file type "
+                    f"(got '{actual_mime_type or 'unknown'}')"
+                )
+                continue
 
             candidate = self.file_upload_service.UploadCandidate(
                 file_path=local_path or gcs_uri,
@@ -488,15 +503,16 @@ class GeminiReportGenerator:
                 logger.debug(f"Upload required for: {f.filename}")
 
         logger.info(
-            f"Vision assets: {len(gcs_candidates)} GCS direct, {len(upload_candidates)} upload required"
+            f"Vision assets: {len(gcs_candidates)} GCS direct, "
+            f"{len(upload_candidates)} upload required, {len(skipped_errors)} skipped"
         )
-        return gcs_candidates, upload_candidates
+        return gcs_candidates, upload_candidates, skipped_errors
 
     def _prepare_upload_candidates(
         self, processed_files: List[ProcessedFile]
     ) -> List[FileUploadServiceProtocol.UploadCandidate]:
         """DEPRECATED: Use _prepare_vision_assets instead."""
-        _, upload_candidates = self._prepare_vision_assets(processed_files)
+        _, upload_candidates, _ = self._prepare_vision_assets(processed_files)
         return upload_candidates
 
     def _is_safe_path(self, path_str: str) -> bool:

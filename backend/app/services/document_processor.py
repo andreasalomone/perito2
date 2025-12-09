@@ -8,12 +8,48 @@ import re
 import uuid
 import xml.etree.ElementTree as ET
 import zipfile
-from typing import Any, Callable, Dict, List, TypeVar
+from html.parser import HTMLParser
+from typing import Any, Callable, Dict, List, Set, TypeVar
 
 import fitz  # PyMuPDF
 import mailparser
 import openpyxl
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
+
+# --- Security Constants (External Audit) ---
+MAX_RECURSION_DEPTH = 3
+MAX_ATTACHMENT_SIZE_BYTES = 25 * 1024 * 1024  # 25 MB
+MAX_B64_STRING_LENGTH = int(MAX_ATTACHMENT_SIZE_BYTES * 1.35)  # ~33.75 MB (b64 overhead)
+TINY_IMAGE_THRESHOLD_BYTES = 5 * 1024  # 5 KB
+TINY_IMAGE_DIMENSION_PX = 100
+EXCLUDED_EXTENSIONS: Set[str] = {".gif", ".mp4", ".avi", ".mov", ".mkv", ".webm", ".exe", ".bin"}
+
+
+# --- HTML Stripper (stdlib - safer than regex) ---
+class _MLStripper(HTMLParser):
+    """Safe HTML tag stripper using stdlib (avoids regex parsing HTML)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._text = io.StringIO()
+        self.convert_charrefs = True
+
+    def handle_data(self, d: str) -> None:
+        self._text.write(d)
+
+    def get_data(self) -> str:
+        return self._text.getvalue()
+
+
+def _strip_html(html_content: str) -> str:
+    """Removes HTML tags using a proper parser."""
+    try:
+        s = _MLStripper()
+        s.feed(html_content)
+        return s.get_data().strip()
+    except Exception:
+        # Fallback if parser chokes
+        return re.sub(r"<[^>]+>", "", html_content).strip()
 
 
 def sanitize_filename(filename: str) -> str:
@@ -246,8 +282,26 @@ def extract_text_from_txt(txt_path: str) -> List[Dict[str, Any]]:
             }
         ]
 
-    with open(txt_path, "r", encoding="utf-8") as f:
-        content = f.read()
+    # Try multiple encodings for email attachments (common non-UTF-8 sources)
+    content = None
+    for encoding in ("utf-8", "latin-1", "cp1252"):
+        try:
+            with open(txt_path, "r", encoding=encoding) as f:
+                content = f.read()
+            break
+        except UnicodeDecodeError:
+            continue
+
+    if content is None:
+        logger.warning(f"Could not decode {txt_path} with any known encoding")
+        return [
+            {
+                "type": "error",
+                "filename": sanitize_filename(os.path.basename(txt_path)),
+                "message": "File encoding not supported (not UTF-8, Latin-1, or Windows-1252)",
+            }
+        ]
+
     return [
         {
             "type": "text",
@@ -265,25 +319,27 @@ def process_eml_file(
     Processes an .eml file, extracting its text body and saving/processing attachments.
     Returns a FLAT LIST of dictionaries.
     """
-    if depth > 3:
-        logger.warning(f"Max recursion depth reached for {eml_path}")
+    if depth > MAX_RECURSION_DEPTH:
+        logger.warning(f"Max recursion depth ({MAX_RECURSION_DEPTH}) reached for {eml_path}")
         return [
             {
                 "type": "error",
                 "filename": os.path.basename(eml_path),
-                "message": "Max recursion depth reached (nested attachments)",
+                "message": f"Max recursion depth ({MAX_RECURSION_DEPTH}) reached (nested attachments)",
             }
         ]
 
     mail = mailparser.parse_from_file(eml_path)
     all_parts: List[Dict[str, Any]] = []
 
-    # Extract plain text body
+    # Extract plain text body (strip HTML to prevent LLM context pollution)
     text_content = ""
     if mail.text_plain:
         text_content = "\n".join(mail.text_plain)
     elif mail.text_html:
-        text_content = "\n".join(mail.text_html)
+        # Use proper HTML parser to extract text (not regex)
+        raw_html = "\n".join(mail.text_html)
+        text_content = _strip_html(raw_html)
     else:
         text_content = mail.body if mail.body else ""
 
@@ -302,10 +358,10 @@ def process_eml_file(
     for attachment in mail.attachments:
         original_filename = attachment.get("filename", "untitled_attachment")
 
-        # Check for excluded extensions
+        # Check for excluded extensions (use constant)
         _, ext = os.path.splitext(original_filename)
         ext = ext.lower()
-        if ext in [".gif", ".mp4", ".avi", ".mov", ".mkv", ".webm"]:
+        if ext in EXCLUDED_EXTENSIONS:
             logger.info(
                 f"Skipping excluded attachment type '{ext}' for file '{original_filename}' in {eml_path}"
             )
@@ -319,30 +375,58 @@ def process_eml_file(
         try:
             if isinstance(payload, str):
                 payload = payload.strip()
+
+                # SECURITY CRITICAL: Check size BEFORE decoding to prevent Memory DoS
+                # A 100MB base64 string would allocate ~75MB+ when decoded
+                if len(payload) > MAX_B64_STRING_LENGTH:
+                    logger.warning(
+                        f"Attachment '{original_filename}' exceeds size limit "
+                        f"(encoded size: {len(payload):,} bytes > {MAX_B64_STRING_LENGTH:,}). Skipping."
+                    )
+                    all_parts.append({
+                        "type": "error",
+                        "filename": original_filename,
+                        "message": f"Attachment too large (>{MAX_ATTACHMENT_SIZE_BYTES // (1024*1024)}MB)",
+                    })
+                    continue
+
+                # Fix base64 padding
                 missing_padding = len(payload) % 4
                 if missing_padding:
                     payload += "=" * (4 - missing_padding)
 
-            decoded_payload = base64.b64decode(payload)
+                try:
+                    decoded_payload = base64.b64decode(payload)
+                except base64.binascii.Error:
+                    logger.warning(f"Invalid base64 in attachment '{original_filename}'")
+                    continue
+            else:
+                # Payload might already be bytes in some parsers
+                decoded_payload = payload
+
+            # SECURITY: Double-check decoded size (covers both string and bytes paths)
+            if len(decoded_payload) > MAX_ATTACHMENT_SIZE_BYTES:
+                logger.warning(
+                    f"Attachment '{original_filename}' exceeds size limit "
+                    f"(decoded size: {len(decoded_payload):,} bytes). Skipping."
+                )
+                all_parts.append({
+                    "type": "error",
+                    "filename": original_filename,
+                    "message": f"Attachment too large (>{MAX_ATTACHMENT_SIZE_BYTES // (1024*1024)}MB)",
+                })
+                continue
 
             # --- TINY IMAGE FILTER (Signatures/Icons) ---
-            # 1. Check File Size (< 5KB)
-            if len(decoded_payload) < 5 * 1024:
-                # Potential signature/icon. Check dimensions if it's an image.
-                if ext in [".png", ".jpg", ".jpeg", ".gif", ".webp"]:
+            if len(decoded_payload) < TINY_IMAGE_THRESHOLD_BYTES:
+                if ext in {".png", ".jpg", ".jpeg", ".gif", ".webp"}:
                     try:
-                        # We need to peek at dimensions without saving if possible,
-                        # or just save and check. Saving is safer/easier since we have the bytes.
-                        # But let's try to be efficient and check bytes if possible,
-                        # or just rely on size for now?
-                        # User asked for "Option 1" which implies size AND dimensions.
-
-                        # Let's use PIL to check dimensions from bytes
                         with Image.open(io.BytesIO(decoded_payload)) as img:
                             width, height = img.size
-                            if width < 100 and height < 100:
+                            if width < TINY_IMAGE_DIMENSION_PX and height < TINY_IMAGE_DIMENSION_PX:
                                 logger.info(
-                                    f"Skipping tiny image attachment '{original_filename}' ({width}x{height}, {len(decoded_payload)} bytes) in {eml_path}"
+                                    f"Skipping tiny image '{original_filename}' "
+                                    f"({width}x{height}, {len(decoded_payload)} bytes) in {eml_path}"
                                 )
                                 continue
                     except Exception as e:

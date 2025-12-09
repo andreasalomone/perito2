@@ -113,9 +113,15 @@ class PromptBuilderService:
     def _process_text_inputs(self, raw_files: List[Dict[str, Any]]) -> List[str]:
         """
         Converts raw file dictionaries into sanitized XML-tagged strings.
+        Vision files (type='vision') are skipped here - they're handled via GCS Parts.
         """
         parts = []
         for file_data in raw_files:
+            # Vision files are handled separately via GCS Parts in llm_handler.py
+            # They have content=None which would fail ProcessedContent validation
+            if file_data.get("type") == "vision":
+                continue
+
             try:
                 item = ProcessedContent(**file_data)
 
