@@ -4,12 +4,11 @@ import io
 import logging
 import mimetypes
 import os
-import pathlib
 import re
 import uuid
 import xml.etree.ElementTree as ET
 import zipfile
-from typing import Any, Callable, Dict, List, TypeVar, Union, cast
+from typing import Any, Callable, Dict, List, TypeVar
 
 import fitz  # PyMuPDF
 import mailparser

@@ -1,5 +1,4 @@
 import logging
-import os
 import posixpath
 from abc import ABC, abstractmethod
 from functools import lru_cache

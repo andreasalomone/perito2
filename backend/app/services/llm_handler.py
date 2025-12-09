@@ -1,7 +1,6 @@
 import asyncio
 import heapq
 import logging
-import weakref
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -13,7 +12,7 @@ from google import genai
 from google.api_core import exceptions as google_exceptions
 
 # Use pydantic v2
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field
 from tenacity import (
     AsyncRetrying,
     retry_if_exception_type,

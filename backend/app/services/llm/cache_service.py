@@ -1,13 +1,12 @@
 """Cache service for managing Gemini API prompt caching."""
 
 import logging
-import os
 from datetime import datetime, timezone
 from typing import Optional
 
 from google import genai
 from google.api_core import exceptions as google_exceptions
-from google.genai import errors, types
+from google.genai import types
 from tenacity import (
     RetryError,
     retry,

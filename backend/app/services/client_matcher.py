@@ -5,7 +5,7 @@ Fuzzy matching for existing clients using Levenshtein distance.
 """
 
 import logging
-from typing import List, Optional, Tuple
+from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import select

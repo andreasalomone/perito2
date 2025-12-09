@@ -2,11 +2,8 @@ import asyncio
 import json
 import logging
 import os
-import re
 import shutil
 import tempfile
-import threading
-from pathlib import Path
 from typing import List
 from uuid import UUID
 
@@ -32,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 from sqlalchemy.exc import IntegrityError
 
-from app.db.database import AsyncSessionLocal, SessionLocal
+from app.db.database import AsyncSessionLocal
 
 
 def get_or_create_client(db: Session, name: str, organization_id: UUID) -> Client:
@@ -376,7 +373,7 @@ def trigger_case_processing_task(case_id: str, org_id: str):
         response = client.create_task(request={"parent": parent, "task": task})
         logger.info(f"Task created: {response.name}")
 
-    except Exception as e:
+    except Exception:
         # Re-raise to propagate error to caller (API endpoint returns HTTP error)
         raise
 

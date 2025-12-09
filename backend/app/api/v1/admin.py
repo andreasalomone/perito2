@@ -1,7 +1,6 @@
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
-from enum import Enum
 from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -10,7 +9,7 @@ from sqlalchemy import select, union
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_db, get_raw_db, get_superadmin_user
+from app.api.dependencies import get_raw_db, get_superadmin_user
 from app.models import AllowedEmail, Case, Document, Organization, ReportVersion, User
 from app.schemas.enums import CaseStatus, UserRole
 

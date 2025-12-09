@@ -1,11 +1,10 @@
 import logging
-import re
 from pathlib import Path
 from typing import Annotated, Any, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
-from sqlalchemy import exists, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app import schemas

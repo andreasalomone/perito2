@@ -24,7 +24,6 @@ from app.models import (
     Document,
     EmailAttachment,
     EmailProcessingLog,
-    User,
 )
 from app.schemas.email_intake import (
     BrevoAttachment,
@@ -354,7 +353,7 @@ class EmailIntakeService:
 
     def _log_unauthorized_email(self, email_item: BrevoEmailItem):
         """Log an unauthorized email attempt."""
-        email_log = self._create_email_log(email_item, user=None, status="unauthorized")
+        self._create_email_log(email_item, user=None, status="unauthorized")
         self.db.commit()
 
     def _create_email_log(
@@ -459,7 +458,6 @@ class EmailIntakeService:
 
         Applies all 25 business fields from AI extraction.
         """
-        from app.models import Client
 
         if reference_code:
             # Try to find existing case with this reference code

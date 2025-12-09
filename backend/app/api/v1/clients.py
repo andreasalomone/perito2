@@ -7,7 +7,6 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import schemas
 from app.api.dependencies import get_current_user_token, get_db
 from app.models import Client, User
 

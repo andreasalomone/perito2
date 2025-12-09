@@ -2,13 +2,6 @@ import asyncio
 import copy
 import json
 import logging
-import os
-import pathlib
-import tempfile
-import threading
-import uuid
-from datetime import datetime
-from uuid import UUID
 
 from google.cloud import tasks_v2
 from sqlalchemy import select, text
@@ -20,8 +13,8 @@ from app.core.config import settings
 from app.db.database import AsyncSessionLocal
 from app.models import Case, Document, ReportVersion
 from app.schemas.enums import CaseStatus, ExtractionStatus
-from app.services import case_service, document_processor, docx_generator, llm_handler
-from app.services.gcs_service import download_file_to_temp, get_storage_client
+from app.services import case_service, docx_generator
+from app.services.gcs_service import get_storage_client
 from app.services.llm_handler import ProcessedFile, gemini_generator
 
 logger = logging.getLogger(__name__)
@@ -412,7 +405,7 @@ async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSes
             processed_files=processed_files_models
         )
         report_text = report_result.content
-        token_usage = report_result.usage.model_dump()
+        # Token usage available in report_result.usage if needed for logging
 
         # 3. Generate DOCX
         logger.info("Generating DOCX...")
@@ -591,7 +584,7 @@ async def generate_docx_variant(
         )
         return blob
 
-    blob = await asyncio.to_thread(upload_blob)
+    await asyncio.to_thread(upload_blob)
 
     # 5. Generate Signed URL (Read)
     # Use gcs_service helper which handles IAM SignBlob for Cloud Run
