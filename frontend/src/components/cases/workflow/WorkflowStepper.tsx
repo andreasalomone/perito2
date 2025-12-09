@@ -69,8 +69,10 @@ export function WorkflowStepper({
 
     const canNavigateToStep = (stepId: number): boolean => {
         if (isError) return false;
-        // Can go back to Step 1 from Step 3 (to modify documents)
-        if (stepId === 1 && numericStep === 3) return true;
+        // Can go back to Step 1 from Step 3 or 4 (to modify documents)
+        if (stepId === 1 && numericStep >= 3) return true;
+        // Can go back to Step 3 from Step 4 (review before closure)
+        if (stepId === 3 && numericStep === 4) return true;
         return false;
     };
 

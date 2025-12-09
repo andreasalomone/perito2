@@ -172,9 +172,13 @@ export default function CaseWorkspace() {
                 { headers: { Authorization: `Bearer ${token}` } }
             );
 
-            toast.success("Versione finale caricata", { id: toastId });
-            mutate();
-            // Redirect will happen via useEffect when status changes
+            toast.success("Caso finalizzato con successo!", { id: toastId });
+
+            // Explicit redirect to summary page (don't rely on useEffect)
+            // Small delay to let confetti animation play
+            setTimeout(() => {
+                router.push(`/dashboard/cases/${caseId}/summary`);
+            }, 2000);
         } catch (error) {
             handleApiError(error, "Errore caricamento finale");
             toast.dismiss(toastId);
@@ -183,9 +187,17 @@ export default function CaseWorkspace() {
     };
 
     const handleStepClick = (step: number) => {
-        // Only allow going back to step 1 from step 3
-        if (step === 1 && currentStep === 3) {
-            setManualStep(1);
+        // Allow going back from Step 3 or Step 4 (manualStep)
+        const effectiveStep = manualStep ?? currentStep;
+        if (typeof effectiveStep === 'number') {
+            // Can go back to Step 1 from Step 3 or 4
+            if (step === 1 && effectiveStep >= 3) {
+                setManualStep(1);
+            }
+            // Can go back to Step 3 from Step 4
+            if (step === 3 && effectiveStep === 4) {
+                setManualStep(3);
+            }
         }
     };
 

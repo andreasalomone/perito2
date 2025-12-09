@@ -1,0 +1,151 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+# ==============================================================================
+# RUFF CONFIGURATION (Recommended: Replaces Black, Isort, Flake8)
+# ==============================================================================
+[tool.ruff]
+# Target Python 3.10 to match your Dockerfile (FROM python:3.10-slim-bookworm)
+target-version = "py310"
+line-length = 88
+
+# Exclude typical noise directories + your frontend
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "node_modules",
+    "dist",
+    "build",
+    "frontend",      # Explicitly ignore sibling directory if run from root
+    "alembic/versions", # Ignore auto-generated migration scripts
+    ".pytest_cache",
+    ".mypy_cache",
+    "*.egg-info",
+    "tests",
+    "scripts",
+]
+
+[tool.ruff.lint]
+# E: Pycodestyle errors
+# W: Pycodestyle warnings
+# F: Pyflakes
+# I: Isort (Import sorting)
+# B: Flake8-bugbear (Common bugs)
+# C90: McCabe complexity
+select = ["E", "W", "F", "I", "B", "C90"]
+
+# Ignore conflicting/noisy rules
+# E501: Line too long (handled by formatter, strict linting is noisy)
+# E402: Module level import not at top of file (needed for Alembic env.py)
+ignore = ["E501", "E402"]
+
+[tool.ruff.lint.mccabe]
+# Flag functions that are too complex (too many if/else)
+max-complexity = 12
+
+[tool.ruff.lint.per-file-ignores]
+# Ignore unused imports in __init__.py (standard practice for exporting)
+"__init__.py" = ["F401"]
+# Allow asserts in tests
+"tests/*" = ["S101"]
+
+# ==============================================================================
+# BLACK CONFIGURATION (If you are not using Ruff for formatting)
+# ==============================================================================
+[tool.black]
+line-length = 88
+target-version = ['py310']
+include = '\.pyi?$'
+# Force exclusion of the frontend directory and migrations
+extend-exclude = '''
+/(
+    \.git
+  | __pycache__
+  | \.venv
+  | venv
+  | alembic/versions
+  | frontend
+  | \.pytest_cache
+  | \.mypy_cache
+  | build
+  | dist
+  | .*\.egg-info
+  | tests
+  | scripts
+  | node_modules
+)/
+'''
+
+# ==============================================================================
+# ISORT CONFIGURATION (Import sorting)
+# ==============================================================================
+[tool.isort]
+profile = "black"
+line_length = 88
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+skip = [
+    ".git",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "alembic/versions",
+    "frontend",
+    ".pytest_cache",
+    ".mypy_cache",
+    "build",
+    "dist",
+    "tests",
+    "scripts",
+]
+skip_glob = ["*.egg-info"]
+
+# ==============================================================================
+# FLAKE8 CONFIGURATION (Legacy Linter)
+# Requires: pip install flake8-pyproject
+# ==============================================================================
+[tool.flake8]
+max-line-length = 88
+extend-ignore = ["C901","E203", "E501", "W503", "E402", "W293", "W291", "E302", "W391", "E117", "E111", "E261", "E262", "E114", "E305", "E303", "E301", "E129", "W292"]
+max-complexity = 15
+exclude = [
+    ".git",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "alembic/versions",
+    "frontend",
+    ".pytest_cache",
+    ".mypy_cache",
+    "build",
+    "dist",
+    "*.egg-info",
+    "tests",
+    "scripts"
+]
+per-file-ignores = [
+    "__init__.py:F401",
+    "tests/*:S101"
+]
+
+# ==============================================================================
+# PYTEST CONFIGURATION
+# ==============================================================================
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = ["tests"]
+# Ensure pytest doesn't look inside frontend/node_modules
+norecursedirs = [
+    "frontend",
+    "node_modules",
+    "alembic",
+    ".git",
+    ".venv"
+]
