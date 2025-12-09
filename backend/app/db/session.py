@@ -15,6 +15,11 @@ def set_rls_variables(db_session: Session, user_uid: str, org_id: str):
     # Sanitize inputs to prevent SQL injection via session variables
     # (parameter binding handles this, but defensive coding is good)
     if not user_uid or not org_id:
+        logger.warning(
+            "set_rls_variables called with missing user_uid (%r) or org_id (%r)",
+            user_uid,
+            org_id,
+        )
         return
 
     # is_local=False means "Session duration" (until Reset or Connection Close)

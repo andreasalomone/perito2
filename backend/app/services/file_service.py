@@ -1,5 +1,7 @@
 import logging
 import os
+import shutil
+import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
 from werkzeug.datastructures import FileStorage
@@ -14,10 +16,16 @@ logger = logging.getLogger(__name__)
 
 
 def allowed_file(filename: str) -> bool:
-    return (
-        "." in filename
-        and f".{filename.rsplit('.', 1)[1].lower()}" in settings.ALLOWED_MIME_TYPES
-    )
+    """
+    Checks if the file extension is allowed based on settings.
+    Uses os.path.splitext for robust extension extraction.
+    """
+    if not filename or "." not in filename:
+        return False
+
+    # Secure extraction of extension (e.g., 'image.jpg' -> '.jpg')
+    _, ext = os.path.splitext(filename)
+    return ext.lower() in settings.ALLOWED_MIME_TYPES
 
 
 def validate_file_list(files: List[FileStorage]) -> ServiceResult:
@@ -37,26 +45,38 @@ def _add_text_data_to_processed_list(
     filename: str,
     source_description: str,
 ) -> Tuple[List[Dict[str, Any]], int, Optional[ServiceMessage]]:
-    """Helper to add extracted text to the list, handling truncation and size limits."""
+    """
+    Helper to add extracted text to the list, handling truncation and size limits.
+
+    Structure of dict added to list:
+    {
+        "type": "text",
+        "filename": str,
+        "content": str,
+        "source": str
+    }
+    """
     service_message = None
     available_chars = settings.MAX_EXTRACTED_TEXT_LENGTH - current_total_length
+
     if available_chars <= 0:
         logger.warning(
-            f"Maximum total extracted text length reached before processing content from {filename} ({source_description}). Skipping."
+            f"Maximum total extracted text length reached before processing {filename}. Skipping."
         )
         service_message = ServiceMessage(
-            f"Skipped some content from {filename} ({source_description}) as maximum total text limit was reached.",
+            f"Skipped content from {filename} (quota exceeded).",
             "warning",
         )
         return processed_file_data_list, current_total_length, service_message
 
+    final_content = text_content
     if len(text_content) > available_chars:
-        text_content = text_content[:available_chars]
+        final_content = text_content[:available_chars]
         logger.warning(
-            f"Truncated text from {filename} ({source_description}) to fit within MAX_EXTRACTED_TEXT_LENGTH."
+            f"Truncated text from {filename} to fit MAX_EXTRACTED_TEXT_LENGTH."
         )
         service_message = ServiceMessage(
-            f"Content from {filename} ({source_description}) was truncated to fit the overall text limit.",
+            f"Content from {filename} was truncated to fit the overall text limit.",
             "warning",
         )
 
@@ -64,29 +84,32 @@ def _add_text_data_to_processed_list(
         {
             "type": "text",
             "filename": filename,
-            "content": text_content,
+            "content": final_content,
             "source": source_description,
         }
     )
-    current_total_length += len(text_content)
+    current_total_length += len(final_content)
     return processed_file_data_list, current_total_length, service_message
 
 
 def process_file_from_path(
     filepath: str, original_filename: str, current_total_extracted_text_length: int
 ) -> ServiceResult:
-    """Processes a file from a given path, returning a ServiceResult."""
+    """
+    Processes a file from a given path.
+    Expected to be called within a synchronous context (or wrapped via asyncio.to_thread).
+    """
     processed_entries: List[Dict[str, Any]] = []
     text_length_added_by_this_file = 0
     result = ServiceResult(success=True)
 
     try:
-        # SIMPLIFIED: No more if/else for list/dict. It's always a list now.
+        # Assumes document_processor.process_uploaded_file is synchronous
         processed_parts = document_processor.process_uploaded_file(
             filepath, os.path.dirname(filepath)
         )
 
-        current_length_for_this_file_processing = current_total_extracted_text_length
+        current_length_for_this_file = current_total_extracted_text_length
 
         for part in processed_parts:
             part_type = part.get("type")
@@ -96,11 +119,11 @@ def process_file_from_path(
                 source_desc = f"from {original_filename}"
                 (
                     processed_entries_list,
-                    current_length_for_this_file_processing,
+                    current_length_for_this_file,
                     svc_msg,
                 ) = _add_text_data_to_processed_list(
-                    [],  # Temporary list
-                    current_length_for_this_file_processing,
+                    [],  # Temp list
+                    current_length_for_this_file,
                     part["content"],
                     part_filename,
                     source_desc,
@@ -109,30 +132,31 @@ def process_file_from_path(
                 if svc_msg:
                     result.messages.append(svc_msg)
 
-            elif part_type in ["vision", "error", "unsupported"]:
+            elif part_type in [
+                "vision",
+                "error",
+                "unsupported",
+                "attachment_reference",
+            ]:
                 processed_entries.append(part)
 
-            # Handle attachment references if any (from our new storage logic)
-            elif part_type == "attachment_reference":
-                # For now, just log or ignore, or add to processed entries if the frontend can handle it
-                pass
-
         text_length_added_by_this_file = (
-            current_length_for_this_file_processing
-            - current_total_extracted_text_length
+            current_length_for_this_file - current_total_extracted_text_length
         )
 
+    except (KeyboardInterrupt, SystemExit):
+        raise
     except Exception as e:
         logger.error(f"Error processing file {original_filename}: {e}", exc_info=True)
         result.add_message(
-            f"An unexpected error occurred while processing file {original_filename}. It has been skipped. Please check logs for details.",
+            f"An unexpected error occurred while processing {original_filename}.",
             "error",
         )
         processed_entries.append(
             {
                 "type": "error",
                 "filename": original_filename,
-                "message": "An unexpected error occurred during processing. Please see logs.",
+                "message": "An unexpected error occurred during processing.",
             }
         )
 
@@ -146,25 +170,21 @@ def process_file_from_path(
 def process_single_file_storage(
     file_storage: FileStorage, temp_dir: str, current_total_extracted_text_length: int
 ) -> ServiceResult:
-    """Processes a single FileStorage object, returning a ServiceResult."""
+    """
+    Processes a single FileStorage object with UUID isolation to prevent race conditions.
+    """
     result = ServiceResult(success=True)
-    successfully_saved_filename: Optional[str] = None
+    original_filename = file_storage.filename or "unknown"
 
-    original_filename_for_logging = file_storage.filename or "<unknown>"
-
-    if not allowed_file(original_filename_for_logging):
-        logger.warning(
-            f"File type not allowed: {original_filename_for_logging}, skipping."
-        )
-        result.add_message(
-            f"File type not allowed for {original_filename_for_logging}. It has been skipped.",
-            "warning",
-        )
+    # 1. Validation
+    if not allowed_file(original_filename):
+        logger.warning(f"File type not allowed: {original_filename}")
+        result.add_message(f"File type not allowed for {original_filename}.", "warning")
         result.data = {
             "processed_entries": [
                 {
                     "type": "unsupported",
-                    "filename": original_filename_for_logging,
+                    "filename": original_filename,
                     "message": "File type not allowed",
                 }
             ],
@@ -173,20 +193,16 @@ def process_single_file_storage(
         }
         return result
 
-    filename = secure_filename(original_filename_for_logging)
+    # 2. Secure Filename
+    filename = secure_filename(original_filename)
     if not filename:
-        logger.warning(
-            f"secure_filename resulted in empty filename for original: {original_filename_for_logging}, skipping."
-        )
-        result.add_message(
-            "A file with an invalid name was skipped after securing.", "warning"
-        )
+        result.add_message(f"Invalid filename for {original_filename}.", "warning")
         result.data = {
             "processed_entries": [
                 {
                     "type": "error",
-                    "filename": original_filename_for_logging,
-                    "message": "Invalid filename after securing.",
+                    "filename": original_filename,
+                    "message": "Invalid filename.",
                 }
             ],
             "text_length_added": 0,
@@ -194,27 +210,34 @@ def process_single_file_storage(
         }
         return result
 
-    filepath = os.path.join(temp_dir, filename)
+    # 3. Isolation (UUID Subdirectory)
+    # Creates /tmp/base_dir/<uuid>/filename.ext
+    unique_subdir = os.path.join(temp_dir, str(uuid.uuid4()))
+    os.makedirs(unique_subdir, exist_ok=True)
+
+    filepath = os.path.join(unique_subdir, filename)
+    successfully_saved_filename = None
 
     try:
         file_storage.save(filepath)
-        logger.info(f"Saved uploaded file to temporary path: {filepath}")
+        logger.info(f"Saved file to isolated path: {filepath}")
         successfully_saved_filename = filename
 
-        # Delegate processing to the new function
+        # 4. Processing
         process_result = process_file_from_path(
-            filepath, original_filename_for_logging, current_total_extracted_text_length
+            filepath, original_filename, current_total_extracted_text_length
         )
 
-        # Merge results
         result.messages.extend(process_result.messages)
         result.data = process_result.data
         result.data["saved_filename"] = successfully_saved_filename
 
+    except (KeyboardInterrupt, SystemExit):
+        raise
     except Exception as e:
-        logger.error(f"Error saving file {filename}: {e}", exc_info=True)
+        logger.error(f"Error handling file {filename}: {e}", exc_info=True)
         result.add_message(
-            f"An unexpected error occurred while saving file {filename}. It has been skipped.",
+            f"An unexpected error occurred while saving {filename}.",
             "error",
         )
         result.data = {
@@ -228,5 +251,15 @@ def process_single_file_storage(
             "text_length_added": 0,
             "saved_filename": None,
         }
+
+    finally:
+        # 5. Cleanup
+        # Gold Standard: Always clean up the UUID directory, regardless of success/failure
+        if os.path.exists(unique_subdir):
+            try:
+                shutil.rmtree(unique_subdir)
+                logger.debug(f"Cleaned up isolated temp dir: {unique_subdir}")
+            except OSError as e:
+                logger.warning(f"Failed to cleanup temp dir {unique_subdir}: {e}")
 
     return result

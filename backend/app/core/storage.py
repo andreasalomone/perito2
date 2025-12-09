@@ -94,7 +94,9 @@ class LocalStorage(StorageProvider):
                     # Stream copy (efficient for large files)
                     import shutil
 
-                    file_stream.seek(0)
+                    # Seek to start only if the stream supports it
+                    if hasattr(file_stream, "seekable") and file_stream.seekable():
+                        file_stream.seek(0)
                     shutil.copyfileobj(file_stream, f)
 
             logger.info(f"File saved locally: {target_path}")
@@ -132,7 +134,9 @@ class GoogleCloudStorage(StorageProvider):
                     file_stream, content_type="application/octet-stream"
                 )
             else:
-                file_stream.seek(0)
+                # Seek to start only if the stream supports it
+                if hasattr(file_stream, "seekable") and file_stream.seekable():
+                    file_stream.seek(0)
                 blob.upload_from_file(
                     file_stream, content_type="application/octet-stream"
                 )
