@@ -1,11 +1,10 @@
 import logging
-import re
 from pathlib import Path
-from typing import Annotated, List, Optional, Any
+from typing import Annotated, Any, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
-from sqlalchemy import exists, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app import schemas
@@ -14,7 +13,7 @@ from app.core.config import settings
 from app.models import Case, Client, Document, ReportVersion, User
 from app.schemas.enums import CaseStatus, ExtractionStatus
 from app.services import case_service, gcs_service
-from app.services import report_generation_service as generation_service 
+from app.services import report_generation_service as generation_service
 
 # Configure structured logging
 logger = logging.getLogger("app.api.cases")
@@ -25,11 +24,12 @@ router = APIRouter()
 # Endpoints
 # -----------------------------------------------------------------------------
 
+
 @router.get(
     "/",
     response_model=List[schemas.CaseSummary],
     summary="List Cases",
-    description="Retrieve a paginated list of cases for the authenticated organization."
+    description="Retrieve a paginated list of cases for the authenticated organization.",
 )
 def list_cases(
     db: Annotated[Session, Depends(get_db)],
@@ -49,11 +49,11 @@ def list_cases(
         .options(
             selectinload(Case.client),
             # Optimize: Load only creator email
-            selectinload(Case.creator).load_only(User.email)
+            selectinload(Case.creator).load_only(User.email),
         )
         .order_by(Case.created_at.desc())
     )
-    
+
     # Soft Delete Filter
     stmt = stmt.where(Case.deleted_at.is_(None))
 
@@ -64,14 +64,14 @@ def list_cases(
     # 1. Text Search
     if search:
         stmt = stmt.join(Case.client, isouter=True).where(
-            (Case.reference_code.ilike(f"%{search}%")) |
-            (Client.name.ilike(f"%{search}%"))
+            (Case.reference_code.ilike(f"%{search}%"))
+            | (Client.name.ilike(f"%{search}%"))
         )
-    
+
     # 2. Filter by Client ID
     if client_id:
         stmt = stmt.where(Case.client_id == client_id)
-        
+
     # 3. Filter by Status
     if status:
         stmt = stmt.where(Case.status == status)
@@ -80,65 +80,60 @@ def list_cases(
 
 
 @router.get(
-    "/{case_id}/status", 
+    "/{case_id}/status",
     response_model=schemas.CaseStatusRead,
-    summary="Get Case Status"
+    summary="Get Case Status",
 )
-def get_case_status(
-    case_id: UUID, 
-    db: Annotated[Session, Depends(get_db)]
-) -> dict:
+def get_case_status(case_id: UUID, db: Annotated[Session, Depends(get_db)]) -> dict:
     """
-    Lightweight polling endpoint. 
+    Lightweight polling endpoint.
     Returns boolean status + granular progress stats.
     """
     # 1. Fetch Case Status
-    case = db.scalar(
-        select(Case).where(Case.id == case_id, Case.deleted_at.is_(None))
-    )
+    case = db.scalar(select(Case).where(Case.id == case_id, Case.deleted_at.is_(None)))
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
-    
+
     # 2. Fetch Document Meta
-    docs_stmt = (
-        select(Document.id, Document.ai_status, Document.created_at, Document.filename)
-        .where(Document.case_id == case_id)
-    )
+    docs_stmt = select(
+        Document.id, Document.ai_status, Document.created_at, Document.filename
+    ).where(Document.case_id == case_id)
     docs = db.execute(docs_stmt).all()
-    
+
     documents_data = [
         {
-            "id": row.id, 
-            "ai_status": row.ai_status, 
+            "id": row.id,
+            "ai_status": row.ai_status,
             "created_at": row.created_at,
-            "filename": row.filename
-        } 
+            "filename": row.filename,
+        }
         for row in docs
     ]
 
     # 3. Calculate Processing State
     is_generating = (case.status == CaseStatus.GENERATING) or any(
-        d["ai_status"] in [ExtractionStatus.PENDING, ExtractionStatus.PROCESSING] for d in documents_data
+        d["ai_status"] in [ExtractionStatus.PENDING, ExtractionStatus.PROCESSING]
+        for d in documents_data
     )
-    
+
     return {
         "id": case_id,
         "status": case.status,
         "documents": documents_data,
-        "is_generating": is_generating
+        "is_generating": is_generating,
     }
 
 
 @router.post(
-    "/", 
-    response_model=schemas.CaseDetail, 
+    "/",
+    response_model=schemas.CaseDetail,
     status_code=status.HTTP_201_CREATED,
-    summary="Create Case"
+    summary="Create Case",
 )
 def create_case(
     case_in: schemas.CaseCreate,
     current_user: Annotated[dict[str, Any], Depends(get_current_user_token)],
-    db: Annotated[Session, Depends(get_db)]
+    db: Annotated[Session, Depends(get_db)],
 ) -> Case:
     """
     Creates a new case. Logic delegated to Service layer.
@@ -153,26 +148,23 @@ def create_case(
         db=db,
         case_data=case_in,
         user_uid=current_user["uid"],
-        user_org_id=user.organization_id # Pass the Object UUID
+        user_org_id=user.organization_id,  # Pass the Object UUID
     )
 
 
 @router.get("/{case_id}", response_model=schemas.CaseDetail)
-def get_case_detail(
-    case_id: UUID, 
-    db: Annotated[Session, Depends(get_db)]
-) -> Case:
+def get_case_detail(case_id: UUID, db: Annotated[Session, Depends(get_db)]) -> Case:
     stmt = (
         select(Case)
         .options(
-            selectinload(Case.documents), 
+            selectinload(Case.documents),
             selectinload(Case.report_versions),
-            selectinload(Case.creator).load_only(User.email)
+            selectinload(Case.creator).load_only(User.email),
         )
         .where(Case.id == case_id, Case.deleted_at.is_(None))
     )
     case = db.scalar(stmt)
-    
+
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
     return case
@@ -182,23 +174,23 @@ def get_case_detail(
 def update_case(
     case_id: UUID,
     update_data: schemas.CaseUpdate,
-    db: Annotated[Session, Depends(get_db)]
+    db: Annotated[Session, Depends(get_db)],
 ) -> Case:
     """
     Update case fields. Supports partial updates (PATCH).
-    
+
     If client_name is provided, performs fuzzy matching against existing clients
     or creates a new one.
     """
     from app.services.client_matcher import find_or_create_client
-    
+
     case = db.get(Case, case_id)
     if not case or case.deleted_at:
         raise HTTPException(status_code=404, detail="Case not found")
-    
+
     # Get update data (exclude None values for partial update)
     update_dict = update_data.model_dump(exclude_unset=True)
-    
+
     # Handle client_name specially - fuzzy match or create
     if "client_name" in update_dict:
         client_name = update_dict.pop("client_name")
@@ -206,36 +198,37 @@ def update_case(
             client = find_or_create_client(db, case.organization_id, client_name)
             if client:
                 case.client_id = client.id
-    
+
     # Apply all other updates
     for field, value in update_dict.items():
         if hasattr(case, field):
             setattr(case, field, value)
-    
+
     db.commit()
-    
+
     # Re-apply RLS context before refresh
     from sqlalchemy import text
+
     try:
         db.execute(
             text("SELECT set_config('app.current_org_id', :oid, false)"),
-            {"oid": str(case.organization_id)}
+            {"oid": str(case.organization_id)},
         )
     except Exception as e:
         logger.warning(f"Failed to re-apply RLS context: {e}")
-    
+
     db.refresh(case)
-    
+
     logger.info(f"Updated case {case_id} with fields: {list(update_dict.keys())}")
     return case
 
 
 @router.post("/{case_id}/documents/upload-url")
 def get_doc_upload_url(
-    case_id: UUID, 
-    filename: str, 
+    case_id: UUID,
+    filename: str,
     content_type: str,
-    db: Annotated[Session, Depends(get_db)]
+    db: Annotated[Session, Depends(get_db)],
 ) -> dict:
     case = db.get(Case, case_id)
     if not case or case.deleted_at:
@@ -244,15 +237,15 @@ def get_doc_upload_url(
     # 1. Sanitize Filename (Accept all characters, sanitize for storage)
     # Import the robust sanitizer that handles special chars like apostrophes and accents
     from app.services.document_processor import sanitize_filename
-    
+
     # Keep original for extension detection, apply sanitization for storage
     original_basename = Path(filename).name
     clean_filename = sanitize_filename(original_basename)
-    
+
     # Ensure we still have a valid filename after sanitization
     if not clean_filename or clean_filename == ".":
         clean_filename = "document"
-    
+
     # Preserve the original extension
     ext = Path(original_basename).suffix.lower()
     if ext and not clean_filename.endswith(ext):
@@ -260,12 +253,14 @@ def get_doc_upload_url(
 
     # 2. Validate Extension & MIME
     if ext not in settings.ALLOWED_MIME_TYPES:
-        raise HTTPException(status_code=400, detail=f"Unsupported file extension: {ext}")
-    
+        raise HTTPException(
+            status_code=400, detail=f"Unsupported file extension: {ext}"
+        )
+
     if content_type != settings.ALLOWED_MIME_TYPES[ext]:
         raise HTTPException(
             status_code=400,
-            detail=f"MIME type mismatch. Expected {settings.ALLOWED_MIME_TYPES[ext]}."
+            detail=f"MIME type mismatch. Expected {settings.ALLOWED_MIME_TYPES[ext]}.",
         )
 
     # 3. Generate URL
@@ -273,18 +268,15 @@ def get_doc_upload_url(
         filename=clean_filename,
         content_type=content_type,
         organization_id=str(case.organization_id),
-        case_id=str(case.id)
+        case_id=str(case.id),
     )
 
 
-@router.post(
-    "/{case_id}/documents/register", 
-    response_model=schemas.DocumentRead
-)
+@router.post("/{case_id}/documents/register", response_model=schemas.DocumentRead)
 def register_document(
     case_id: UUID,
     payload: schemas.DocumentRegisterPayload,
-    db: Annotated[Session, Depends(get_db)]
+    db: Annotated[Session, Depends(get_db)],
 ) -> Document:
     """
     Registers a GCS blob as a Document.
@@ -299,7 +291,7 @@ def register_document(
         raw_path=payload.gcs_path,
         org_id=case.organization_id,
         case_id=case.id,
-        allowed_prefixes=["uploads"]
+        allowed_prefixes=["uploads"],
     )
 
     # 2. Create Record
@@ -309,10 +301,10 @@ def register_document(
         filename=payload.filename,
         gcs_path=clean_path,
         mime_type=payload.mime_type,
-        ai_status=ExtractionStatus.PENDING
+        ai_status=ExtractionStatus.PENDING,
     )
     db.add(new_doc)
-    
+
     # 2.5. Tag blob as finalized BEFORE commit
     # If this fails, we fail the request. The file remains an orphan (db undefined),
     # and will be cleaned up by the daily job.
@@ -321,30 +313,31 @@ def register_document(
     except Exception as e:
         logger.error(f"Failed to tag blob {clean_path} as finalized: {e}")
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, 
-            detail="Failed to finalize document storage."
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to finalize document storage.",
         )
 
     # 3. Commit only if tagging succeeded (or we are okay with it, but here we enforce it)
     db.commit()
-    
+
     # RE-APPLY RLS CONTEXT (Fix for QueuePool connection swap after commit)
     # db.commit() may release connection to pool, and db.refresh() gets a new one
     # without the RLS session variables set.
     from sqlalchemy import text
+
     try:
         db.execute(
-            text("SELECT set_config('app.current_org_id', :oid, false)"), 
-            {"oid": str(case.organization_id)}
+            text("SELECT set_config('app.current_org_id', :oid, false)"),
+            {"oid": str(case.organization_id)},
         )
     except Exception as e:
         logger.warning(f"Failed to re-apply RLS context before refresh: {e}")
-    
+
     db.refresh(new_doc)
-    
+
     # 3. Trigger Async Processing
     case_service.trigger_extraction_task(new_doc.id, str(case.organization_id))
-    
+
     return new_doc
 
 
@@ -352,7 +345,7 @@ def register_document(
 async def trigger_generation(
     case_id: UUID,
     background_tasks: BackgroundTasks,
-    db: Annotated[Session, Depends(get_db)]
+    db: Annotated[Session, Depends(get_db)],
 ) -> dict:
     case = db.get(Case, case_id)
     if not case or case.deleted_at:
@@ -363,20 +356,22 @@ async def trigger_generation(
         # Update status immediately for UI responsiveness
         case.status = CaseStatus.GENERATING
         db.commit()
-        
+
         background_tasks.add_task(
             generation_service.run_generation_task,
             case_id=str(case.id),
-            organization_id=str(case.organization_id)
+            organization_id=str(case.organization_id),
         )
     else:
         # PROD: Cloud Tasks
         # Update status immediately for UI responsiveness
         case.status = CaseStatus.GENERATING
         db.commit()
-        
-        await generation_service.trigger_generation_task(str(case.id), str(case.organization_id))
-    
+
+        await generation_service.trigger_generation_task(
+            str(case.id), str(case.organization_id)
+        )
+
     return {"status": "generation_started"}
 
 
@@ -384,7 +379,7 @@ async def trigger_generation(
 def finalize_case_endpoint(
     case_id: UUID,
     payload: schemas.FinalizePayload,
-    db: Annotated[Session, Depends(get_db)]
+    db: Annotated[Session, Depends(get_db)],
 ) -> ReportVersion:
     case = db.get(Case, case_id)
     if not case or case.deleted_at:
@@ -395,17 +390,14 @@ def finalize_case_endpoint(
         raw_path=payload.final_docx_path,
         org_id=case.organization_id,
         case_id=case.id,
-        allowed_prefixes=["uploads", "reports"]
+        allowed_prefixes=["uploads", "reports"],
     )
 
     # 2. Execute Service
     final_version = case_service.finalize_case(
-        db=db,
-        case_id=case.id,
-        org_id=case.organization_id,
-        final_docx_path=clean_path
+        db=db, case_id=case.id, org_id=case.organization_id, final_docx_path=clean_path
     )
-    
+
     return final_version
 
 
@@ -415,57 +407,52 @@ async def download_version(
     version_id: UUID,
     payload: schemas.DownloadVariantPayload,
     db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[dict, Depends(get_current_user_token)]
+    current_user: Annotated[dict, Depends(get_current_user_token)],
 ) -> dict:
     # Validate Case
     case = db.get(Case, case_id)
     if not case or case.deleted_at:
         raise HTTPException(status_code=404, detail="Case not found")
-        
+
     # Validate Version
     stmt = select(ReportVersion).where(
-        ReportVersion.id == version_id, 
-        ReportVersion.case_id == case_id
+        ReportVersion.id == version_id, ReportVersion.case_id == case_id
     )
     version = db.scalar(stmt)
-    
+
     if not version:
         raise HTTPException(status_code=404, detail="Version not found")
 
     try:
         if version.is_final:
             if not version.docx_storage_path:
-                 raise HTTPException(status_code=404, detail="File path missing.")
-            
+                raise HTTPException(status_code=404, detail="File path missing.")
+
             url = gcs_service.generate_download_signed_url(version.docx_storage_path)
             return {"download_url": url}
         else:
             # Generate variant logic
             url = await generation_service.generate_docx_variant(
-                version_id=str(version_id),
-                template_type=payload.template_type,
-                db=db
+                version_id=str(version_id), template_type=payload.template_type, db=db
             )
             return {"download_url": url}
-            
+
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Download generation failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
+
 @router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_case(
-    case_id: UUID,
-    db: Annotated[Session, Depends(get_db)]
-):
+def delete_case(case_id: UUID, db: Annotated[Session, Depends(get_db)]):
     """
     Soft-deletes a case and hard-deletes all associated documents and report versions from GCS.
     """
     case = db.get(Case, case_id)
     if not case or case.deleted_at:
         raise HTTPException(status_code=404, detail="Case not found")
-    
+
     # 1. Delete all documents from GCS and DB
     docs = db.scalars(select(Document).where(Document.case_id == case_id)).all()
     for doc in docs:
@@ -476,9 +463,11 @@ def delete_case(
             except Exception as e:
                 logger.warning(f"Failed to delete GCS blob {doc.gcs_path}: {e}")
         db.delete(doc)
-    
+
     # 2. Delete all report versions from GCS and DB
-    versions = db.scalars(select(ReportVersion).where(ReportVersion.case_id == case_id)).all()
+    versions = db.scalars(
+        select(ReportVersion).where(ReportVersion.case_id == case_id)
+    ).all()
     for v in versions:
         if v.docx_storage_path:
             try:
@@ -487,20 +476,21 @@ def delete_case(
             except Exception as e:
                 logger.warning(f"Failed to delete GCS blob {v.docx_storage_path}: {e}")
         db.delete(v)
-    
+
     # 3. Soft-delete the case
     from datetime import datetime
+
     case.deleted_at = datetime.utcnow()
     db.commit()
-    logger.info(f"Case {case_id} soft-deleted with {len(docs)} docs and {len(versions)} versions removed.")
+    logger.info(
+        f"Case {case_id} soft-deleted with {len(docs)} docs and {len(versions)} versions removed."
+    )
     return
 
 
 @router.delete("/{case_id}/documents/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_document(
-    case_id: UUID,
-    doc_id: UUID,
-    db: Annotated[Session, Depends(get_db)]
+    case_id: UUID, doc_id: UUID, db: Annotated[Session, Depends(get_db)]
 ):
     """
     Hard-deletes a single document from DB and GCS.
@@ -511,7 +501,7 @@ def delete_document(
     )
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    
+
     # Delete from GCS
     if doc.gcs_path:
         try:
@@ -519,7 +509,7 @@ def delete_document(
             logger.info(f"Deleted GCS blob: {doc.gcs_path}")
         except Exception as e:
             logger.warning(f"Failed to delete GCS blob {doc.gcs_path}: {e}")
-    
+
     # Hard delete from DB
     db.delete(doc)
     db.commit()

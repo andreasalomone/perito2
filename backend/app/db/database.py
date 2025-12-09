@@ -1,13 +1,13 @@
 import logging
-from typing import Generator, Any
-
-from google.cloud.sql.connector import Connector, create_async_connector, IPTypes
-from sqlalchemy import create_engine, text
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import QueuePool
 from contextlib import asynccontextmanager
+from typing import Any, Generator
+
 from fastapi import FastAPI
+from google.cloud.sql.connector import Connector, IPTypes, create_async_connector
+from sqlalchemy import create_engine, text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import QueuePool
 
 from app.core.config import settings
 
@@ -19,6 +19,7 @@ logger = logging.getLogger("app.db")
 _connector: Connector | None = None
 _async_connector: Any | None = None
 
+
 def get_connector() -> Connector:
     """
     Retrieves the active Google Cloud SQL Connector.
@@ -29,6 +30,7 @@ def get_connector() -> Connector:
             "Sync Connector not initialized. Ensure lifespan has started."
         )
     return _connector
+
 
 # -----------------------------------------------------------------------------
 # 2. Connection Factories
@@ -50,6 +52,7 @@ def getconn() -> Any:
         logger.error(f"Failed to establish Cloud SQL connection: {e}")
         raise
 
+
 async def getconn_async() -> Any:
     """Async Connection Factory (for AI Workers)"""
     if _async_connector is None:
@@ -65,6 +68,7 @@ async def getconn_async() -> Any:
         ip_type=IPTypes.PUBLIC,
     )
 
+
 # -----------------------------------------------------------------------------
 # 3. Engines & Session Factories
 # -----------------------------------------------------------------------------
@@ -75,7 +79,7 @@ engine = create_engine(
     poolclass=QueuePool,
     pool_size=5,
     max_overflow=10,
-    pool_recycle=1800, # Recycle connections every 30 mins
+    pool_recycle=1800,  # Recycle connections every 30 mins
     pool_timeout=30,
     echo=(settings.LOG_LEVEL == "DEBUG"),
 )
@@ -86,18 +90,14 @@ async_engine = create_async_engine(
     "postgresql+asyncpg://",
     async_creator=getconn_async,
     pool_size=5,
-    max_overflow=0, # Strict limit for workers to prevent starvation
+    max_overflow=0,  # Strict limit for workers to prevent starvation
     pool_recycle=1800,
     echo=(settings.LOG_LEVEL == "DEBUG"),
 )
 AsyncSessionLocal = async_sessionmaker(
-    bind=async_engine,
-    class_=AsyncSession,
-    expire_on_commit=False
+    bind=async_engine, class_=AsyncSession, expire_on_commit=False
 )
 
-# Base is imported from app.models.base to avoid circular imports
-from app.models.base import Base
 
 # -----------------------------------------------------------------------------
 # 4. FastAPI Dependency (unchanged)
@@ -117,6 +117,7 @@ def get_raw_db() -> Generator[Session, None, None]:
     finally:
         db.close()
 
+
 # -----------------------------------------------------------------------------
 # 5. Lifespan (UPDATED - initializes BOTH connectors)
 # -----------------------------------------------------------------------------
@@ -129,15 +130,15 @@ async def lifespan(app: FastAPI):
     - Async Connector (for AI Workers using asyncpg)
     """
     global _connector, _async_connector
-    
+
     logger.info("🚀 Initializing Database Connectors...")
     try:
         # A. Sync Connector (background thread for cert refresh)
         _connector = Connector()
-        
+
         # B. Async Connector (current event loop) - MUST be awaited!
         _async_connector = await create_async_connector()
-        
+
         # Warm-up ping to verify connectivity
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))

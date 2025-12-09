@@ -1,8 +1,10 @@
 from enum import Enum
 
+
 class UserRole(str, Enum):
     ADMIN = "ADMIN"
     MEMBER = "MEMBER"
+
 
 class CaseStatus(str, Enum):
     OPEN = "OPEN"
@@ -11,6 +13,7 @@ class CaseStatus(str, Enum):
     GENERATING = "GENERATING"
     PROCESSING = "PROCESSING"
     ERROR = "ERROR"
+
 
 class ExtractionStatus(str, Enum):
     SUCCESS = "SUCCESS"

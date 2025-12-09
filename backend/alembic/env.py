@@ -1,12 +1,12 @@
-import asyncio
-from logging.config import fileConfig
 import logging
 import os
 import sys
+from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool, create_engine
-from alembic import context
 from google.cloud.sql.connector import Connector, IPTypes
+from sqlalchemy import create_engine, pool
+
+from alembic import context
 
 # -----------------------------------------------------------------------------
 # 1. Path Setup & Imports
@@ -14,9 +14,9 @@ from google.cloud.sql.connector import Connector, IPTypes
 # Add the project root to python path so we can import 'app'
 sys.path.append(os.getcwd())
 
+import app.models  # noqa: F401 Ensure models are registered with Base.metadata
 from app.core.config import settings
 from app.db.database import Base  # Import the declarative base from our refactored file
-import app.models # Ensure models are registered with Base.metadata
 
 # -----------------------------------------------------------------------------
 # 2. Config & Logging
@@ -36,6 +36,7 @@ logger = logging.getLogger("alembic.env")
 # This is crucial for 'autogenerate' support
 target_metadata = Base.metadata
 
+
 # -----------------------------------------------------------------------------
 # 4. Offline Migrations (Generate SQL Scripts)
 # -----------------------------------------------------------------------------
@@ -46,7 +47,7 @@ def run_migrations_offline() -> None:
     though an Engine is acceptable here as well.  By skipping the Engine creation
     we don't even need a DBAPI to be available.
     """
-    # In offline mode, we don't connect to Cloud SQL. 
+    # In offline mode, we don't connect to Cloud SQL.
     # We just need the dialect name (postgresql).
     # Ensure alembic.ini has: sqlalchemy.url = postgresql+pg8000://...
     url = config.get_main_option("sqlalchemy.url")
@@ -60,6 +61,7 @@ def run_migrations_offline() -> None:
     with context.begin_transaction():
         context.run_migrations()
 
+
 # -----------------------------------------------------------------------------
 # 5. Online Migrations (Apply Changes to DB)
 # -----------------------------------------------------------------------------
@@ -67,18 +69,18 @@ def run_migrations_online() -> None:
     """
     Run migrations in 'online' mode.
     In this scenario we need to create an Engine and associate a connection with the context.
-    
+
     CRITICAL CHANGE:
     We verify if we are running locally (Development) or in Cloud Run (Production).
     If Production, we use the Google Cloud SQL Connector.
     If Local, we connect via TCP (localhost:5432), assuming Cloud SQL Proxy is running.
     """
-    
+
     if settings.RUN_LOCALLY:
         # Local Development: Connect via TCP (Cloud SQL Proxy or Local DB)
         # We construct the URL manually to handle special chars in password safely
         from sqlalchemy.engine.url import URL
-        
+
         url = URL.create(
             drivername="postgresql+pg8000",
             username=settings.DB_USER,
@@ -87,24 +89,21 @@ def run_migrations_online() -> None:
             port=5432,
             database=settings.DB_NAME,
         )
-        
+
         connectable = create_engine(url)
 
         with connectable.connect() as connection:
-            context.configure(
-                connection=connection, 
-                target_metadata=target_metadata
-            )
+            context.configure(connection=connection, target_metadata=target_metadata)
 
             with context.begin_transaction():
                 context.run_migrations()
-                
+
     else:
         # Production: Use Cloud SQL Connector
-        
+
         # Define the connector helper internal to this scope
         # We don't rely on the app's global state because the app isn't running here.
-        
+
         def getconn():
             """
             Standalone connector function specifically for migrations.
@@ -126,22 +125,22 @@ def run_migrations_online() -> None:
         # -------------------------------------------------------------
         # We use a Context Manager to ensure the Connector is closed after migration
         with Connector() as global_connector:
-            
+
             # Create the engine dynamically
             connectable = create_engine(
                 "postgresql+pg8000://",
                 creator=getconn,
-                poolclass=pool.NullPool, # No need for pooling during migrations
+                poolclass=pool.NullPool,  # No need for pooling during migrations
             )
 
             with connectable.connect() as connection:
                 context.configure(
-                    connection=connection, 
-                    target_metadata=target_metadata
+                    connection=connection, target_metadata=target_metadata
                 )
 
                 with context.begin_transaction():
                     context.run_migrations()
+
 
 if context.is_offline_mode():
     run_migrations_offline()

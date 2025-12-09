@@ -1,16 +1,19 @@
 import asyncio
 import heapq
 import logging
-import weakref
+import mimetypes
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Deque, Dict, List, Optional, Protocol, Tuple, Set
-import mimetypes
+from typing import Any, Deque, Dict, List, Optional, Protocol, Set, Tuple
+
+# Google GenAI imports (Assumed installed)
+from google import genai
+from google.api_core import exceptions as google_exceptions
 
 # Use pydantic v2
-from pydantic import BaseModel, Field, PrivateAttr, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from tenacity import (
     AsyncRetrying,
     retry_if_exception_type,
@@ -18,15 +21,12 @@ from tenacity import (
     wait_exponential,
 )
 
-# Google GenAI imports (Assumed installed)
-from google import genai
-from google.api_core import exceptions as google_exceptions
-
 logger = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
 # 1. Protocols & Contracts
 # -----------------------------------------------------------------------------
+
 
 class FileUploadServiceProtocol(Protocol):
     @dataclass
@@ -79,11 +79,13 @@ class GenerationServiceProtocol(Protocol):
 # 2. Data Models
 # -----------------------------------------------------------------------------
 
+
 class ProcessedFile(BaseModel):
     """
     Contract for file inputs to the LLM.
     Strict validation prevents passing arbitrary system paths.
     """
+
     filename: str
     file_type: str = Field(alias="type")  # Category label: "vision", "text", "error"
     mime_type: Optional[str] = None  # Actual MIME type: "application/pdf", "image/jpeg"
@@ -108,11 +110,13 @@ class ReportResult(BaseModel):
 
 class LLMGenerationError(Exception):
     """Base exception for LLM failures."""
+
     pass
 
 
 class SecurityError(Exception):
     """Raised when file path validation fails."""
+
     pass
 
 
@@ -120,17 +124,19 @@ class SecurityError(Exception):
 # 3. Robust Retry Queue (Memory Safe)
 # -----------------------------------------------------------------------------
 
+
 @dataclass(order=True)
 class CleanupRetryItem:
     """
     Represents a file cleanup operation pending retry.
     Ordered by next_retry_at for priority queue efficiency.
     """
+
     next_retry_at: datetime
     file_names: List[str] = field(compare=False)
     attempt: int = field(default=0, compare=False)
     max_attempts: int = field(default=3, compare=False)
-    
+
     # Do not compare these fields in the heap
     first_failed_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc), compare=False
@@ -139,13 +145,14 @@ class CleanupRetryItem:
 
     def calculate_next_retry(self) -> datetime:
         """Exponential backoff: 2^attempt minutes."""
-        wait_minutes = 2 ** self.attempt
+        wait_minutes = 2**self.attempt
         return datetime.now(timezone.utc) + timedelta(minutes=wait_minutes)
 
 
 import threading
 
 # ... (imports)
+
 
 class CleanupRetryQueue:
     """
@@ -173,7 +180,7 @@ class CleanupRetryQueue:
         )
         with self._lock:
             heapq.heappush(self._queue, item)
-        
+
         # Log count only, avoid leaking PII (filenames)
         logger.info(f"Enqueued {len(file_names)} files for cleanup retry.")
 
@@ -182,7 +189,7 @@ class CleanupRetryQueue:
         logger.error(
             f"Moved {len(item.file_names)} files to dead-letter queue. "
             f"Last error: {item.last_error}",
-            extra={"alert": True}
+            extra={"alert": True},
         )
 
     async def process_queue(
@@ -219,7 +226,7 @@ class CleanupRetryQueue:
         self,
         client: genai.Client,
         service: FileUploadServiceProtocol,
-        item: CleanupRetryItem
+        item: CleanupRetryItem,
     ) -> None:
         item.attempt += 1
         try:
@@ -228,7 +235,9 @@ class CleanupRetryQueue:
             )
 
             if fail_count > 0:
-                await self._handle_failure(item, f"Partial failure: {fail_count} failed")
+                await self._handle_failure(
+                    item, f"Partial failure: {fail_count} failed"
+                )
             else:
                 logger.info(f"Retry successful for {len(item.file_names)} files.")
 
@@ -258,6 +267,7 @@ class CleanupRetryQueue:
 # 4. The Gemini Service
 # -----------------------------------------------------------------------------
 
+
 class GeminiReportGenerator:
     """
     Orchestrates insurance report generation using Google Gemini.
@@ -286,18 +296,20 @@ class GeminiReportGenerator:
         self.response_parser_service = response_parser_service
         self.generation_service = generation_service
         self.retry_queue = retry_queue
-        
+
         # Security: Default to empty list (deny all) if not provided
         self.allowed_file_dirs = allowed_file_dirs or []
 
         self.retry_policy = AsyncRetrying(
             stop=stop_after_attempt(3),
             wait=wait_exponential(multiplier=1, min=2, max=10),
-            retry=retry_if_exception_type((
-                google_exceptions.ServiceUnavailable,
-                google_exceptions.TooManyRequests,
-                google_exceptions.InternalServerError,
-            )),
+            retry=retry_if_exception_type(
+                (
+                    google_exceptions.ServiceUnavailable,
+                    google_exceptions.TooManyRequests,
+                    google_exceptions.InternalServerError,
+                )
+            ),
             reraise=True,
         )
 
@@ -306,11 +318,15 @@ class GeminiReportGenerator:
         # Cost Safeguard: Limit concurrent executions
         # We access the global semaphore defined at module level
         async with llm_generation_semaphore:
-             return await self._generate_internal(processed_files)
+            return await self._generate_internal(processed_files)
 
-    async def _generate_internal(self, processed_files: List[ProcessedFile]) -> ReportResult:
+    async def _generate_internal(
+        self, processed_files: List[ProcessedFile]
+    ) -> ReportResult:
         """Internal generation logic (protected by semaphore)."""
-        vision_parts: List[Any] = []  # Combined: types.Part (GCS) + types.File (uploaded)
+        vision_parts: List[Any] = (
+            []
+        )  # Combined: types.Part (GCS) + types.File (uploaded)
         upload_errors: List[str] = []
         cache_name: Optional[str] = None
 
@@ -320,32 +336,47 @@ class GeminiReportGenerator:
 
             # 2. Prepare Vision Assets
             # Separate GCS files (use Part.from_uri) from local files (upload)
-            gcs_candidates, upload_candidates = self._prepare_vision_assets(processed_files)
-            
+            gcs_candidates, upload_candidates = self._prepare_vision_assets(
+                processed_files
+            )
+
             # 2a. GCS Direct Parts - No download/upload needed
             from app.services.llm.file_upload_service import create_gcs_direct_part
+
             for candidate in gcs_candidates:
                 try:
-                    part = create_gcs_direct_part(candidate.gcs_uri, candidate.mime_type)
+                    part = create_gcs_direct_part(
+                        candidate.gcs_uri, candidate.mime_type
+                    )
                     vision_parts.append(part)
-                    logger.debug(f"Created GCS direct part for: {candidate.display_name}")
+                    logger.debug(
+                        f"Created GCS direct part for: {candidate.display_name}"
+                    )
                 except Exception as e:
-                    error_msg = f"GCS direct access failed for {candidate.display_name}: {e}"
+                    error_msg = (
+                        f"GCS direct access failed for {candidate.display_name}: {e}"
+                    )
                     logger.warning(error_msg)
                     upload_errors.append(error_msg)
 
             # 2b. Upload non-GCS files to Gemini Files API
             if upload_candidates:
-                upload_results = await self.file_upload_service.upload_vision_files_batch(
-                    self.client, upload_candidates
+                upload_results = (
+                    await self.file_upload_service.upload_vision_files_batch(
+                        self.client, upload_candidates
+                    )
                 )
-                uploaded_files = [res.gemini_file for res in upload_results if res.success]
+                uploaded_files = [
+                    res.gemini_file for res in upload_results if res.success
+                ]
                 vision_parts.extend(uploaded_files)
-                upload_errors.extend([
-                    res.error_message
-                    for res in upload_results
-                    if not res.success and res.error_message
-                ])
+                upload_errors.extend(
+                    [
+                        res.error_message
+                        for res in upload_results
+                        if not res.success and res.error_message
+                    ]
+                )
             else:
                 uploaded_files = []
 
@@ -372,35 +403,36 @@ class GeminiReportGenerator:
         finally:
             # 5. Cleanup - Only for uploaded files (not GCS direct parts)
             # Filter to get only types.File objects (have 'name' attribute)
-            files_to_cleanup = [f for f in vision_parts if hasattr(f, 'name')]
+            files_to_cleanup = [f for f in vision_parts if hasattr(f, "name")]
             self._schedule_cleanup(files_to_cleanup)
 
-    def _prepare_vision_assets(
-        self, processed_files: List[ProcessedFile]
-    ) -> Tuple[List[FileUploadServiceProtocol.UploadCandidate], List[FileUploadServiceProtocol.UploadCandidate]]:
+    def _prepare_vision_assets(self, processed_files: List[ProcessedFile]) -> Tuple[
+        List[FileUploadServiceProtocol.UploadCandidate],
+        List[FileUploadServiceProtocol.UploadCandidate],
+    ]:
         """
         Separates vision assets into two groups:
-        1. GCS Direct: Files with GCS URIs that can use Part.from_uri() 
+        1. GCS Direct: Files with GCS URIs that can use Part.from_uri()
         2. Upload Required: Local-only files that need Gemini Files API upload
-        
+
         Returns:
             Tuple of (gcs_candidates, upload_candidates)
         """
         gcs_candidates = []
         upload_candidates = []
-        
+
         for f in processed_files:
             local_path = f.local_path
             gcs_uri = f.gcs_uri
-            
+
             if not local_path and not gcs_uri:
                 continue
-                
+
             # SECURITY: Strict path validation for local files
             if local_path and not self._is_safe_path(local_path):
                 logger.warning(
                     f"Skipping unsafe or unauthorized file path: {local_path}",
-                    extra={"security_event": True}
+                    extra={"security_event": True},
                 )
                 continue
 
@@ -408,39 +440,44 @@ class GeminiReportGenerator:
             is_vision = f.file_type != "application/json"
             if not is_vision:
                 continue
-            
+
             # Use actual mime_type if available, otherwise fallback to file_type
             # This fixes the 'vision' mimeType bug (vision is a category, not a MIME type)
             actual_mime_type = f.mime_type or f.file_type
-            
+
             # Defense in depth: If mime type is invalid/generic, try to guess from filename
-            if not actual_mime_type or actual_mime_type in ("vision", "application/octet-stream"):
+            if not actual_mime_type or actual_mime_type in (
+                "vision",
+                "application/octet-stream",
+            ):
                 guessed_type, _ = mimetypes.guess_type(f.filename or "")
                 if guessed_type:
                     actual_mime_type = guessed_type
                 else:
-                     # Fallback for common extensions if system mime.types is missing
-                    ext = (f.filename or "").lower().split('.')[-1]
-                    if ext in ['jpg', 'jpeg']:
-                        actual_mime_type = 'image/jpeg'
-                    elif ext == 'png':
-                        actual_mime_type = 'image/png'
-                    elif ext == 'pdf':
-                        actual_mime_type = 'application/pdf'
-            
+                    # Fallback for common extensions if system mime.types is missing
+                    ext = (f.filename or "").lower().split(".")[-1]
+                    if ext in ["jpg", "jpeg"]:
+                        actual_mime_type = "image/jpeg"
+                    elif ext == "png":
+                        actual_mime_type = "image/png"
+                    elif ext == "pdf":
+                        actual_mime_type = "application/pdf"
+
             if actual_mime_type == "vision":
                 # Fallback for legacy data/failure
-                logger.warning(f"Missing mime_type for {f.filename}, defaulting to application/octet-stream")
+                logger.warning(
+                    f"Missing mime_type for {f.filename}, defaulting to application/octet-stream"
+                )
                 actual_mime_type = "application/octet-stream"
-            
+
             candidate = self.file_upload_service.UploadCandidate(
                 file_path=local_path or gcs_uri,
                 mime_type=actual_mime_type,
                 display_name=f.filename,
                 is_vision_asset=True,
-                gcs_uri=gcs_uri
+                gcs_uri=gcs_uri,
             )
-            
+
             # If we have a GCS URI, use Part.from_uri() (no download needed)
             # Otherwise, fall back to Gemini Files API upload
             if gcs_uri:
@@ -449,8 +486,10 @@ class GeminiReportGenerator:
             else:
                 upload_candidates.append(candidate)
                 logger.debug(f"Upload required for: {f.filename}")
-        
-        logger.info(f"Vision assets: {len(gcs_candidates)} GCS direct, {len(upload_candidates)} upload required")
+
+        logger.info(
+            f"Vision assets: {len(gcs_candidates)} GCS direct, {len(upload_candidates)} upload required"
+        )
         return gcs_candidates, upload_candidates
 
     def _prepare_upload_candidates(
@@ -471,14 +510,14 @@ class GeminiReportGenerator:
 
         try:
             target_path = Path(path_str).resolve()
-            
+
             # Check against whitelist
             for allowed in self.allowed_file_dirs:
                 # resolve allowed path to ensure we compare absolute paths
                 allowed_abs = allowed.resolve()
                 if target_path.is_relative_to(allowed_abs):
-                     return target_path.exists()
-            
+                    return target_path.exists()
+
             return False
         except Exception:
             return False
@@ -490,7 +529,7 @@ class GeminiReportGenerator:
         upload_errors: List[str],
         cache_name: Optional[str],
     ) -> Any:
-        
+
         # Helper to regenerate prompt parts based on strategy
         def get_prompt_parts(use_cache: bool) -> List[Any]:
             return self.prompt_builder_service.build_prompt_parts(
@@ -607,6 +646,7 @@ class GeminiReportGenerator:
             cached_tokens=getattr(meta, "cached_content_token_count", 0) or 0,
         )
 
+
 # -----------------------------------------------------------------------------
 # 5. Dependency Injection & Singleton Factory (Compatibility Layer)
 # -----------------------------------------------------------------------------
@@ -622,6 +662,7 @@ from app.services.llm import (
 
 # Global retry queue instance
 cleanup_retry_queue = CleanupRetryQueue()
+
 
 # Singleton Instance
 # We construct it with the concrete services from the app
@@ -646,22 +687,21 @@ class LazyGeminiProxy:
             if self._delegate:
                 return self._delegate
 
-
             # GEMINI_API_KEY check removed - Vertex AI uses ADC (Application Default Credentials)
             # which are automatically available in Cloud Run
 
             logger.info("Initializing Gemini Service via Vertex AI (Lazy Load)...")
-            
+
             # Create Client - Use Vertex AI mode for direct GCS access
             try:
                 _client = genai.Client(
                     vertexai=True,
                     project=settings.GOOGLE_CLOUD_PROJECT,
-                    location=settings.GOOGLE_CLOUD_REGION
+                    location=settings.GOOGLE_CLOUD_REGION,
                 )
             except Exception as e:
-                 logger.critical(f"Failed to create Vertex AI Client: {e}")
-                 raise
+                logger.critical(f"Failed to create Vertex AI Client: {e}")
+                raise
 
             # Create Generator
             self._delegate = GeminiReportGenerator(
@@ -674,9 +714,10 @@ class LazyGeminiProxy:
                 response_parser_service=response_parser_service,
                 generation_service=generation_service,
                 retry_queue=cleanup_retry_queue,
-                allowed_file_dirs=[Path(settings.UPLOAD_FOLDER), Path("/tmp")]
+                allowed_file_dirs=[Path(settings.UPLOAD_FOLDER), Path("/tmp")],
             )
             return self._delegate
+
 
 # Export the proxy as the singleton
 gemini_generator = LazyGeminiProxy()
@@ -686,18 +727,18 @@ gemini_generator = LazyGeminiProxy()
 # -----------------------------------------------------------------------------
 # Limit concurrent LLM API calls to 5 to prevent cost spikes and API overload.
 # We apply this at the module level or service level to be shared.
-# Since GeminiReportGenerator is a singleton here, we can add it to the instance 
-# or wrap the call. 
-# 
-# For simplicity and effectiveness, we monkey-patch the generate method 
+# Since GeminiReportGenerator is a singleton here, we can add it to the instance
+# or wrap the call.
+#
+# For simplicity and effectiveness, we monkey-patch the generate method
 # or wrap it in the service definition.
 # A cleaner way is to use the semaphore inside the generate method of the class.
 # But since the class is defined above, let's modify the class definition in the next step
 # or just re-assign the method if we want to avoid large file edits.
 #
-# BETTER: We will modify the GeminiReportGenerator class processing logic 
-# to acquire this semaphore. Since we can't easily modify the class in-place 
-# without rewriting the whole file in this tool, we will use a global semaphore 
+# BETTER: We will modify the GeminiReportGenerator class processing logic
+# to acquire this semaphore. Since we can't easily modify the class in-place
+# without rewriting the whole file in this tool, we will use a global semaphore
 # and modify the `generate` method in the class via a separate `replace_file_content` call.
 #
 # Defining it here for now.

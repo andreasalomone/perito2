@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
@@ -99,7 +99,7 @@ def process_file_from_path(
                     current_length_for_this_file_processing,
                     svc_msg,
                 ) = _add_text_data_to_processed_list(
-                    [], # Temporary list
+                    [],  # Temporary list
                     current_length_for_this_file_processing,
                     part["content"],
                     part_filename,
@@ -108,10 +108,10 @@ def process_file_from_path(
                 processed_entries.extend(processed_entries_list)
                 if svc_msg:
                     result.messages.append(svc_msg)
-            
+
             elif part_type in ["vision", "error", "unsupported"]:
                 processed_entries.append(part)
-            
+
             # Handle attachment references if any (from our new storage logic)
             elif part_type == "attachment_reference":
                 # For now, just log or ignore, or add to processed entries if the frontend can handle it
