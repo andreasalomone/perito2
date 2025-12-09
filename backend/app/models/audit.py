@@ -1,8 +1,16 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, ForeignKey, Uuid, JSON
-from sqlalchemy.orm import relationship
+from typing import TYPE_CHECKING, Optional
+
+from sqlalchemy import Column, DateTime, ForeignKey, String, Uuid, JSON
+from sqlalchemy.orm import Mapped, relationship
+
 from app.models.base import Base
+
+if TYPE_CHECKING:
+    from app.models.organization import Organization
+    from app.models.user import User
+
 
 class AuditLog(Base):
     """Tracks critical user actions and system events for compliance and debugging."""
@@ -21,5 +29,5 @@ class AuditLog(Base):
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     
     # Relationships
-    organization = relationship("Organization")
-    user = relationship("User")
+    organization: Mapped["Organization"] = relationship("Organization")
+    user: Mapped[Optional["User"]] = relationship("User")

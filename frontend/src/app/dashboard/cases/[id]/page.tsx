@@ -76,7 +76,7 @@ export default function CaseWorkspace() {
 
     // --- Handlers ---
 
-    const handleGenerate = async () => {
+    const handleGenerate = useCallback(async () => {
         setIsGenerating(true);
         try {
             const token = await getToken();
@@ -89,7 +89,7 @@ export default function CaseWorkspace() {
             handleApiError(error, "Errore durante l'avvio della generazione");
             setIsGenerating(false);
         }
-    };
+    }, [setIsGenerating, getToken, apiUrl, caseId, mutate]);
 
     const handleDownload = useCallback(async (v: ReportVersion, template: TemplateType) => {
         try {

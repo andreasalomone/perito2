@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import BinaryIO, Union
 
 # Google Cloud Imports
-from google.cloud import storage
+from google.cloud import storage  # type: ignore[attr-defined]
 from google.api_core.exceptions import GoogleAPICallError
 
 from app.core.config import settings

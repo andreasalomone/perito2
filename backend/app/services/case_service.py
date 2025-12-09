@@ -400,13 +400,13 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: AsyncSessio
                 await asyncio.to_thread(_perform_extraction_logic, doc, tmp_dir)
                 
             # 3. Save to DB
-            doc.ai_status = ExtractionStatus.SUCCESS.value
+            doc.ai_status = ExtractionStatus.SUCCESS
             await db.commit()
             logger.info(f"Extraction complete for {doc.id}")
             
         except Exception as e:
             logger.error(f"Error extracting document {doc.id}: {e}")
-            doc.ai_status = ExtractionStatus.ERROR.value
+            doc.ai_status = ExtractionStatus.ERROR
             await db.commit()
         finally:
             shutil.rmtree(tmp_dir)
@@ -447,13 +447,14 @@ def _perform_extraction_logic(doc: Document, tmp_dir: str):
             
             logger.info(f"Uploading extracted artifact {artifact_filename} to GCS...")
             
+        
             blob = bucket.blob(blob_name)
             blob.upload_from_filename(item_path)
             
             item["item_gcs_path"] = f"gs://{bucket_name}/{blob_name}"
     
     # Update doc object (in memory, caller saves to DB)
-    doc.ai_extracted_data = processed
+    doc.ai_extracted_data = processed  # type: ignore[assignment]
 
 
 async def _check_and_trigger_generation(db: AsyncSession, case_id: UUID, org_id: str, is_async: bool = True):
@@ -466,6 +467,11 @@ async def _check_and_trigger_generation(db: AsyncSession, case_id: UUID, org_id:
             select(Case).filter(Case.id == case_id).with_for_update()
         )
         case = result.scalars().first()
+        
+        # Null check for case
+        if not case:
+            logger.warning(f"Case {case_id} not found for generation check.")
+            return
         
         # Check if we are already generating to fail fast
         if case.status == CaseStatus.GENERATING:
@@ -505,7 +511,7 @@ async def _check_and_trigger_generation(db: AsyncSession, case_id: UUID, org_id:
                 from app.models.outbox import OutboxMessage
                 outbox_entry = OutboxMessage(
                     topic="generate_report",
-                    organization_id=str(org_id),  # For tenant isolation
+                    organization_id=UUID(org_id) if isinstance(org_id, str) else org_id,  # For tenant isolation
                     payload={
                         "case_id": str(case_id),
                         "organization_id": str(org_id)

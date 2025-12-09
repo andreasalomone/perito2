@@ -81,7 +81,7 @@ def list_organizations(
     """
     # Modern SQLAlchemy 2.0 syntax
     stmt = select(Organization).order_by(Organization.name)
-    return db.scalars(stmt).all()
+    return list(db.scalars(stmt).all())
 
 @router.post(
     "/organizations",
@@ -141,7 +141,7 @@ def list_org_invites(
         )
     
     stmt = select(AllowedEmail).where(AllowedEmail.organization_id == org_id)
-    return db.scalars(stmt).all()
+    return list(db.scalars(stmt).all())
 
 @router.post(
     "/organizations/{org_id}/users/invite",
@@ -284,7 +284,7 @@ def cleanup_orphaned_storage(
             if not paths_batch:
                 return
 
-            stmt = union(
+            stmt: Any = union(
                 select(Document.gcs_path).where(Document.gcs_path.in_(paths_batch)),
                 select(ReportVersion.docx_storage_path).where(ReportVersion.docx_storage_path.in_(paths_batch))
             )
@@ -371,7 +371,7 @@ def rescue_stuck_cases(
         )
         
         result = db.execute(stmt)
-        rescued_count = result.rowcount
+        rescued_count: int = result.rowcount or 0  # type: ignore
         db.commit()
         
         logger.info(f"Zombie rescue completed: {rescued_count} cases reset to OPEN")

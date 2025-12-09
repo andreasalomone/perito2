@@ -149,3 +149,105 @@ norecursedirs = [
     ".git",
     ".venv"
 ]
+
+# ... (Keep all your existing sections above) ...
+
+# ==============================================================================
+# MYPY CONFIGURATION (Static Type Checker)
+# ==============================================================================
+[tool.mypy]
+# Match your Dockerfile/Black python version
+python_version = "3.10"
+
+# CRITICAL: Tell mypy where the source root is (fixes relative import errors)
+mypy_path = "."
+
+# Strictness settings (turn these off if they are too noisy at first)
+warn_return_any = true
+warn_unused_configs = true
+check_untyped_defs = true
+disallow_untyped_defs = false # Set to true later for stricter checking
+
+# CRITICAL: Prevent Mypy from crashing on missing library stubs
+ignore_missing_imports = true
+
+# Plugins for your specific stack (Pydantic + SQLAlchemy)
+plugins = [
+    "pydantic.mypy",
+    "sqlalchemy.ext.mypy.plugin"
+]
+
+# Exclude the same directories as your other tools
+# Mypy expects a regular expression
+# NOTE: email_intake.py excluded due to mypy 1.19.0 internal crash with SQLAlchemy plugin
+# TODO: Remove "app/models/email_intake.py" when mypy releases a fix
+exclude = [
+    "frontend",
+    "node_modules",
+    "alembic/versions",
+    "tests",
+    "scripts",
+    "build",
+    "dist",
+    "venv",
+    ".venv",
+    ".git",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    "app/models/email_intake.py"
+]
+
+# --- IGNORE MISSING LIBRARY TYPES ---
+# These libraries don't have proper type stubs, causing false positives
+[[tool.mypy.overrides]]
+module = [
+    "google.cloud.*",
+    "google.genai.*",
+    "google.auth.*",
+    "docx.*",
+    "docx"
+]
+ignore_missing_imports = true
+ignore_errors = true
+
+# Per-file ignores for modules with library type issues (no stubs available)
+[[tool.mypy.overrides]]
+module = [
+    "app.services.docx_generator",
+    "app.services.docx_generator_salomone",
+    "app.services.llm.generation_service",
+    "app.services.llm.cache_service",
+    "app.services.gcs_service",
+    "app.services.email_ai_extractor",
+    "app.services.report_generation_service",
+    "app.services.llm_handler"
+]
+ignore_errors = true
+
+# --- SQLALCHEMY PLUGIN CONFIGURATION ---
+# Helps mypy understand SQLAlchemy model constructors
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+# ==============================================================================
+# BANDIT CONFIGURATION (Security Linter)
+# ==============================================================================
+[tool.bandit]
+# Recursively check the entire project
+recursive = true
+
+# Exclude test and build directories from security scans
+exclude_dirs = [
+    "tests",
+    "alembic",
+    "frontend",
+    "node_modules",
+    "venv",
+    ".venv"
+]
+
+# B101: Assert used (we skip this because asserts are often used in tests/type narrowing)
+skips = ["B101"]

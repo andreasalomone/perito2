@@ -399,7 +399,7 @@ def finalize_case_endpoint(
     )
 
     # 2. Execute Service
-    final_version = case_service.finalize_case(
+    final_version: ReportVersion = case_service.finalize_case(
         db=db,
         case_id=case.id,
         org_id=case.organization_id,

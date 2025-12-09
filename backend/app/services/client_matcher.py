@@ -23,7 +23,7 @@ def levenshtein_distance(s1: str, s2: str) -> int:
     if len(s2) == 0:
         return len(s1)
     
-    previous_row = range(len(s2) + 1)
+    previous_row: list[int] = list(range(len(s2) + 1))
     for i, c1 in enumerate(s1):
         current_row = [i + 1]
         for j, c2 in enumerate(s2):
@@ -101,7 +101,7 @@ def fuzzy_match_client(
             best_score = score
             best_match = client
     
-    if best_score >= threshold:
+    if best_score >= threshold and best_match is not None:
         logger.info(f"Fuzzy matched '{client_name}' -> '{best_match.name}' (score: {best_score:.2f})")
         return best_match
     

@@ -167,7 +167,7 @@ export function WorkflowStepper({
                                 </div>
                                 {isClickable && (
                                     <div className="text-xs text-primary mt-1 font-medium">
-                                        Modifica documenti →
+                                        {step.id === 1 ? "Modifica documenti →" : "Torna alla revisione →"}
                                     </div>
                                 )}
                             </div>

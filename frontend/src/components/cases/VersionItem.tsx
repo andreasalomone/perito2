@@ -10,7 +10,7 @@ export type TemplateType = "bn" | "salomone";
 
 interface VersionItemProps {
     version: ReportVersion;
-    onDownload: (v: ReportVersion, template: TemplateType) => void;
+    onDownload: (v: ReportVersion, template: TemplateType) => void | Promise<void>;
 }
 
 export const VersionItem = memo(({
