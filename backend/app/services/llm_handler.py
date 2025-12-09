@@ -443,8 +443,27 @@ class GeminiReportGenerator:
             # Use actual mime_type if available, otherwise fallback to file_type
             # This fixes the 'vision' mimeType bug (vision is a category, not a MIME type)
             actual_mime_type = f.mime_type or f.file_type
+
+            # Defense in depth: If mime type is invalid/generic, try to guess from filename
+            if not actual_mime_type or actual_mime_type in (
+                "vision",
+                "application/octet-stream",
+            ):
+                guessed_type, _ = mimetypes.guess_type(f.filename or "")
+                if guessed_type:
+                    actual_mime_type = guessed_type
+                else:
+                    # Fallback for common extensions if system mime.types is missing
+                    ext = (f.filename or "").lower().split(".")[-1]
+                    if ext in ["jpg", "jpeg"]:
+                        actual_mime_type = "image/jpeg"
+                    elif ext == "png":
+                        actual_mime_type = "image/png"
+                    elif ext == "pdf":
+                        actual_mime_type = "application/pdf"
+
             if actual_mime_type == "vision":
-                # Fallback for legacy data without mime_type
+                # Fallback for legacy data/failure
                 logger.warning(
                     f"Missing mime_type for {f.filename}, defaulting to application/octet-stream"
                 )

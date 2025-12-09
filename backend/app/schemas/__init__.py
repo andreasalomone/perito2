@@ -100,6 +100,7 @@ class CaseSummary(CaseBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+    @computed_field
     @property
     def client_name(self) -> Optional[str]:
         """
@@ -133,7 +134,6 @@ class CaseSummary(CaseBase):
     _computed_creator_email = computed_field(return_type=Optional[str])(
         lambda self: self.creator_email
     )
-
 
 # --- VERSIONS ---
 class VersionRead(BaseModel):

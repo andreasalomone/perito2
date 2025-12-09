@@ -88,6 +88,7 @@ def list_organizations(
     return list(db.scalars(stmt).all())
 
 
+
 @router.post(
     "/organizations",
     response_model=OrganizationResponse,
@@ -147,6 +148,7 @@ def list_org_invites(
 
     stmt = select(AllowedEmail).where(AllowedEmail.organization_id == org_id)
     return list(db.scalars(stmt).all())
+
 
 
 @router.post(

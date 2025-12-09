@@ -109,12 +109,41 @@ def prepare_pdf_for_llm(pdf_path: str) -> List[Dict[str, Any]]:
 
 @handle_extraction_errors()
 def prepare_image_for_llm(image_path: str) -> List[Dict[str, Any]]:
-    # Validate image
+    pil_format = None
+    # Validate image and get format (JPEG, PNG, etc.)
     with Image.open(image_path) as img:
         img.verify()
+        pil_format = img.format
 
     mime_type, _ = mimetypes.guess_type(image_path)
+
+    # Robust Fallback: Use PIL format if system mimetypes fails
     if not mime_type or not mime_type.startswith("image/"):
+        if pil_format:
+            fmt = pil_format.upper()
+            if fmt == "JPEG":
+                mime_type = "image/jpeg"
+            elif fmt == "PNG":
+                mime_type = "image/png"
+            elif fmt == "WEBP":
+                mime_type = "image/webp"
+            elif fmt == "GIF":
+                mime_type = "image/gif"
+
+    # Second Fallback: File extension (if PIL failed or format unknown)
+    if not mime_type:
+        ext = os.path.splitext(image_path)[1].lower()
+        if ext in [".jpg", ".jpeg"]:
+            mime_type = "image/jpeg"
+        elif ext == ".png":
+            mime_type = "image/png"
+        elif ext == ".webp":
+            mime_type = "image/webp"
+
+    if not mime_type or not mime_type.startswith("image/"):
+        logger.warning(
+            f"Could not determine mime type for {image_path}, defaulting to application/octet-stream"
+        )
         mime_type = "application/octet-stream"
 
     return [

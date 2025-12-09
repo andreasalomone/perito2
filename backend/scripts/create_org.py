@@ -1,13 +1,15 @@
 import argparse
-import sys
 import os
+import sys
 
 # Add the backend directory to sys.path so we can import app modules
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from sqlalchemy.orm import Session
+
 from app.db.database import SessionLocal
-from app.models import User, Organization
+from app.models import Organization, User
+
 
 def create_org(org_name: str, admin_email: str, admin_uid: str):
     db: Session = SessionLocal()

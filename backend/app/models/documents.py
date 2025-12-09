@@ -57,6 +57,7 @@ class Document(Base):
     case: Mapped["Case"] = relationship("Case", back_populates="documents")
 
 
+
 class ReportVersion(Base):
     """Stores history: v1 (AI), v2 (Human Edit), v3 (Final)"""
 

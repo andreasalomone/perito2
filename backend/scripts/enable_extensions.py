@@ -1,5 +1,6 @@
 import logging
 import os
+
 from dotenv import load_dotenv
 
 # Load env vars BEFORE importing config/database
@@ -11,9 +12,9 @@ if os.getenv("GOOGLE_APPLICATION_CREDENTIALS") == "service-account.json":
     script_dir = os.path.dirname(os.path.abspath(__file__))
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.join(script_dir, "service-account.json")
 
-from sqlalchemy import text
-from google.cloud.sql.connector import Connector
 import database
+from google.cloud.sql.connector import Connector
+from sqlalchemy import text
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
