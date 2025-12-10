@@ -39,7 +39,7 @@ export function Sidebar({
             <div className={cn("p-6 border-b border-white/5 flex items-center justify-between", collapsed && "p-4 justify-center")}>
                 <div className="flex items-center gap-2">
                     <div className="bg-primary text-primary-foreground p-1 rounded">
-                        <img src="/perito-logo-white.svg" alt="Perito Logo" className="h-5 w-5" />
+                        <img src="/perito-logo-black.svg" alt="Perito Logo" className="h-5 w-5 invert" />
                     </div>
                     {!collapsed && (
                         <motion.div
@@ -48,7 +48,7 @@ export function Sidebar({
                             exit={{ opacity: 0, width: 0 }}
                             className="overflow-hidden"
                         >
-                            <img src="/myperito-black.svg" alt="PeritoAI" className="h-5 invert" />
+                            <img src="/myperito-black.svg" alt="PeritoAI" className="h-5 dark:invert" />
                         </motion.div>
                     )}
                 </div>

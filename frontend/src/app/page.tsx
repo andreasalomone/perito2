@@ -5,7 +5,7 @@ import { FirebaseError } from "firebase/app";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2, Sparkles, ArrowLeft, ShieldAlert } from "lucide-react";
+import { Loader2, ArrowLeft, ShieldAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -178,7 +178,7 @@ function LandingPage() {
           <div className="inline-flex items-center justify-center p-3 bg-primary/10 rounded-2xl mb-4">
             <img src="/perito-logo-black.svg" alt="Perito Logo" className="h-8 w-8 dark:invert" />
           </div>
-          <img src="/myperito-black.svg" alt="PeritoAI" className="h-10 dark:invert" />
+          <img src="/myperito-black.svg" alt="PeritoAI" className="h-10 mx-auto dark:invert" />
           <p className="text-lg text-muted-foreground">
             Per i periti del futuro.
           </p>
