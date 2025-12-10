@@ -2,6 +2,9 @@
 
 Handles uploading DOCX to Google Docs and exporting back to DOCX.
 Uses Application Default Credentials (ADC) for authentication.
+
+IMPORTANT: Service accounts have 0-byte personal Drive quota (Google policy).
+Files MUST be uploaded to a Shared Drive folder to avoid storageQuotaExceeded errors.
 """
 
 import io
@@ -12,6 +15,8 @@ from google.auth import default
 from google.auth.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -24,13 +29,25 @@ class DriveService:
     )
     GDOC_MIME = "application/vnd.google-apps.document"
 
-    def __init__(self, credentials: Optional[Credentials] = None):
-        """Initialize with ADC or provided credentials."""
+    def __init__(
+        self,
+        credentials: Optional[Credentials] = None,
+        folder_id: Optional[str] = None,
+    ):
+        """
+        Initialize with ADC or provided credentials.
+
+        Args:
+            credentials: Optional credentials, defaults to ADC
+            folder_id: Optional Shared Drive folder ID to upload files to.
+                       Required for service accounts (they have 0-byte personal quota).
+        """
         if credentials is None:
             credentials, _ = default(scopes=["https://www.googleapis.com/auth/drive"])
         self.service = build(
             "drive", "v3", credentials=credentials, cache_discovery=False
         )
+        self.folder_id = folder_id or settings.GOOGLE_DRIVE_FOLDER_ID
 
     def create_editable_draft(self, docx_stream: io.BytesIO, filename: str) -> dict:
         """
@@ -42,28 +59,53 @@ class DriveService:
 
         Returns:
             dict with 'file_id' and 'url' keys
+
+        Raises:
+            ValueError: If no folder_id is configured (required for service accounts)
         """
         # Reset stream position
         docx_stream.seek(0)
 
-        # Upload with conversion to Google Docs format
-        file_metadata = {
+        # Build file metadata
+        # MUST use a folder owned by a user (or Shared Drive) to avoid 0-byte service account quota
+        file_metadata: dict = {
             "name": filename,
             "mimeType": self.GDOC_MIME,
         }
+
+        # Add parent folder (Required for Shared Drive OR Shared Folder workaround)
+        if self.folder_id:
+            file_metadata["parents"] = [self.folder_id]
+            logger.info(f"Uploading to drive folder: {self.folder_id}")
+        else:
+            logger.warning(
+                "No GOOGLE_DRIVE_FOLDER_ID configured! "
+                "Service accounts have 0-byte personal quota and will fail."
+            )
+
         media = MediaIoBaseUpload(docx_stream, mimetype=self.DOCX_MIME, resumable=True)
 
+        # Use supportsAllDrives=True for Shared Drive compatibility
         file = (
             self.service.files()
-            .create(body=file_metadata, media_body=media, fields="id, webViewLink")
+            .create(
+                body=file_metadata,
+                media_body=media,
+                fields="id, webViewLink",
+                supportsAllDrives=True,
+            )
             .execute()
         )
 
         file_id = file["id"]
 
         # Set permissions: anyone with link can edit
+        # supportsAllDrives=True is required for Shared Drive files
         self.service.permissions().create(
-            fileId=file_id, body={"type": "anyone", "role": "writer"}, fields="id"
+            fileId=file_id,
+            body={"type": "anyone", "role": "writer"},
+            fields="id",
+            supportsAllDrives=True,
         ).execute()
 
         logger.info(f"Created Google Doc {file_id} with public edit access")
@@ -104,7 +146,8 @@ class DriveService:
         Args:
             file_id: Google Drive file ID
         """
-        self.service.files().delete(fileId=file_id).execute()
+        # supportsAllDrives=True required for Shared Drive files
+        self.service.files().delete(fileId=file_id, supportsAllDrives=True).execute()
         logger.info(f"Deleted Google Doc {file_id}")
 
     def export_and_delete(self, file_id: str) -> bytes:

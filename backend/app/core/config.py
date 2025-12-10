@@ -111,6 +111,10 @@ class Settings(BaseSettings):
     BREVO_API_KEY: str = ""
     BREVO_WEBHOOK_SECRET: str = ""
 
+    # Google Drive - For Live Draft editing feature
+    # This should be a Shared Drive folder ID (service accounts have 0-byte personal quota)
+    GOOGLE_DRIVE_FOLDER_ID: Optional[str] = None
+
     @property
     def SUPERADMIN_EMAIL_LIST(self) -> list[str]:
         """Parse superadmin emails into a list"""

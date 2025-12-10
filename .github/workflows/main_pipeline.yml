@@ -156,6 +156,7 @@ jobs:
             GEMINI_API_KEY=gemini-api-key:latest
             CLOUD_TASKS_SA_EMAIL=cloud-tasks-sa-email:latest
             SUPERADMIN_EMAILS=SUPERADMIN_EMAILS:latest
+            GOOGLE_DRIVE_FOLDER_ID=GOOGLE_DRIVE_FOLDER_ID:latest
 
       # FIX 2: Get the exact Canary URL directly from Cloud Run API (No sed hacking)
       - name: Verify Canary Health
