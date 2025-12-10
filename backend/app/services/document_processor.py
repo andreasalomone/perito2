@@ -1,5 +1,6 @@
 import base64
 import binascii
+import datetime
 import functools
 import io
 import logging
@@ -14,7 +15,6 @@ from typing import Any, Callable, Dict, List, Set, TypeVar
 
 import fitz  # PyMuPDF
 import mailparser
-import openpyxl
 from PIL import Image
 
 # --- Security Constants (External Audit) ---
@@ -76,6 +76,24 @@ def sanitize_filename(filename: str) -> str:
     return filename
 
 
+def sanitize_text_content(content: str) -> str:
+    """
+    Sanitizes extracted text content for safe storage in PostgreSQL JSONB.
+
+    Removes NULL bytes (\x00) which cause:
+    - asyncpg.exceptions.UntranslatableCharacterError: \u0000 cannot be converted to text
+
+    These NULL bytes commonly appear in:
+    - PDF text extraction (embedded fonts, malformed documents)
+    - Binary data accidentally decoded as text
+    - EML attachments with binary content
+    """
+    if not content:
+        return content
+    # Remove NULL bytes that PostgreSQL JSONB cannot handle
+    return content.replace("\x00", "")
+
+
 logger = logging.getLogger(__name__)
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -94,7 +112,6 @@ def handle_extraction_errors(
             except (
                 ValueError,
                 fitz.FileDataError,
-                openpyxl.utils.exceptions.InvalidFileException,
                 zipfile.BadZipFile,
             ) as e:
                 # Domain errors: Return error dict for user visibility
@@ -239,39 +256,313 @@ def extract_text_from_docx(docx_path: str) -> List[Dict[str, Any]]:
     return [
         {
             "type": "text",
-            "content": full_text,
+            "content": sanitize_text_content(full_text),
             "filename": sanitize_filename(os.path.basename(docx_path)),
         }
     ]
 
 
+# --- Hard Limits for XLSX Stability ---
+MAX_SHARED_STRINGS_COUNT = 50_000  # Max unique strings to hold in RAM
+MAX_XLSX_SHEET_ROWS = 10_000
+MAX_XLSX_TEXT_OUTPUT = 5 * 1024 * 1024  # 5 MB
+MAX_COL_WIDTH = (
+    50  # Safety cap on columns to prevent sparse vector attacks (e.g., cell XFD1)
+)
+EXCEL_EPOCH = datetime.datetime(1899, 12, 30)
+
+
+def _excel_date_to_string(serial: float) -> str:
+    """
+    Converts Excel serial date format (float) to ISO string.
+    Excel treats 1900 as a leap year (bug), but for modern dates this suffices.
+    """
+    try:
+        delta = datetime.timedelta(days=serial)
+        return (EXCEL_EPOCH + delta).date().isoformat()
+    except Exception:
+        return str(serial)
+
+
+def _col_to_int(col_label: str) -> int:
+    """
+    Converts Excel column letter to 0-based index.
+    A -> 0, Z -> 25, AA -> 26, XFD -> 16383
+    """
+    num = 0
+    for c in col_label:
+        if "A" <= c <= "Z":
+            num = num * 26 + (ord(c) - ord("A") + 1)
+    return num - 1
+
+
+def _extract_col_from_ref(r_attr: str) -> str:
+    """Extracts column letter from cell reference (e.g., 'AA12' -> 'AA')."""
+    match = re.match(r"([A-Z]+)", r_attr)
+    return match.group(1) if match else "A"  # Fallback
+
+
+def _parse_shared_strings(zf: zipfile.ZipFile) -> List[str]:
+    """
+    Parses the sharedStrings.xml file with a hard memory cap.
+    Returns a list of strings. Raises MemoryError if limit exceeded.
+
+    This is the most memory-intensive part of XLSX parsing.
+    By capping this, we prevent "SharedStrings Explosion" attacks.
+    """
+    shared_strings: List[str] = []
+
+    if "xl/sharedStrings.xml" not in zf.namelist():
+        return []
+
+    with zf.open("xl/sharedStrings.xml") as f:
+        # events=("end",) triggers when a closing tag is found
+        context = ET.iterparse(f, events=("end",))
+        for _, elem in context:
+            # Excel stores shared strings in <si><t>value</t></si>
+            if elem.tag.endswith("}t"):
+                if elem.text:
+                    shared_strings.append(elem.text)
+
+                    # GUARD: Memory Explosion Protection
+                    if len(shared_strings) > MAX_SHARED_STRINGS_COUNT:
+                        raise MemoryError(
+                            f"XLSX contains too many unique strings (>{MAX_SHARED_STRINGS_COUNT:,}). "
+                            "Processing aborted to protect system stability."
+                        )
+
+            # Vital: Clear element to free memory
+            if elem.tag.endswith("}si"):
+                elem.clear()
+
+    return shared_strings
+
+
 @handle_extraction_errors()
 def extract_text_from_xlsx(xlsx_path: str) -> List[Dict[str, Any]]:
-    parts = []
+    """
+    High-Performance, Low-Memory XLSX Extractor (Sparse-Safe).
+
+    Features:
+    - Streaming XML parsing (iterparse) - O(1) memory
+    - Sparse row handling - preserves column alignment
+    - SharedStrings cap: 50,000 unique strings max
+    - Row limit: 10,000 per sheet
+    - Column limit: 50 columns max (prevents XFD attacks)
+    - Output limit: 5MB text
+
+    Output: Markdown tables for LLM comprehension.
+    """
+    output_parts: List[str] = []
+    total_chars = 0
+    truncated = False
+
     try:
-        workbook = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
-        for sheet_name in workbook.sheetnames:
-            parts.append(f"--- Sheet: {sheet_name} ---\n")
-            sheet = workbook[sheet_name]
-            for row in sheet.iter_rows(values_only=True):
-                row_values = [str(cell) if cell is not None else "" for cell in row]
-                parts.append(",".join(row_values) + "\n")
-            parts.append("\n")
-        workbook.close()
-    except Exception as e:
-        logger.warning(f"Failed to read XLSX file {xlsx_path}: {e}")
+        # 1. Quick Validity Check
+        if not zipfile.is_zipfile(xlsx_path):
+            raise ValueError("File is not a valid zip/xlsx archive")
+
+        with zipfile.ZipFile(xlsx_path, "r") as zf:
+
+            # 2. Load Shared Strings (The most memory-intensive part)
+            try:
+                shared_strings = _parse_shared_strings(zf)
+            except MemoryError as e:
+                logger.warning(f"Rejected XLSX {xlsx_path}: {e}")
+                return [
+                    {
+                        "type": "error",
+                        "filename": sanitize_filename(os.path.basename(xlsx_path)),
+                        "message": str(e),
+                    }
+                ]
+
+            # 3. Identify Worksheets
+            sheet_files = sorted(
+                [n for n in zf.namelist() if n.startswith("xl/worksheets/sheet")]
+            )
+
+            if not sheet_files:
+                return [
+                    {
+                        "type": "error",
+                        "filename": sanitize_filename(os.path.basename(xlsx_path)),
+                        "message": "No worksheets found in Excel file.",
+                    }
+                ]
+
+            # 4. Stream Parse Worksheets
+            for sheet_file in sheet_files:
+                if truncated:
+                    break
+
+                sheet_name = os.path.basename(sheet_file).replace(".xml", "")
+                output_parts.append(f"\n## Sheet: {sheet_name}\n\n")
+
+                # Sparse Row Buffer: dict {col_index: value}
+                row_data: Dict[int, str] = {}
+                current_row_index = 0
+                table_width = 0  # Determined by first valid row (header)
+                is_first_valid_row = True  # Flag for header separator logic
+
+                with zf.open(sheet_file) as f:
+                    context = ET.iterparse(f, events=("end",))
+
+                    for _, elem in context:
+                        # <row> indicates end of a row
+                        if elem.tag.endswith("}row"):
+                            current_row_index += 1
+
+                            # GUARD: Max Rows
+                            if current_row_index > MAX_XLSX_SHEET_ROWS:
+                                output_parts.append(
+                                    f"\n*[TRUNCATED: > {MAX_XLSX_SHEET_ROWS:,} rows]*\n"
+                                )
+                                truncated = True
+                                elem.clear()
+                                break
+
+                            # Finalize Row - build dense list from sparse dict
+                            if row_data:
+                                # Determine row width based on first valid row (header)
+                                if is_first_valid_row:
+                                    table_width = max(row_data.keys()) + 1
+                                    table_width = min(
+                                        table_width, MAX_COL_WIDTH
+                                    )  # Safety Cap
+
+                                # Build dense list from sparse dict
+                                dense_row = []
+                                for i in range(table_width):
+                                    val = row_data.get(i, "")  # Empty for missing cells
+                                    dense_row.append(val if val else "-")
+
+                                # Markdown Table Formatting
+                                line = "| " + " | ".join(dense_row) + " |\n"
+
+                                # Add header separator after FIRST VALID ROW (not just row 1)
+                                if is_first_valid_row:
+                                    separator = (
+                                        "| "
+                                        + " | ".join(["---"] * table_width)
+                                        + " |\n"
+                                    )
+                                    line += separator
+                                    is_first_valid_row = False  # Latch the flag
+
+                                # GUARD: Max Output Size
+                                if total_chars + len(line) > MAX_XLSX_TEXT_OUTPUT:
+                                    output_parts.append(
+                                        "\n*[TRUNCATED: Output Size Limit]*\n"
+                                    )
+                                    truncated = True
+                                    elem.clear()
+                                    break
+
+                                output_parts.append(line)
+                                total_chars += len(line)
+                                row_data.clear()  # Reset for next row
+
+                            elem.clear()  # Free memory
+                            continue
+
+                        # <c> is a cell
+                        if elem.tag.endswith("}c"):
+                            # Get Column Index from cell reference (e.g., "B5" -> 1)
+                            r_attr = elem.get("r")  # Cell reference like "B5"
+                            if r_attr:
+                                col_letter = _extract_col_from_ref(r_attr)
+                                col_idx = _col_to_int(col_letter)
+                            else:
+                                # Fallback if 'r' is missing (rare)
+                                col_idx = len(row_data)
+
+                            # Security: Ignore extremely far columns (e.g. XFD)
+                            if col_idx >= MAX_COL_WIDTH:
+                                elem.clear()
+                                continue
+
+                            cell_type = elem.get("t")  # 's'=shared, 'n'=number, etc.
+                            cell_val = ""
+
+                            # Find the <v> (value) tag inside the cell
+                            v_tag = elem.find("{*}v")  # Namespace wildcard
+
+                            if v_tag is not None and v_tag.text:
+                                raw_val = v_tag.text
+
+                                if cell_type == "s":
+                                    # Shared String Lookup
+                                    try:
+                                        idx = int(raw_val)
+                                        if 0 <= idx < len(shared_strings):
+                                            cell_val = shared_strings[idx]
+                                        else:
+                                            cell_val = "[ERR:REF]"
+                                    except ValueError:
+                                        cell_val = "[ERR:IDX]"
+
+                                elif cell_type == "b":
+                                    # Boolean
+                                    cell_val = "TRUE" if raw_val == "1" else "FALSE"
+
+                                elif cell_type == "str":
+                                    # Inline string
+                                    cell_val = raw_val
+
+                                else:
+                                    # Number / Date (stored as float)
+                                    try:
+                                        f_val = float(raw_val)
+                                        # Heuristic: Excel dates between 20000 (1954) and 60000 (2064)
+                                        if 20000 < f_val < 60000 and f_val == int(
+                                            f_val
+                                        ):
+                                            cell_val = _excel_date_to_string(f_val)
+                                        elif f_val == int(f_val):
+                                            cell_val = str(int(f_val))
+                                        else:
+                                            cell_val = f"{f_val:.2f}"
+                                    except ValueError:
+                                        cell_val = raw_val
+
+                            # Handle Inline Strings <is><t>val</t></is>
+                            is_tag = elem.find("{*}is")
+                            if is_tag is not None:
+                                t_tag = is_tag.find("{*}t")
+                                if t_tag is not None and t_tag.text:
+                                    cell_val = t_tag.text
+
+                            # Store in sparse dict by column index
+                            clean_val = cell_val.strip().replace("|", "/")
+                            if clean_val:
+                                row_data[col_idx] = clean_val
+
+                            elem.clear()  # Vital for memory
+
+    except zipfile.BadZipFile:
+        logger.error(f"Bad zip file: {xlsx_path}")
         return [
             {
                 "type": "error",
                 "filename": sanitize_filename(os.path.basename(xlsx_path)),
-                "message": f"Could not read Excel file content: {str(e)}",
+                "message": "Corrupted or invalid XLSX file",
+            }
+        ]
+    except Exception as e:
+        logger.error(f"Error extracting XLSX {xlsx_path}: {e}", exc_info=True)
+        return [
+            {
+                "type": "error",
+                "filename": sanitize_filename(os.path.basename(xlsx_path)),
+                "message": f"Extraction failed: {str(e)}",
             }
         ]
 
     return [
         {
             "type": "text",
-            "content": "".join(parts),
+            "content": sanitize_text_content("".join(output_parts)),
             "filename": sanitize_filename(os.path.basename(xlsx_path)),
         }
     ]
@@ -317,7 +608,7 @@ def extract_text_from_txt(txt_path: str) -> List[Dict[str, Any]]:
     return [
         {
             "type": "text",
-            "content": content,
+            "content": sanitize_text_content(content),
             "filename": sanitize_filename(os.path.basename(txt_path)),
         }
     ]
@@ -360,7 +651,7 @@ def process_eml_file(
     all_parts.append(
         {
             "type": "text",
-            "content": text_content,
+            "content": sanitize_text_content(text_content),
             "filename": f"{sanitize_filename(os.path.basename(eml_path))} (body)",
             "original_filetype": "eml",
         }
