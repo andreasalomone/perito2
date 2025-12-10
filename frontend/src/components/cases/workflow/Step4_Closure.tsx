@@ -5,31 +5,40 @@ import { CaseDetail } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { CheckCircle, Upload, Loader2, FileCheck, PartyPopper } from "lucide-react";
+import { CheckCircle, Upload, Loader2, FileCheck, PartyPopper, RefreshCw } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from 'canvas-confetti';
 
 interface Step4ClosureProps {
     caseData: CaseDetail;
     onFinalize: (file: File) => Promise<void>;
+    onConfirmDocs: (versionId: string) => Promise<void>;
     isLoading?: boolean;
 }
 
 /**
  * Step 4: Closure (Chiusura)
  * 
- * Upload the final signed document to close the case.
+ * Two paths to finalize:
+ * 1. Upload local DOCX file
+ * 2. Confirm Google Docs edits (if active draft exists)
+ * 
  * Shows confetti on success before redirecting to summary.
  */
 export function Step4_Closure({
     caseData,
     onFinalize,
+    onConfirmDocs,
     isLoading = false,
 }: Step4ClosureProps) {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [isUploading, setIsUploading] = useState(false);
+    const [isConfirming, setIsConfirming] = useState(false);
     const [isSuccess, setIsSuccess] = useState(false);
+
+    // Find active draft
+    const activeDraft = caseData?.report_versions?.find(v => v.is_draft_active && !v.is_final);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files?.length) {
@@ -43,21 +52,33 @@ export function Step4_Closure({
         setIsUploading(true);
         try {
             await onFinalize(selectedFile);
-
-            // Trigger confetti
-            confetti({
-                particleCount: 100,
-                spread: 70,
-                origin: { y: 0.6 }
-            });
-
-            setIsSuccess(true);
-
-            // The redirect will happen in the parent component after status changes
+            triggerSuccess();
         } catch (error) {
             console.error('Finalization failed:', error);
             setIsUploading(false);
         }
+    };
+
+    const handleConfirmDocs = async () => {
+        if (!activeDraft) return;
+
+        setIsConfirming(true);
+        try {
+            await onConfirmDocs(activeDraft.id);
+            triggerSuccess();
+        } catch (error) {
+            console.error('Confirm docs failed:', error);
+            setIsConfirming(false);
+        }
+    };
+
+    const triggerSuccess = () => {
+        confetti({
+            particleCount: 100,
+            spread: 70,
+            origin: { y: 0.6 }
+        });
+        setIsSuccess(true);
     };
 
     // Success state
@@ -93,25 +114,61 @@ export function Step4_Closure({
             <div>
                 <h2 className="text-xl font-semibold flex items-center gap-2">
                     <CheckCircle className="h-5 w-5" />
-                    Chiusura Caso
+                    Chiusura Sinistro
                 </h2>
                 <p className="text-muted-foreground text-sm mt-1">
-                    Carica la versione finale firmata per completare la pratica.
+                    Carica la versione finale o conferma le modifiche da Google Docs.
                 </p>
             </div>
 
-            {/* Instructions */}
-            <Alert>
-                <FileCheck className="h-4 w-4" />
-                <AlertDescription>
-                    Carica il documento finale dopo aver effettuato le revisioni e ottenuto le firme necessarie.
-                </AlertDescription>
-            </Alert>
+            {/* Active Docs Draft - Confirm Button */}
+            {activeDraft && (
+                <Card className="border-primary bg-primary/5">
+                    <CardHeader>
+                        <CardTitle className="text-base flex items-center gap-2">
+                            <RefreshCw className="h-4 w-4" />
+                            Sessione Google Docs Attiva
+                        </CardTitle>
+                        <CardDescription>
+                            Hai modificato la bozza v{activeDraft.version_number} in Google Docs.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <Button
+                            size="lg"
+                            className="w-full"
+                            onClick={handleConfirmDocs}
+                            disabled={isConfirming || isLoading}
+                        >
+                            {isConfirming ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    Sincronizzazione...
+                                </>
+                            ) : (
+                                <>
+                                    <RefreshCw className="h-4 w-4 mr-2" />
+                                    Conferma Versione Finale
+                                </>
+                            )}
+                        </Button>
+                    </CardContent>
+                </Card>
+            )}
+
+            {/* Divider if both options available */}
+            {activeDraft && (
+                <div className="flex items-center gap-4">
+                    <div className="flex-1 h-px bg-border" />
+                    <span className="text-sm text-muted-foreground">oppure</span>
+                    <div className="flex-1 h-px bg-border" />
+                </div>
+            )}
 
             {/* Upload Card */}
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-base">Documento Finale</CardTitle>
+                    <CardTitle className="text-base">Carica Report</CardTitle>
                     <CardDescription>
                         Formati accettati: DOCX, PDF
                     </CardDescription>
@@ -169,18 +226,19 @@ export function Step4_Closure({
                     <Button
                         size="lg"
                         className="w-full"
-                        disabled={!selectedFile || isUploading || isLoading}
+                        variant={activeDraft ? "outline" : "default"}
+                        disabled={!selectedFile || isUploading || isLoading || isConfirming}
                         onClick={handleUpload}
                     >
-                        {isUploading || isLoading ? (
+                        {isUploading ? (
                             <>
                                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                Caricamento in corso...
+                                Caricamento...
                             </>
                         ) : (
                             <>
                                 <Upload className="h-4 w-4 mr-2" />
-                                Finalizza Caso
+                                Carica e Finalizza
                             </>
                         )}
                     </Button>

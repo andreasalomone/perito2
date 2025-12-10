@@ -133,6 +133,9 @@ class VersionRead(BaseModel):
     is_final: bool
     # REMOVED: docx_storage_path (Security Risk)
     created_at: datetime
+    # Google Docs Live Draft support
+    is_draft_active: bool = False
+    edit_link: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
 

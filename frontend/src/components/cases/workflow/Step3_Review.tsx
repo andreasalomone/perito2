@@ -1,16 +1,19 @@
 "use client";
 
+import { useState } from "react";
 import { CaseDetail, ReportVersion } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { VersionItem, TemplateType } from "@/components/cases/VersionItem";
-import { Eye, Download, ArrowRight, Edit, Info } from "lucide-react";
+import { Eye, Download, ArrowRight, Edit, ExternalLink, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
 
 interface Step3ReviewProps {
     caseData: CaseDetail;
     onDownload: (version: ReportVersion, template: TemplateType) => Promise<void>;
+    onOpenInDocs: (version: ReportVersion, template: TemplateType) => Promise<void>;
     onProceedToClosure: () => void;
     onGoBackToIngestion: () => void;
 }
@@ -18,22 +21,37 @@ interface Step3ReviewProps {
 /**
  * Step 3: Review (Revisione)
  * 
- * Shows the latest non-final draft for download.
- * No regeneration button (per user decision).
- * Includes "Modifica Documenti" link to go back to Step 1.
+ * Shows the latest non-final draft with options to:
+ * - Select template (BN/Salomone)
+ * - Edit in Google Docs (main CTA)
+ * - Download directly (secondary)
+ * - Proceed to Step 4
  */
 export function Step3_Review({
     caseData,
     onDownload,
+    onOpenInDocs,
     onProceedToClosure,
     onGoBackToIngestion,
 }: Step3ReviewProps) {
     const versions = caseData?.report_versions || [];
+    const [selectedTemplate, setSelectedTemplate] = useState<TemplateType>("bn");
+    const [isOpening, setIsOpening] = useState(false);
 
     // Get the latest non-final version (the draft to review)
     const latestDraft = versions
         .filter(v => !v.is_final)
         .sort((a, b) => b.version_number - a.version_number)[0];
+
+    const handleOpenInDocs = async () => {
+        if (!latestDraft) return;
+        setIsOpening(true);
+        try {
+            await onOpenInDocs(latestDraft, selectedTemplate);
+        } finally {
+            setIsOpening(false);
+        }
+    };
 
     return (
         <div className="space-y-6">
@@ -44,18 +62,9 @@ export function Step3_Review({
                     Revisione Bozza
                 </h2>
                 <p className="text-muted-foreground text-sm mt-1">
-                    Scarica e rivedi la bozza generata dall&apos;IA.
+                    Modifica la bozza in Google Docs o scaricala per modificarla localmente.
                 </p>
             </div>
-
-            {/* No Editor Notice */}
-            <Alert>
-                <Info className="h-4 w-4" />
-                <AlertDescription>
-                    La modifica avviene offline. Scarica la bozza, effettua le correzioni
-                    nel tuo editor, poi carica la versione finale nello step successivo.
-                </AlertDescription>
-            </Alert>
 
             {/* Latest Draft Card */}
             {latestDraft ? (
@@ -75,24 +84,79 @@ export function Step3_Review({
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        {/* Download Buttons */}
-                        <div className="flex flex-col sm:flex-row gap-3">
+                        {/* Template Selector */}
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Scegli Template</label>
+                            <div className="flex gap-2">
+                                <Button
+                                    variant={selectedTemplate === "bn" ? "default" : "outline"}
+                                    size="sm"
+                                    onClick={() => setSelectedTemplate("bn")}
+                                    className={cn(
+                                        "flex-1",
+                                        selectedTemplate === "bn" && "ring-2 ring-primary ring-offset-2"
+                                    )}
+                                >
+                                    BN
+                                </Button>
+                                <Button
+                                    variant={selectedTemplate === "salomone" ? "default" : "outline"}
+                                    size="sm"
+                                    onClick={() => setSelectedTemplate("salomone")}
+                                    className={cn(
+                                        "flex-1",
+                                        selectedTemplate === "salomone" && "ring-2 ring-primary ring-offset-2"
+                                    )}
+                                >
+                                    Salomone
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* Active Draft Notice */}
+                        {latestDraft.is_draft_active && latestDraft.edit_link && (
+                            <Alert className="bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
+                                <ExternalLink className="h-4 w-4 text-blue-600" />
+                                <AlertDescription className="text-blue-800 dark:text-blue-200">
+                                    Hai una sessione di modifica attiva.{" "}
+                                    <a
+                                        href={latestDraft.edit_link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="underline font-medium"
+                                    >
+                                        Riprendi la modifica →
+                                    </a>
+                                </AlertDescription>
+                            </Alert>
+                        )}
+
+                        {/* Action Buttons */}
+                        <div className="flex flex-col gap-3">
+                            {/* Main CTA: Edit in Docs */}
                             <Button
                                 size="lg"
-                                className="flex-1"
-                                onClick={() => onDownload(latestDraft, 'bn')}
+                                className="w-full"
+                                onClick={handleOpenInDocs}
+                                disabled={isOpening}
                             >
-                                <Download className="h-4 w-4 mr-2" />
-                                Scarica Bozza (BN)
+                                {isOpening ? (
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                ) : (
+                                    <ExternalLink className="h-4 w-4 mr-2" />
+                                )}
+                                {latestDraft.is_draft_active ? "Riprendi Modifica" : "Modifica"}
                             </Button>
+
+                            {/* Secondary: Download */}
                             <Button
                                 size="lg"
                                 variant="outline"
-                                className="flex-1"
-                                onClick={() => onDownload(latestDraft, 'salomone')}
+                                className="w-full"
+                                onClick={() => onDownload(latestDraft, selectedTemplate)}
                             >
                                 <Download className="h-4 w-4 mr-2" />
-                                Scarica Bozza (Salomone)
+                                Scarica
                             </Button>
                         </div>
                     </CardContent>
@@ -105,9 +169,19 @@ export function Step3_Review({
                 </Card>
             )}
 
-            {/* Actions */}
-            <div className="flex flex-col sm:flex-row justify-between gap-4 pt-4">
-                {/* Go Back */}
+            {/* Proceed Link */}
+            <div className="text-center pt-2">
+                <button
+                    onClick={onProceedToClosure}
+                    className="text-sm text-muted-foreground hover:text-primary underline underline-offset-4"
+                    disabled={!latestDraft}
+                >
+                    Quando sei pronto a chiudere il sinistro, clicca qui →
+                </button>
+            </div>
+
+            {/* Actions Row */}
+            <div className="flex justify-start pt-2">
                 <Button
                     variant="ghost"
                     onClick={onGoBackToIngestion}
@@ -116,18 +190,6 @@ export function Step3_Review({
                     <Edit className="h-4 w-4 mr-2" />
                     Modifica Documenti
                 </Button>
-
-                {/* Proceed to Closure */}
-                <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                    <Button
-                        size="lg"
-                        onClick={onProceedToClosure}
-                        disabled={!latestDraft}
-                    >
-                        Procedi alla Chiusura
-                        <ArrowRight className="h-4 w-4 ml-2" />
-                    </Button>
-                </motion.div>
             </div>
 
             {/* Previous Versions (collapsed) */}

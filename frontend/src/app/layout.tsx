@@ -21,6 +21,26 @@ const spaceGrotesk = Space_Grotesk({
 export const metadata: Metadata = {
   title: "PeritoAI | Perizie Powered by AI",
   description: "Automazione professionale per perizie assicurative.",
+  icons: {
+    icon: [
+      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+    other: [
+      {
+        rel: "android-chrome",
+        url: "/android-chrome-192x192.png",
+        sizes: "192x192",
+      },
+      {
+        rel: "android-chrome",
+        url: "/android-chrome-512x512.png",
+        sizes: "512x512",
+      },
+    ],
+  },
+  manifest: "/site.webmanifest",
 };
 
 import { Toaster } from "sonner";

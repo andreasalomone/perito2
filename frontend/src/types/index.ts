@@ -16,7 +16,10 @@ export const ReportVersionSchema = z.object({
     version_number: z.number(),
     is_final: z.boolean(),
     created_at: z.string().datetime(),
-    error_message: z.string().optional().nullable()
+    error_message: z.string().optional().nullable(),
+    // Google Docs Live Draft support
+    is_draft_active: z.boolean().default(false),
+    edit_link: z.string().optional().nullable(),
 });
 export type ReportVersion = z.infer<typeof ReportVersionSchema>;
 
