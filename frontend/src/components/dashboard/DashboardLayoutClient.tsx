@@ -76,7 +76,7 @@ export function DashboardLayoutClient({
             {/* Mobile Sidebar Overlay */}
             {isOpen && (
                 <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm md:hidden" onClick={() => setIsOpen(false)}>
-                    <div className="fixed inset-y-0 left-0 w-64 bg-card border-r border-border shadow-lg flex flex-col animate-in slide-in-from-left duration-200" onClick={e => e.stopPropagation()}>
+                    <div className="fixed inset-y-0 left-0 w-64 bg-card border-r border-border shadow-lg flex flex-col animate-in slide-in-from-left duration-200 noise-surface" onClick={e => e.stopPropagation()}>
                         <Sidebar
                             user={user}
                             dbUser={dbUser}
@@ -90,7 +90,7 @@ export function DashboardLayoutClient({
 
             {/* Desktop Sidebar */}
             <aside className={cn(
-                "bg-card/50 backdrop-blur-xl border-r border-white/5 hidden md:flex flex-col h-screen sticky top-0 transition-all duration-300",
+                "bg-card/50 backdrop-blur-xl border-r border-white/5 hidden md:flex flex-col h-screen sticky top-0 transition-all duration-300 noise-surface",
                 isOpen ? "w-64" : "w-20"
             )}>
                 <Sidebar
