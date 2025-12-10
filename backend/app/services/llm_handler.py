@@ -18,17 +18,51 @@ from typing import Any, Deque, Dict, List, Optional, Protocol, Set, Tuple
 # Google GenAI imports (Assumed installed)
 from google import genai
 from google.api_core import exceptions as google_exceptions
+from google.genai import errors as genai_errors
 
 # Use pydantic v2
 from pydantic import BaseModel, ConfigDict, Field
 from tenacity import (
     AsyncRetrying,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential,
 )
 
 logger = logging.getLogger(__name__)
+
+
+# -----------------------------------------------------------------------------
+# Helper: Retry Predicate
+# -----------------------------------------------------------------------------
+def _is_retryable_error(e: BaseException) -> bool:
+    """
+    Determines if an exception should trigger a retry.
+    Handles both legacy google.api_core exceptions and new google.genai SDK errors.
+    """
+    # 1. New Google GenAI SDK Errors (Primary for new calls)
+    if isinstance(e, genai_errors.ServerError):
+        # Retry all Server Errors (5xx)
+        return True
+
+    if isinstance(e, genai_errors.ClientError):
+        # Retry specific Client Errors (429 Resource Exhausted)
+        if e.code == 429:
+            return True
+
+    # 2. Legacy Google API Core Exceptions (Keep for backward compatibility)
+    if isinstance(
+        e,
+        (
+            google_exceptions.ServiceUnavailable,
+            google_exceptions.TooManyRequests,
+            google_exceptions.InternalServerError,
+        ),
+    ):
+        return True
+
+    return False
+
 
 # -----------------------------------------------------------------------------
 # 1. Protocols & Contracts
@@ -312,13 +346,7 @@ class GeminiReportGenerator:
         self.retry_policy = AsyncRetrying(
             stop=stop_after_attempt(3),
             wait=wait_exponential(multiplier=1, min=2, max=10),
-            retry=retry_if_exception_type(
-                (
-                    google_exceptions.ServiceUnavailable,
-                    google_exceptions.TooManyRequests,
-                    google_exceptions.InternalServerError,
-                )
-            ),
+            retry=retry_if_exception(_is_retryable_error),
             reraise=True,
         )
 
@@ -762,7 +790,7 @@ class LazyGeminiProxy:
                 _client = genai.Client(
                     vertexai=True,
                     project=settings.GOOGLE_CLOUD_PROJECT,
-                    location=settings.GOOGLE_CLOUD_REGION,
+                    location=settings.GEMINI_API_LOCATION,
                 )
             except Exception as e:
                 logger.critical(f"Failed to create Vertex AI Client: {e}")
@@ -780,7 +808,7 @@ class LazyGeminiProxy:
                 generation_service=generation_service,
                 retry_queue=cleanup_retry_queue,
                 allowed_file_dirs=[Path(settings.UPLOAD_FOLDER), Path("/tmp")],
-                concurrency_limit=5,  # Max parallel LLM calls per Cloud Run instance
+                concurrency_limit=settings.GEMINI_CONCURRENCY,
             )
             return self._delegate
 

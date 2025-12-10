@@ -28,6 +28,10 @@ class Settings(BaseSettings):
 
     # AI
     GEMINI_API_KEY: str
+    GEMINI_CONCURRENCY: int = 2  # Limits parallel LLM requests per instance
+    GEMINI_API_LOCATION: str = (
+        "global"  # Use global endpoint for higher quotas/throughput
+    )
 
     # Local or Not
     ENVIRONMENT: str = "production"  # "local", "production", "staging"
