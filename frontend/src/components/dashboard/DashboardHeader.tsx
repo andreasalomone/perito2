@@ -24,7 +24,7 @@ export function DashboardHeader({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-                        I Miei Fascicoli
+                        I Miei Sinistri
                     </h1>
                     <p className="text-muted-foreground">
                         Gestisci i tuoi sinistri, cerca per cliente o monitora lo stato.
@@ -33,7 +33,7 @@ export function DashboardHeader({
                 <Link href="/dashboard/create">
                     <Button className="gap-2 w-full sm:w-auto">
                         <Plus className="h-4 w-4" />
-                        Nuovo Fascicolo
+                        Nuovo Sinistro
                     </Button>
                 </Link>
             </div>

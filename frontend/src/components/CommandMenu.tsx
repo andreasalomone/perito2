@@ -45,7 +45,7 @@ export function CommandMenu() {
                     </CommandItem>
                     <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/create"))}>
                         <Plus className="mr-2 h-4 w-4" />
-                        Nuovo Fascicolo
+                        Nuovo Sinistro
                     </CommandItem>
                 </CommandGroup>
                 <CommandSeparator />

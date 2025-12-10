@@ -36,7 +36,7 @@ export function KanbanBoard({ cases }: KanbanBoardProps) {
                             ))}
                             {colCases.length === 0 && (
                                 <div className="text-center py-10 text-muted-foreground text-sm opacity-50 border-2 border-dashed rounded-lg">
-                                    Nessun fascicolo
+                                    Nessun sinistro
                                 </div>
                             )}
                         </div>

@@ -104,10 +104,9 @@ export const CaseCard = memo(function CaseCard({ caseItem: c, index }: CaseCardP
                     <Link href={`/dashboard/cases/${c.id}`} className="w-full" tabIndex={-1}>
                         <Button
                             variant="ghost"
-                            className="w-full justify-between group-hover:bg-primary/5"
-                            aria-label={`Apri fascicolo ${c.reference_code}`}
+                            className="w-full justify-end group-hover:bg-primary/5"
+                            aria-label={`Apri sinistro ${c.reference_code}`}
                         >
-                            Apri Fascicolo
                             <ArrowRight className="h-4 w-4" />
                         </Button>
                     </Link>

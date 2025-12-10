@@ -43,7 +43,7 @@ export default function DashboardPage() {
             <div className="flex flex-col items-center justify-center h-64 text-center space-y-4">
                 <AlertCircle className="h-12 w-12 text-destructive" />
                 <h3 className="text-lg font-semibold">Qualcosa è andato storto</h3>
-                <p className="text-muted-foreground">Impossibile caricare i fascicoli.</p>
+                <p className="text-muted-foreground">Impossibile caricare i sinistri.</p>
                 <Button onClick={() => mutate()} variant="outline">
                     <RefreshCw className="h-4 w-4 mr-2" />
                     Riprova
@@ -68,16 +68,16 @@ export default function DashboardPage() {
                             <Folder className="h-8 w-8 text-muted-foreground" />
                         </div>
                         <h3 className="text-lg font-semibold">
-                            {searchQuery ? "Nessun risultato" : "Nessun fascicolo trovato"}
+                            {searchQuery ? "Nessun risultato" : "Nessun sinistro trovato"}
                         </h3>
                         <p className="text-muted-foreground mb-6 max-w-sm">
                             {searchQuery
-                                ? `Nessun fascicolo corrisponde alla ricerca "${searchQuery}".`
-                                : "Non hai ancora creato nessun fascicolo. Inizia ora per gestire le tue perizie."}
+                                ? `Nessun sinistro corrisponde alla ricerca "${searchQuery}".`
+                                : "Non hai ancora creato nessun sinistro. Inizia ora a gestire le tue perizie."}
                         </p>
                         <Link href="/dashboard/create">
                             <Button variant={searchQuery ? "secondary" : "default"}>
-                                {searchQuery ? "Nuovo Fascicolo" : "Crea il tuo primo fascicolo"}
+                                {searchQuery ? "Nuovo Sinistro" : "Apri il tuo primo sinistro"}
                             </Button>
                         </Link>
                     </CardContent>

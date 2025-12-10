@@ -44,10 +44,10 @@ export default function CreateCasePage() {
                 client_name: cleanClientName
             });
 
-            toast.success("Fascicolo creato con successo");
+            toast.success("Sinistro aperto con successo");
             router.push(`/dashboard/cases/${newCase.id}`);
         } catch (error) {
-            handleApiError(error, "Errore durante la creazione del fascicolo");
+            handleApiError(error, "Errore durante l'apertura del sinistro");
         } finally {
             setLoading(false);
         }
@@ -58,7 +58,7 @@ export default function CreateCasePage() {
             <Card>
                 <CardHeader>
                     <CardTitle>Nuovo Sinistro</CardTitle>
-                    <CardDescription>Crea un nuovo fascicolo per iniziare a lavorare.</CardDescription>
+                    <CardDescription>Apri un nuovo sinistro per iniziare a lavorare.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <form onSubmit={handleCreate} className="space-y-4">
@@ -94,7 +94,7 @@ export default function CreateCasePage() {
                         </div>
                         <Button type="submit" className="w-full" disabled={loading}>
                             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                            {loading ? "Creazione in corso..." : "Crea Fascicolo"}
+                            {loading ? "Apertura in corso..." : "Apri Sinistro"}
                         </Button>
                     </form>
                 </CardContent>

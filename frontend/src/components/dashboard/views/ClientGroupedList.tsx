@@ -27,7 +27,7 @@ export function ClientGroupedList({ cases }: ClientGroupedListProps) {
                         <Folder className="h-5 w-5 text-muted-foreground" />
                         <h3 className="text-lg font-semibold">{clientName}</h3>
                         <span className="text-xs text-muted-foreground ml-auto">
-                            {groups[clientName].length} fascicoli
+                            {groups[clientName].length} sinistri
                         </span>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
