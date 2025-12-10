@@ -13,7 +13,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 # Import routers
-from app.api.v1 import admin, auth, cases, clients, tasks, users, webhooks
+from app.api.v1 import (
+    admin,
+    auth,
+    cases,
+    clients,
+    draft_endpoints,
+    tasks,
+    users,
+    webhooks,
+)
 from app.core.config import settings
 from app.db.database import lifespan
 
@@ -45,3 +54,4 @@ app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 app.include_router(clients.router, prefix="/api/v1/clients", tags=["Clients"])
 app.include_router(webhooks.router, prefix="/api/v1/webhooks", tags=["Webhooks"])
+app.include_router(draft_endpoints.router, prefix="/api/v1", tags=["Drafts"])

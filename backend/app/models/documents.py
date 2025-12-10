@@ -88,3 +88,9 @@ class ReportVersion(Base):
     )
 
     case: Mapped["Case"] = relationship("Case", back_populates="report_versions")
+
+    # Google Docs Live Draft support
+    google_doc_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    is_draft_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    edit_link: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    template_used: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)

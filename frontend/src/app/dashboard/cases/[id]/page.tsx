@@ -198,6 +198,44 @@ export default function CaseWorkspace() {
         }
     };
 
+    const handleOpenInDocs = useCallback(async (v: ReportVersion, template: TemplateType) => {
+        const toastId = toast.loading("Apertura in Google Docs...");
+        try {
+            const token = await getToken();
+            const res = await axios.post(
+                `${apiUrl}/api/v1/cases/${caseId}/versions/${v.id}/open-in-docs`,
+                { template },
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            window.open(res.data.url, "_blank", "noopener,noreferrer");
+            toast.success("Documento aperto in Google Docs", { id: toastId });
+            mutate();
+        } catch (e) {
+            handleApiError(e, "Errore apertura Google Docs");
+            toast.dismiss(toastId);
+        }
+    }, [caseId, getToken, apiUrl, mutate]);
+
+    const handleConfirmDocs = useCallback(async (versionId: string) => {
+        const toastId = toast.loading("Sincronizzazione da Google Docs...");
+        try {
+            const token = await getToken();
+            await axios.post(
+                `${apiUrl}/api/v1/cases/${caseId}/versions/${versionId}/confirm-docs`,
+                {},
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            toast.success("Caso finalizzato con successo!", { id: toastId });
+            setTimeout(() => {
+                router.push(`/dashboard/cases/${caseId}/summary`);
+            }, 2000);
+        } catch (e) {
+            handleApiError(e, "Errore sincronizzazione");
+            toast.dismiss(toastId);
+            throw e;
+        }
+    }, [caseId, getToken, apiUrl, router]);
+
     const handleStepClick = (step: number) => {
         // Allow going back from Step 3 or Step 4 (manualStep)
         const effectiveStep = manualStep ?? currentStep;
@@ -359,6 +397,7 @@ export default function CaseWorkspace() {
                         <Step3_Review
                             caseData={caseData}
                             onDownload={handleDownload}
+                            onOpenInDocs={handleOpenInDocs}
                             onProceedToClosure={handleProceedToClosure}
                             onGoBackToIngestion={handleGoBackToIngestion}
                         />
@@ -366,6 +405,7 @@ export default function CaseWorkspace() {
                         <Step4_Closure
                             caseData={caseData}
                             onFinalize={handleFinalize}
+                            onConfirmDocs={handleConfirmDocs}
                         />
                     ) : null}
                 </main>
