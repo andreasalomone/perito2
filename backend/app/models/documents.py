@@ -47,6 +47,7 @@ class Document(Base):
         default=ExtractionStatus.PENDING, nullable=False
     )
     ai_extracted_data: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

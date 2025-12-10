@@ -66,7 +66,7 @@ export function ErrorStateOverlay({
                                     </p>
                                     <ul className="mt-2 text-sm text-muted-foreground list-disc list-inside">
                                         {failedDocs.map(doc => (
-                                            <li key={doc.id}>{doc.filename}</li>
+                                            <li key={doc.id} className="flex flex-col"><span>{doc.filename}</span>{doc.error_message && (<span className="text-xs text-destructive ml-4">→ {doc.error_message}</span>)}</li>
                                         ))}
                                     </ul>
                                 </div>

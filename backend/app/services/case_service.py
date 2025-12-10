@@ -431,6 +431,7 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: AsyncSessio
         except Exception as e:
             logger.error(f"Error extracting document {doc.id}: {e}")
             doc.ai_status = ExtractionStatus.ERROR
+            doc.error_message = _get_user_friendly_error(str(e))
             await db.commit()
         finally:
             shutil.rmtree(tmp_dir)
@@ -586,3 +587,22 @@ async def _check_and_trigger_generation(
         logger.error(f"Error checking case completion: {e}")
         # Re-raise to ensure Cloud Tasks retries
         raise e
+
+
+def _get_user_friendly_error(raw_error: str) -> str:
+    """Mappa errori tecnici a messaggi comprensibili per l'utente."""
+    ERROR_MAP = {
+        "BadZipFile": "File corrotto: il documento non è valido",
+        "FileDataError": "PDF corrotto: impossibile leggere il file",
+        "InvalidFileException": "Excel corrotto: formato non valido",
+        "UnicodeDecodeError": "Codifica testo non supportata",
+        "UnidentifiedImageError": "Immagine corrotta o formato non riconosciuto",
+        "MemoryError": "File troppo grande per essere elaborato",
+        "recursion": "Troppi allegati annidati nell'email",
+        "too large": "File o allegato troppo grande",
+        "Unsupported file type": "Tipo di file non supportato",
+    }
+    for key, msg in ERROR_MAP.items():
+        if key.lower() in raw_error.lower():
+            return msg
+    return "Errore durante l'elaborazione del documento"

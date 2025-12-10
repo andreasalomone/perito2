@@ -6,7 +6,8 @@ export const DocumentSchema = z.object({
     id: z.string().uuid(),
     filename: z.string(),
     ai_status: z.enum(["PENDING", "PROCESSING", "SUCCESS", "ERROR", "SKIPPED"]),
-    created_at: z.string().datetime()
+    created_at: z.string().datetime(),
+    error_message: z.string().optional().nullable()
 });
 export type Document = z.infer<typeof DocumentSchema>;
 
@@ -14,7 +15,8 @@ export const ReportVersionSchema = z.object({
     id: z.string().uuid(),
     version_number: z.number(),
     is_final: z.boolean(),
-    created_at: z.string().datetime()
+    created_at: z.string().datetime(),
+    error_message: z.string().optional().nullable()
 });
 export type ReportVersion = z.infer<typeof ReportVersionSchema>;
 
@@ -36,6 +38,7 @@ export const CaseBaseSchema = z.object({
     client_name: z.string().optional().nullable(), // Handle Python None
     status: z.enum(["OPEN", "CLOSED", "ARCHIVED", "PROCESSING", "GENERATING", "ERROR"]),
     created_at: z.string().datetime(),
+    error_message: z.string().optional().nullable(),
 
     // Business fields
     ns_rif: z.number().int().optional().nullable(),

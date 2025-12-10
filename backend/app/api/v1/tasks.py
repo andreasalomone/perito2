@@ -44,7 +44,7 @@ _cached_request = google_requests.Request()
 
 
 def verify_cloud_tasks_auth(
-    authorization: Annotated[str | None, Header()] = None
+    authorization: Annotated[str | None, Header()] = None,
 ) -> Literal[True]:
     """
     Validates Google Cloud Task OIDC Token.
