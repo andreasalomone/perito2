@@ -113,8 +113,8 @@ def run_migrations_online() -> None:
             conn = global_connector.connect(
                 instance_connection_string=settings.CLOUD_SQL_CONNECTION_NAME,
                 driver="pg8000",
-                user=settings.DB_USER,
-                password=settings.DB_PASS,
+                user=settings.DB_ADMIN,
+                password=settings.DB_ADMIN_PASS,
                 db=settings.DB_NAME,
                 ip_type=IPTypes.PUBLIC,
             )
