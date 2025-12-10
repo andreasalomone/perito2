@@ -92,6 +92,7 @@ class Settings(BaseSettings):
     LLM_API_TIMEOUT_SECONDS: int = 600
 
     # Cache Settings
+    ENABLE_GEMINI_CACHE: bool = True
     REPORT_PROMPT_CACHE_NAME: Optional[str] = None
     CACHE_TTL_DAYS: int = 2
     CACHE_DISPLAY_NAME: str = "ReportGenerationPromptsV2"

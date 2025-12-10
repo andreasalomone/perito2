@@ -46,6 +46,10 @@ def get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
     Returns:
         Optional[str]: The name of the active cache, or None if an error occurs.
     """
+    if not settings.ENABLE_GEMINI_CACHE:
+        logger.info("Gemini Context Caching is DISABLED via settings.")
+        return None
+
     display_name = settings.CACHE_DISPLAY_NAME
     model_name = settings.LLM_MODEL_NAME
 

@@ -642,7 +642,10 @@ class GeminiReportGenerator:
                 )
             except Exception as e:
                 if self._is_cache_error(e):
-                    logger.warning(f"Cache invalidated ({e}). Retry without cache.")
+                    logger.warning(
+                        f"Cache invalidated or expired. Details: {e}. Retrying without cache...",
+                        exc_info=True,
+                    )
                 elif self._is_overload_error(e):
                     logger.warning(f"Primary overloaded ({e}). Fallback strategy.")
                     return await self._attempt_fallback(get_prompt_parts(False))
