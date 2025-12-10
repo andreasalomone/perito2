@@ -61,13 +61,25 @@ export default function CaseWorkspace() {
         }
     }, [caseData, isLoading, caseId, router]);
 
-    // Reset manual step when actual step changes
+    // Reset manual step only when workflow naturally progresses forward
+    // We use a ref to track the previous currentStep to detect forward progress
+    const prevCurrentStepRef = useRef<WorkflowStep>(currentStep);
     useEffect(() => {
-        if (manualStep !== null && currentStep !== 'ERROR') {
-            // If we moved past the manual step, clear it
-            if (typeof currentStep === 'number' && currentStep > manualStep) {
-                setManualStep(null);
-            }
+        const prevStep = prevCurrentStepRef.current;
+        prevCurrentStepRef.current = currentStep;
+
+        // Only clear manualStep if:
+        // 1. We have a manualStep set
+        // 2. The workflow has naturally progressed forward (currentStep increased)
+        // 3. We're not in error state
+        if (
+            manualStep !== null &&
+            currentStep !== 'ERROR' &&
+            typeof currentStep === 'number' &&
+            typeof prevStep === 'number' &&
+            currentStep > prevStep
+        ) {
+            setManualStep(null);
         }
     }, [currentStep, manualStep]);
 

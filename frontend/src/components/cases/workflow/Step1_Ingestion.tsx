@@ -151,7 +151,7 @@ export function Step1_Ingestion({
                     ) : (
                         <>
                             <Play className="h-4 w-4 mr-2" />
-                            Genera Report con IA
+                            Genera Report
                         </>
                     )}
                 </Button>
