@@ -344,6 +344,10 @@ async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSes
                         target_gcs_path = item.get("item_gcs_path") or doc.gcs_path
 
                         if target_gcs_path:
+                            # FIX: Ensure fully qualified gs:// URI for Vertex AI
+                            if not target_gcs_path.startswith("gs://"):
+                                target_gcs_path = f"gs://{settings.STORAGE_BUCKET_NAME}/{target_gcs_path}"
+
                             # Pass the GCS URI to the LLM handler.
                             # Phase 3 Optimization: llm_handler uses Part.from_uri() directly
                             # so NO download is needed here anymore.
