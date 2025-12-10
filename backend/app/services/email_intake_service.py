@@ -510,7 +510,6 @@ class EmailIntakeService:
             data_sinistro=extracted.data_sinistro,
             data_incarico=extracted.data_incarico,
             note=extracted.note,
-            ai_summary=extracted.ai_summary,
         )
         self.db.add(case)
         self.db.flush()
@@ -552,7 +551,6 @@ class EmailIntakeService:
             ("data_sinistro", extracted.data_sinistro),
             ("data_incarico", extracted.data_incarico),
             ("note", extracted.note),
-            ("ai_summary", extracted.ai_summary),
         ]
 
         for field_name, new_value in field_updates:

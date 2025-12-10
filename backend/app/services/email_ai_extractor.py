@@ -48,8 +48,7 @@ If a field cannot be determined, use null.
   "genere_lavorazione": "string - processing type",
   "data_sinistro": "string - incident date (YYYY-MM-DD)",
   "data_incarico": "string - assignment date (YYYY-MM-DD)",
-  "note": "string - additional notes",
-  "ai_summary": "string - brief markdown summary of the case"
+  "note": "string - additional notes"
 }
 """
 
@@ -83,7 +82,6 @@ class CaseExtractionResult:
     data_sinistro: Optional[date] = None
     data_incarico: Optional[date] = None
     note: Optional[str] = None
-    ai_summary: Optional[str] = None
 
     # Metadata
     raw_response: Optional[str] = field(default=None, repr=False)
@@ -267,7 +265,6 @@ Return ONLY valid JSON, no explanation or markdown code blocks.
             data_sinistro=_parse_date(data.get("data_sinistro")),
             data_incarico=_parse_date(data.get("data_incarico")),
             note=data.get("note"),
-            ai_summary=data.get("ai_summary"),
             raw_response=response_text,
             extraction_success=True,
         )

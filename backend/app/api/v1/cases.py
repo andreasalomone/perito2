@@ -457,6 +457,39 @@ async def download_version(
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
+def _delete_case_folders(org_id: str, case_id: str) -> int:
+    """
+    Safety net: Delete all files in case-specific GCS folders.
+    Catches untracked files (artifacts, unregistered uploads from crashed flows).
+
+    Returns count of deleted objects.
+    """
+    from google.cloud import storage  # type: ignore[attr-defined]
+
+    client = storage.Client()
+    bucket = client.bucket(settings.STORAGE_BUCKET_NAME)
+    deleted = 0
+
+    # Delete uploads folder (raw files + artifacts)
+    uploads_prefix = f"uploads/{org_id}/{case_id}/"
+    for blob in bucket.list_blobs(prefix=uploads_prefix):
+        blob.delete()
+        deleted += 1
+
+    # Delete reports folder
+    reports_prefix = f"reports/{org_id}/{case_id}/"
+    for blob in bucket.list_blobs(prefix=reports_prefix):
+        blob.delete()
+        deleted += 1
+
+    if deleted > 0:
+        logger.info(
+            f"Safety net deleted {deleted} additional GCS files for case {case_id}"
+        )
+
+    return deleted
+
+
 @router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_case(case_id: UUID, db: Annotated[Session, Depends(get_db)]):
     """
@@ -465,6 +498,9 @@ def delete_case(case_id: UUID, db: Annotated[Session, Depends(get_db)]):
     case = db.get(Case, case_id)
     if not case or case.deleted_at:
         raise HTTPException(status_code=404, detail="Case not found")
+
+    org_id = str(case.organization_id)
+    case_id_str = str(case_id)
 
     # 1. Delete all documents from GCS and DB
     docs = db.scalars(select(Document).where(Document.case_id == case_id)).all()
@@ -490,7 +526,13 @@ def delete_case(case_id: UUID, db: Annotated[Session, Depends(get_db)]):
                 logger.warning(f"Failed to delete GCS blob {v.docx_storage_path}: {e}")
         db.delete(v)
 
-    # 3. Soft-delete the case
+    # 3. Safety net: Delete entire case folders to catch untracked files
+    try:
+        _delete_case_folders(org_id, case_id_str)
+    except Exception as e:
+        logger.warning(f"Failed to delete case folders from GCS: {e}")
+
+    # 4. Soft-delete the case
     from datetime import datetime, timezone
 
     case.deleted_at = datetime.now(timezone.utc)
