@@ -30,3 +30,4 @@ greenlet>=3.0.0
 flake8>=7.0.0
 Flake8-pyproject==1.2.4
 python-magic>=0.4.27
+google-auth-oauthlib>=1.0.0

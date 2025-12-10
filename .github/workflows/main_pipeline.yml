@@ -157,6 +157,9 @@ jobs:
             CLOUD_TASKS_SA_EMAIL=cloud-tasks-sa-email:latest
             SUPERADMIN_EMAILS=SUPERADMIN_EMAILS:latest
             GOOGLE_DRIVE_FOLDER_ID=GOOGLE_DRIVE_FOLDER_ID:latest
+            GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest
+            GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest
+            GOOGLE_USER_REFRESH_TOKEN=GOOGLE_USER_REFRESH_TOKEN:latest
 
       # FIX 2: Get the exact Canary URL directly from Cloud Run API (No sed hacking)
       - name: Verify Canary Health

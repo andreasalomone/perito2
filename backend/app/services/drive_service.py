@@ -12,7 +12,8 @@ import logging
 from typing import Optional
 
 from google.auth import default
-from google.auth.credentials import Credentials
+from google.auth.credentials import Credentials as BaseCredentials
+from google.oauth2.credentials import Credentials as OAuthCredentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
@@ -31,7 +32,9 @@ class DriveService:
 
     def __init__(
         self,
-        credentials: Optional[Credentials] = None,
+        credentials: Optional[
+            BaseCredentials
+        ] = None,  # Type hint matches google.oauth2.credentials.Credentials or google.auth.credentials.Credentials
         folder_id: Optional[str] = None,
     ):
         """
@@ -43,7 +46,29 @@ class DriveService:
                        Required for service accounts (they have 0-byte personal quota).
         """
         if credentials is None:
-            credentials, _ = default(scopes=["https://www.googleapis.com/auth/drive"])
+            # PRIORITIZE: User Credentials (OAuth) if configured
+            # This is necessary for personal Gmail accounts where Service Accounts have 0 quota.
+            if (
+                settings.GOOGLE_USER_REFRESH_TOKEN
+                and settings.GOOGLE_CLIENT_ID
+                and settings.GOOGLE_CLIENT_SECRET
+            ):
+                logger.info("Using OAuth User Credentials for Drive Service")
+                credentials = OAuthCredentials(
+                    None,  # Access token (will be refreshed)
+                    refresh_token=settings.GOOGLE_USER_REFRESH_TOKEN,
+                    token_uri="https://oauth2.googleapis.com/token",
+                    client_id=settings.GOOGLE_CLIENT_ID,
+                    client_secret=settings.GOOGLE_CLIENT_SECRET,
+                )
+            else:
+                # FALLBACK: Service Account (ADC)
+                # Only works if target folder is in a Shared Drive (or SA has quota)
+                logger.info("Using Service Account (ADC) for Drive Service")
+                credentials, _ = default(
+                    scopes=["https://www.googleapis.com/auth/drive"]
+                )
+
         self.service = build(
             "drive", "v3", credentials=credentials, cache_discovery=False
         )
