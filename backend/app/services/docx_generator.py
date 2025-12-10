@@ -1,3 +1,4 @@
+import datetime
 import io
 import logging
 import os
@@ -12,6 +13,21 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
+
+ITALIAN_MONTHS = {
+    1: "gennaio",
+    2: "febbraio",
+    3: "marzo",
+    4: "aprile",
+    5: "maggio",
+    6: "giugno",
+    7: "luglio",
+    8: "agosto",
+    9: "settembre",
+    10: "ottobre",
+    11: "novembre",
+    12: "dicembre",
+}
 
 from app.core.config import settings
 
@@ -132,9 +148,7 @@ def create_styled_docx(plain_text_report_content: str) -> io.BytesIO:
     # --- Elaborazione del Contenuto Testuale Generato dall'LLM ---
     lines: List[str] = plain_text_report_content.split("\n")
     subject_line_pattern = re.compile(r"^\s*Oggetto\s*:\s*(.*)", re.IGNORECASE)
-    date_line_pattern = re.compile(
-        r"^\s*Genova,\s*\d{1,2}\s+[a-zà-ú]+\s+\d{4}\s*$", re.IGNORECASE
-    )
+    date_line_pattern = re.compile(r"^\s*Genova,.*", re.IGNORECASE)
     reference_line_pattern = re.compile(
         r"^\s*(Vs\. Rif\.|Polizza|Ns\. Rif\.)\s*:\s*(.*)"
     )  # Per i riferimenti tipo Vs. Rif.
@@ -220,7 +234,10 @@ def create_styled_docx(plain_text_report_content: str) -> io.BytesIO:
 
         # 2. Gestione Blocco Data (sempre "Genova, [data]")
         if date_line_pattern.match(stripped_line):
-            p = document.add_paragraph(stripped_line)
+            now = datetime.date.today()
+            new_date_text = f"Genova, {now.day} {ITALIAN_MONTHS[now.month]} {now.year}"
+
+            p = document.add_paragraph(new_date_text)
             p.alignment = WD_ALIGN_PARAGRAPH.LEFT
             fmt = p.paragraph_format
             fmt.first_line_indent = Pt(0)
