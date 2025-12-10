@@ -108,13 +108,18 @@ def run_migrations_online() -> None:
             """
             Standalone connector function specifically for migrations.
             Uses a fresh Connector instance.
+            Uses admin credentials if available, otherwise falls back to regular credentials.
             """
+            # Use admin credentials if available, otherwise fall back to regular
+            db_user = settings.DB_ADMIN or settings.DB_USER
+            db_pass = settings.DB_ADMIN_PASS or settings.DB_PASS
+
             # Note: We must access the connector instance from the outer scope's context manager
             conn = global_connector.connect(
                 instance_connection_string=settings.CLOUD_SQL_CONNECTION_NAME,
                 driver="pg8000",
-                user=settings.DB_ADMIN,
-                password=settings.DB_ADMIN_PASS,
+                user=db_user,
+                password=db_pass,
                 db=settings.DB_NAME,
                 ip_type=IPTypes.PUBLIC,
             )

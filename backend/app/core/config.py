@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     DB_USER: str = "report_user"
     DB_PASS: str
     DB_NAME: str = "perizia_db"
+    # Admin credentials for migrations (optional, falls back to DB_USER/DB_PASS)
+    DB_ADMIN: Optional[str] = None
+    DB_ADMIN_PASS: Optional[str] = None
 
     # Storage & Queue
     STORAGE_BUCKET_NAME: str
