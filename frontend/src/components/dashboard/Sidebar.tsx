@@ -2,13 +2,12 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ShieldCheck, LayoutDashboard, FilePlus, LogOut, User as UserIcon } from "lucide-react";
+import { LayoutDashboard, FilePlus, LogOut, User as UserIcon, ChevronLeft, ChevronRight } from "lucide-react";
 import { User } from "firebase/auth";
 import { DBUser } from "@/types";
 import { cn } from "@/lib/utils";
 
-import { motion, AnimatePresence } from "framer-motion";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { motion } from "framer-motion";
 
 interface SidebarProps {
     user: User | null;
@@ -40,17 +39,17 @@ export function Sidebar({
             <div className={cn("p-6 border-b border-white/5 flex items-center justify-between", collapsed && "p-4 justify-center")}>
                 <div className="flex items-center gap-2">
                     <div className="bg-primary text-primary-foreground p-1 rounded">
-                        <ShieldCheck className="h-5 w-5" />
+                        <img src="/perito-logo-white.svg" alt="Perito Logo" className="h-5 w-5" />
                     </div>
                     {!collapsed && (
-                        <motion.h1
+                        <motion.div
                             initial={{ opacity: 0, width: 0 }}
                             animate={{ opacity: 1, width: "auto" }}
                             exit={{ opacity: 0, width: 0 }}
-                            className="text-xl font-bold tracking-tight whitespace-nowrap overflow-hidden"
+                            className="overflow-hidden"
                         >
-                            PeritoAI
-                        </motion.h1>
+                            <img src="/myperito-black.svg" alt="PeritoAI" className="h-5 invert" />
+                        </motion.div>
                     )}
                 </div>
                 {!collapsed && onToggle && (

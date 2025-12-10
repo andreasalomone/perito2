@@ -291,7 +291,7 @@ export function Step2_Intelligence({ caseData }: Step2IntelligenceProps) {
 
             {/* Footer message */}
             <div className="text-center text-sm text-muted-foreground py-2">
-                <p>Non chiudere questa pagina. Riceverai una notifica al termine.</p>
+                <p>Puoi dedicarti ad altri casi, la generazione continua in background. Torna dopo!</p>
             </div>
         </div>
     );

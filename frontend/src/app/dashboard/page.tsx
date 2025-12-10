@@ -14,7 +14,7 @@ import { ClientGroupedList } from "@/components/dashboard/views/ClientGroupedLis
 import { Toggle } from "@/components/ui/toggle";
 
 export default function DashboardPage() {
-    const [viewMode, setViewMode] = useState<ViewMode>("grid");
+    const [viewMode, setViewMode] = useState<ViewMode>("kanban");
     const [searchQuery, setSearchQuery] = useState("");
     const [scope, setScope] = useState<"all" | "mine">("mine"); // Default to 'mine' for focus
     const [hideClosed, setHideClosed] = useState(false);

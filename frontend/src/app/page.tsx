@@ -176,11 +176,9 @@ function LandingPage() {
       <div className="w-full max-w-md space-y-8 text-center">
         <div className="space-y-2">
           <div className="inline-flex items-center justify-center p-3 bg-primary/10 rounded-2xl mb-4">
-            <Sparkles className="h-8 w-8 text-primary" />
+            <img src="/perito-logo-black.svg" alt="Perito Logo" className="h-8 w-8 dark:invert" />
           </div>
-          <h1 className="text-4xl font-bold tracking-tight text-foreground">
-            PeritoAI
-          </h1>
+          <img src="/myperito-black.svg" alt="PeritoAI" className="h-10 dark:invert" />
           <p className="text-lg text-muted-foreground">
             Per i periti del futuro.
           </p>
