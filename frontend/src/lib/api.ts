@@ -11,6 +11,7 @@ import {
     Client
 } from "@/types";
 import { OrganizationSchema, AllowedEmailSchema, Organization, AllowedEmail } from "@/types/admin";
+import { GlobalStatsSchema, OrgStatsSchema, UserStatsSchema, GlobalStats, OrgStats, UserStats } from "@/types/stats";
 import { UserProfileResponseSchema, UserProfileResponse } from "@/types/user";
 import { getApiUrl } from "@/context/ConfigContext";
 
@@ -192,6 +193,28 @@ export const api = {
                 token,
                 z.object({ message: z.string() }),
                 { method: "DELETE" }
+            ),
+
+        // Stats endpoints
+        getGlobalStats: (token: string) =>
+            fetchWithValidation<GlobalStats>(
+                `${getBaseUrl()}/api/v1/admin/stats`,
+                token,
+                GlobalStatsSchema
+            ),
+
+        getOrgStats: (token: string, orgId: string) =>
+            fetchWithValidation<OrgStats>(
+                `${getBaseUrl()}/api/v1/admin/stats/${orgId}`,
+                token,
+                OrgStatsSchema
+            ),
+
+        getUserStats: (token: string, orgId: string, userId: string) =>
+            fetchWithValidation<UserStats>(
+                `${getBaseUrl()}/api/v1/admin/stats/${orgId}/users/${userId}`,
+                token,
+                UserStatsSchema
             )
     }
 };

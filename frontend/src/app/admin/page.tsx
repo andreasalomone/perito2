@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, ShieldAlert } from "lucide-react";
+import { Loader2, ShieldAlert, BarChart3, ExternalLink } from "lucide-react";
 import OrganizationManager from "@/components/admin/OrganizationManager";
 import UserInviteManager from "@/components/admin/UserInviteManager";
 import { useOrganizations } from "@/hooks/useOrganizations";
@@ -60,9 +60,24 @@ export default function AdminPage() {
     return (
         <div className="min-h-screen bg-background p-8">
             <div className="mx-auto max-w-7xl space-y-8">
-                <div>
-                    <h1 className="text-3xl font-bold">Super Admin Panel</h1>
-                    <p className="text-muted-foreground">Manage organizations and user access</p>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-3xl font-bold">Super Admin Panel</h1>
+                        <p className="text-muted-foreground">Manage organizations and user access</p>
+                    </div>
+                    <div className="flex gap-2">
+                        <Button onClick={() => router.push("/admin/stats")}>
+                            <BarChart3 className="h-4 w-4 mr-2" />
+                            Stats
+                        </Button>
+                        <Button
+                            variant="outline"
+                            onClick={() => window.open("https://aistudio.google.com/usage?project=perito-479708&timeRange=last-7-days", "_blank", "noopener,noreferrer")}
+                        >
+                            <ExternalLink className="h-4 w-4 mr-2" />
+                            Gemini Usage
+                        </Button>
+                    </div>
                 </div>
 
                 <div className="grid gap-8 lg:grid-cols-2">

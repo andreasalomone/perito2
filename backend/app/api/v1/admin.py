@@ -5,7 +5,7 @@ from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
-from sqlalchemy import select, union
+from sqlalchemy import func, select, union
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -66,6 +66,64 @@ class AllowedEmailResponse(BaseModel):
 
 class GenericMessage(BaseModel):
     message: str
+
+
+# ============= Stats Response Models =============
+
+
+class CaseCountsByStatus(BaseModel):
+    """Count of cases grouped by status."""
+
+    OPEN: int = 0
+    CLOSED: int = 0
+    ERROR: int = 0
+    GENERATING: int = 0
+    PROCESSING: int = 0
+    ARCHIVED: int = 0
+
+
+class UserSummary(BaseModel):
+    """Lightweight user info for dropdowns."""
+
+    id: str  # Firebase UID - string, not UUID
+    email: str
+    first_name: str | None = None
+    last_name: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class GlobalStatsResponse(BaseModel):
+    """Platform-wide statistics for superadmin."""
+
+    org_count: int
+    user_count: int
+    case_counts: CaseCountsByStatus
+    document_count: int
+    report_count: int
+    gcs_bucket_size_gb: float | None = None  # Optional - may timeout
+
+
+class OrgStatsResponse(BaseModel):
+    """Organization-level statistics."""
+
+    org_id: str
+    org_name: str
+    user_count: int
+    case_counts: CaseCountsByStatus
+    document_count: int
+    users: list[UserSummary]
+
+
+class UserStatsResponse(BaseModel):
+    """Individual user statistics."""
+
+    user_id: str  # Firebase UID
+    user_email: str
+    total_cases: int
+    cases_today: int
+    cases_last_7_days: int
+    cases_by_status: CaseCountsByStatus
 
 
 # ============= Endpoints =============
@@ -451,4 +509,281 @@ def reprocess_pending_documents(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Reprocess operation failed: {str(e)}",
+        )
+
+
+# ============= Stats Helper Functions =============
+
+
+def _get_case_counts_by_status(
+    db: Session,
+    org_id: uuid.UUID | None = None,
+    user_id: str | None = None,
+) -> CaseCountsByStatus:
+    """
+    Efficient aggregation query for case counts grouped by status.
+    Optionally filter by organization or user.
+    """
+    query = db.query(Case.status, func.count(Case.id)).filter(Case.deleted_at.is_(None))
+
+    if org_id:
+        query = query.filter(Case.organization_id == org_id)
+    if user_id:
+        query = query.filter(Case.creator_id == user_id)
+
+    results = query.group_by(Case.status).all()
+
+    # Initialize with zeros
+    counts = {status.value: 0 for status in CaseStatus}
+    for case_status, count in results:
+        # case_status might be CaseStatus enum or string depending on DB
+        key = case_status.value if hasattr(case_status, "value") else case_status
+        counts[key] = count
+
+    return CaseCountsByStatus(**counts)
+
+
+def _get_bucket_size_gb_safe(timeout_seconds: float = 5.0) -> float | None:
+    """
+    Returns GCS bucket size in GB, or None if timeout/error.
+    Uses a timeout to prevent blocking on large buckets.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import TimeoutError as FuturesTimeout
+
+    from app.core.config import settings
+    from app.services import gcs_service
+
+    def calculate_size() -> float:
+        client = gcs_service.get_storage_client()
+        bucket = client.bucket(settings.STORAGE_BUCKET_NAME)
+        total_bytes = sum(blob.size or 0 for blob in bucket.list_blobs())
+        return round(total_bytes / (1024**3), 2)
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(calculate_size)
+            return future.result(timeout=timeout_seconds)
+    except (FuturesTimeout, Exception) as e:
+        logger.warning(f"GCS bucket size calculation timed out or failed: {e}")
+        return None
+
+
+# ============= Stats Endpoints =============
+
+
+@router.get(
+    "/stats",
+    response_model=GlobalStatsResponse,
+    summary="Get Global Platform Stats",
+    description="Superadmin only: Get platform-wide statistics.",
+)
+def get_global_stats(
+    superadmin: User = Depends(get_superadmin_user), db: Session = Depends(get_raw_db)
+) -> GlobalStatsResponse:
+    """
+    Returns global platform statistics:
+    - Organization count
+    - User count
+    - Case counts by status
+    - Document count
+    - Report version count
+    - GCS bucket size (optional, may timeout)
+    """
+    try:
+        org_count = db.query(func.count(Organization.id)).scalar() or 0
+        user_count = db.query(func.count(User.id)).scalar() or 0
+        document_count = db.query(func.count(Document.id)).scalar() or 0
+        report_count = db.query(func.count(ReportVersion.id)).scalar() or 0
+        case_counts = _get_case_counts_by_status(db)
+
+        # GCS bucket size - may timeout on large buckets
+        gcs_size = _get_bucket_size_gb_safe(timeout_seconds=5.0)
+
+        logger.info(
+            f"Global stats requested by superadmin: {org_count} orgs, {user_count} users"
+        )
+
+        return GlobalStatsResponse(
+            org_count=org_count,
+            user_count=user_count,
+            case_counts=case_counts,
+            document_count=document_count,
+            report_count=report_count,
+            gcs_bucket_size_gb=gcs_size,
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to get global stats: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve global statistics.",
+        )
+
+
+@router.get(
+    "/stats/{org_id}",
+    response_model=OrgStatsResponse,
+    summary="Get Organization Stats",
+    description="Superadmin only: Get statistics for a specific organization.",
+)
+def get_org_stats(
+    org_id: uuid.UUID,
+    superadmin: User = Depends(get_superadmin_user),
+    db: Session = Depends(get_raw_db),
+) -> OrgStatsResponse:
+    """
+    Returns organization-level statistics:
+    - User count in org
+    - Case counts by status
+    - Document count
+    - List of users (for dropdown navigation)
+    """
+    # Verify org exists
+    org = db.get(Organization, org_id)
+    if not org:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found"
+        )
+
+    try:
+        # Get counts scoped to org
+        user_count = (
+            db.query(func.count(User.id))
+            .filter(User.organization_id == org_id)
+            .scalar()
+            or 0
+        )
+        document_count = (
+            db.query(func.count(Document.id))
+            .filter(Document.organization_id == org_id)
+            .scalar()
+            or 0
+        )
+        case_counts = _get_case_counts_by_status(db, org_id=org_id)
+
+        # Get users for dropdown
+        users = db.query(User).filter(User.organization_id == org_id).all()
+        user_summaries = [
+            UserSummary(
+                id=u.id,
+                email=u.email,
+                first_name=u.first_name,
+                last_name=u.last_name,
+            )
+            for u in users
+        ]
+
+        logger.info(f"Org stats requested for {org.name} ({org_id})")
+
+        return OrgStatsResponse(
+            org_id=str(org_id),
+            org_name=org.name,
+            user_count=user_count,
+            case_counts=case_counts,
+            document_count=document_count,
+            users=user_summaries,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get org stats for {org_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve organization statistics.",
+        )
+
+
+@router.get(
+    "/stats/{org_id}/users/{user_id}",
+    response_model=UserStatsResponse,
+    summary="Get User Stats",
+    description="Superadmin only: Get statistics for a specific user.",
+)
+def get_user_stats(
+    org_id: uuid.UUID,
+    user_id: str,  # Firebase UID is a STRING, not UUID!
+    superadmin: User = Depends(get_superadmin_user),
+    db: Session = Depends(get_raw_db),
+) -> UserStatsResponse:
+    """
+    Returns user-level statistics:
+    - Total cases created
+    - Cases created today
+    - Cases created in last 7 days
+    - Cases by status
+    """
+    # Verify user exists and belongs to the specified org
+    user = (
+        db.query(User)
+        .filter(User.id == user_id, User.organization_id == org_id)
+        .first()
+    )
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found in this organization",
+        )
+
+    try:
+        # Get case counts
+        case_counts = _get_case_counts_by_status(db, user_id=user_id)
+        total_cases = sum(
+            [
+                case_counts.OPEN,
+                case_counts.CLOSED,
+                case_counts.ERROR,
+                case_counts.GENERATING,
+                case_counts.PROCESSING,
+                case_counts.ARCHIVED,
+            ]
+        )
+
+        # Cases today
+        today_start = datetime.now(timezone.utc).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        cases_today = (
+            db.query(func.count(Case.id))
+            .filter(
+                Case.creator_id == user_id,
+                Case.created_at >= today_start,
+                Case.deleted_at.is_(None),
+            )
+            .scalar()
+            or 0
+        )
+
+        # Cases last 7 days
+        week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+        cases_last_7_days = (
+            db.query(func.count(Case.id))
+            .filter(
+                Case.creator_id == user_id,
+                Case.created_at >= week_ago,
+                Case.deleted_at.is_(None),
+            )
+            .scalar()
+            or 0
+        )
+
+        logger.info(f"User stats requested for {user.email} ({user_id})")
+
+        return UserStatsResponse(
+            user_id=user_id,
+            user_email=user.email,
+            total_cases=total_cases,
+            cases_today=cases_today,
+            cases_last_7_days=cases_last_7_days,
+            cases_by_status=case_counts,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get user stats for {user_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve user statistics.",
         )

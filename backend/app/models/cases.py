@@ -47,6 +47,22 @@ class Client(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     vat_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
+    # ICE Enrichment Fields (populated by Gemini Search Grounding)
+    logo_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    address_street: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    city: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    zip_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    province: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    country: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True, default="Italia"
+    )
+    website: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    # Contact fields (manual entry, not AI-populated)
+    referente: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    telefono: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
     # Use timezone-aware UTC for all timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
