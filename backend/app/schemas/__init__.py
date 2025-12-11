@@ -114,6 +114,17 @@ class CaseSummary(CaseBase):
         return None
 
     @computed_field
+    def client_logo_url(self) -> Optional[str]:
+        """
+        ICE Feature: Extract client logo URL for display on case cards.
+        Returns Google Favicon URL derived from client's website.
+        """
+        if self.client and hasattr(self.client, "logo_url"):
+            logo: Optional[str] = self.client.logo_url
+            return logo
+        return None
+
+    @computed_field
     def creator_email(self) -> Optional[str]:
         """
         Extracts creator email from relationship.
@@ -166,3 +177,13 @@ class DocumentRegisterPayload(BaseModel):
     filename: str
     gcs_path: str
     mime_type: str
+
+
+# --- CLIENTS ---
+from app.schemas.client import (
+    ClientBase,
+    ClientCreate,
+    ClientDetail,
+    ClientListItem,
+    ClientUpdate,
+)

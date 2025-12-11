@@ -81,10 +81,14 @@ def run_migrations_online() -> None:
         # We construct the URL manually to handle special chars in password safely
         from sqlalchemy.engine.url import URL
 
+        # Use admin credentials if available, otherwise fall back to regular
+        db_user = settings.DB_ADMIN or settings.DB_USER
+        db_pass = settings.DB_ADMIN_PASS or settings.DB_PASS
+
         url = URL.create(
             drivername="postgresql+pg8000",
-            username=settings.DB_USER,
-            password=settings.DB_PASS,
+            username=db_user,
+            password=db_pass,
             host="localhost",
             port=5432,
             database=settings.DB_NAME,

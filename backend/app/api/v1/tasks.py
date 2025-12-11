@@ -158,6 +158,60 @@ async def generate_report(
     return {"status": "success"}
 
 
+class EnrichClientPayload(BaseModel):
+    """Payload for ICE client enrichment task."""
+
+    client_id: str = Field(..., description="Client UUID to enrich")
+    original_name: str = Field(..., description="Original client name for search query")
+
+
+@router.post(
+    "/enrich-client",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Enrich Client with AI (ICE)",
+)
+async def enrich_client(
+    payload: EnrichClientPayload,
+    db: Annotated[Session, Depends(get_db)],
+    _: bool = Depends(verify_cloud_tasks_auth),
+):
+    """
+    ICE (Intelligent Client Enrichment) Worker.
+
+    Fetches corporate details from Gemini with Google Search grounding:
+    - Full legal name (Ragione Sociale)
+    - VAT number (Partita IVA)
+    - Registered address (Sede Legale)
+    - Official website
+    - Company logo (via Google Favicon API)
+    """
+    logger.info(
+        f"🧠 ICE: Enriching client {payload.client_id} ('{payload.original_name}')"
+    )
+    try:
+        from app.services.enrichment_service import EnrichmentService
+
+        service = EnrichmentService()
+        success = await service.enrich_and_update_client(
+            client_id=payload.client_id,
+            original_name=payload.original_name,
+            db=db,
+        )
+
+        if success:
+            logger.info(f"✅ ICE: Client {payload.client_id} enriched successfully")
+        else:
+            logger.warning(
+                f"⚠️ ICE: Client {payload.client_id} enrichment failed or no data found"
+            )
+
+    except Exception as e:
+        logger.error(f"❌ ICE Task Failed for {payload.client_id}: {e}", exc_info=True)
+        # Don't raise - enrichment failure shouldn't cause Cloud Tasks retry
+
+    return {"status": "success"}
+
+
 # -----------------------------------------------------------------------------
 # 4. Sync Endpoints (DB Bound)
 # -----------------------------------------------------------------------------

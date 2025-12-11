@@ -24,11 +24,61 @@ export const ReportVersionSchema = z.object({
 export type ReportVersion = z.infer<typeof ReportVersionSchema>;
 
 // Client Types
+// Client Types
 export const ClientSchema = z.object({
     id: z.string(),
     name: z.string(),
+    logo_url: z.string().optional().nullable(),
 });
 export type Client = z.infer<typeof ClientSchema>;
+
+export const ClientCreateSchema = z.object({
+    name: z.string().max(255),
+    vat_number: z.string().max(50).optional().nullable(),
+    logo_url: z.string().max(1024).optional().nullable(),
+    address_street: z.string().max(500).optional().nullable(),
+    city: z.string().max(100).optional().nullable(),
+    zip_code: z.string().max(20).optional().nullable(),
+    province: z.string().max(10).optional().nullable(),
+    country: z.string().max(100).optional().nullable().default("Italia"),
+    website: z.string().max(500).optional().nullable(),
+    referente: z.string().max(255).optional().nullable(),
+    email: z.string().max(255).optional().nullable(),
+    telefono: z.string().max(50).optional().nullable(),
+});
+export type ClientCreate = z.infer<typeof ClientCreateSchema>;
+
+export const ClientUpdateSchema = ClientCreateSchema.partial();
+export type ClientUpdate = z.infer<typeof ClientUpdateSchema>;
+
+export const ClientDetailSchema = ClientCreateSchema.extend({
+    id: z.string().uuid(),
+    organization_id: z.string().uuid(),
+    created_at: z.string().datetime(),
+});
+export type ClientDetail = z.infer<typeof ClientDetailSchema>;
+
+export const ClientListItemSchema = z.object({
+    id: z.string().uuid(),
+    name: z.string(),
+    logo_url: z.string().optional().nullable(),
+    city: z.string().optional().nullable(),
+    case_count: z.number().int().default(0),
+});
+export type ClientListItem = z.infer<typeof ClientListItemSchema>;
+
+export const EnrichedClientDataSchema = z.object({
+    full_legal_name: z.string(),
+    vat_number: z.string().optional().nullable(),
+    address_street: z.string().optional().nullable(),
+    city: z.string().optional().nullable(),
+    zip_code: z.string().optional().nullable(),
+    province: z.string().optional().nullable(),
+    country: z.string().optional().nullable(),
+    website: z.string().optional().nullable(),
+    logo_url: z.string().optional().nullable(),
+});
+export type EnrichedClientData = z.infer<typeof EnrichedClientDataSchema>;
 
 export const CaseStatusEnum = z.enum(["OPEN", "CLOSED", "ARCHIVED", "PROCESSING", "GENERATING", "ERROR"]);
 export type CaseStatusType = z.infer<typeof CaseStatusEnum>;
@@ -83,6 +133,7 @@ export const CaseSummarySchema = z.object({
     status: CaseStatusEnum,
     created_at: z.string(),
     client_name: z.string().optional().nullable(), // Helper from backend
+    client_logo_url: z.string().optional().nullable(), // Helper from backend (ICE)
     creator_email: z.string().optional().nullable(), // New field
 });
 export type CaseSummary = z.infer<typeof CaseSummarySchema>;

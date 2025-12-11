@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Folder, AlertCircle, RefreshCw, EyeOff } from "lucide-react";
@@ -19,10 +20,15 @@ export default function DashboardPage() {
     const [scope, setScope] = useState<"all" | "mine">("mine"); // Default to 'mine' for focus
     const [hideClosed, setHideClosed] = useState(false);
 
+    // URL Params
+    const searchParams = useSearchParams();
+    const clientIdParam = searchParams.get("client_id");
+
     // Pass search params to hook
     const { cases, isLoading, isError, mutate } = useCases({
         search: searchQuery,
-        scope: scope
+        scope: scope,
+        client_id: clientIdParam || undefined
     });
 
     if (isLoading) {

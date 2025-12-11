@@ -8,7 +8,17 @@ import {
     CaseDetail,
     CaseStatus,
     ClientSchema,
-    Client
+    Client,
+    ClientCreateSchema,
+    ClientUpdateSchema,
+    ClientDetailSchema,
+    ClientListItemSchema,
+    EnrichedClientDataSchema,
+    ClientCreate,
+    ClientUpdate,
+    ClientDetail,
+    ClientListItem,
+    EnrichedClientData
 } from "@/types";
 import { OrganizationSchema, AllowedEmailSchema, Organization, AllowedEmail } from "@/types/admin";
 import { GlobalStatsSchema, OrgStatsSchema, UserStatsSchema, GlobalStats, OrgStats, UserStats } from "@/types/stats";
@@ -139,13 +149,52 @@ export const api = {
         }
     },
     clients: {
-        search: (token: string, query: string) =>
-            fetchWithValidation<Client[]>(
+        list: (token: string, params: { q?: string; limit?: number; skip?: number } = {}) =>
+            fetchWithValidation<ClientListItem[]>(
                 `${getBaseUrl()}/api/v1/clients/`,
                 token,
-                z.array(ClientSchema),
-                { params: query ? { q: query } : {} }
-            )
+                z.array(ClientListItemSchema),
+                { params }
+            ),
+
+        get: (token: string, id: string) =>
+            fetchWithValidation<ClientDetail>(
+                `${getBaseUrl()}/api/v1/clients/${id}`,
+                token,
+                ClientDetailSchema
+            ),
+
+        create: (token: string, data: ClientCreate) =>
+            fetchWithValidation<ClientDetail>(
+                `${getBaseUrl()}/api/v1/clients/`,
+                token,
+                ClientDetailSchema,
+                { method: "POST", data }
+            ),
+
+        update: (token: string, id: string, data: ClientUpdate) =>
+            fetchWithValidation<ClientDetail>(
+                `${getBaseUrl()}/api/v1/clients/${id}`,
+                token,
+                ClientDetailSchema,
+                { method: "PATCH", data }
+            ),
+
+        triggerEnrichment: (token: string, id: string) =>
+            fetchWithValidation<{ message: string }>(
+                `${getBaseUrl()}/api/v1/clients/${id}/enrich`,
+                token,
+                z.object({ message: z.string() }),
+                { method: "POST" }
+            ),
+
+        enrichPreview: (token: string, name: string) =>
+            fetchWithValidation<EnrichedClientData | null>(
+                `${getBaseUrl()}/api/v1/clients/enrich`,
+                token,
+                EnrichedClientDataSchema.nullable(),
+                { method: "POST", data: { query_name: name } }
+            ),
     },
     users: {
         updateProfile: (token: string, data: { first_name: string; last_name: string }) =>

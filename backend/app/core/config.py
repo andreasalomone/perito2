@@ -85,6 +85,9 @@ class Settings(BaseSettings):
     LLM_SUMMARY_MODEL_NAME: str = (
         "gemini-2.5-flash-lite"  # Low-cost model for summaries
     )
+    GEMINI_CLIENTS_MODEL: str = (
+        "gemini-2.5-flash"  # ICE feature: Search Grounding + JSON output
+    )
     LLM_TEMPERATURE: float = 0.5
     LLM_MAX_TOKENS: int = 64000
     LLM_API_RETRY_ATTEMPTS: int = 2

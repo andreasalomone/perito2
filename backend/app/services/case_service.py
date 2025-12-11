@@ -120,12 +120,27 @@ def create_case_with_client(
         if not user:
             raise HTTPException(status_code=403, detail="User account not found.")
 
-        # 2. CRM Logic (Get or Create Client)
+        # 2. CRM Logic (Get or Create Client) + ICE Enrichment Trigger
         client_id = None
         client = None
+        is_new_client = False
+
         if case_data.client_name:
+            # Check if client already exists BEFORE get_or_create (for enrichment trigger)
+            existing_client = (
+                db.query(Client)
+                .filter(
+                    Client.name == case_data.client_name,
+                    Client.organization_id == user_org_id,
+                )
+                .first()
+            )
+
             client = get_or_create_client(db, case_data.client_name, user_org_id)
             client_id = client.id
+
+            # If we didn't find existing, client is new → trigger enrichment
+            is_new_client = existing_client is None
 
         # 3. Create Case
         new_case = Case(
@@ -164,6 +179,10 @@ def create_case_with_client(
         new_case.creator = user
         new_case.documents = []
         new_case.report_versions = []
+
+        # 5. ICE: Trigger background enrichment for NEW clients only
+        if is_new_client and client and case_data.client_name:
+            trigger_client_enrichment_task(str(client.id), case_data.client_name)
 
         return new_case
 
@@ -376,6 +395,69 @@ def trigger_case_processing_task(case_id: str, org_id: str):
     except Exception:
         # Re-raise to propagate error to caller (API endpoint returns HTTP error)
         raise
+
+
+def trigger_client_enrichment_task(client_id: str, original_name: str):
+    """
+    Enqueue async enrichment task via Cloud Tasks (or run locally for dev).
+
+    ICE (Intelligent Client Enrichment) feature.
+    Called when a NEW client is created during case creation.
+    """
+    if settings.RUN_LOCALLY:
+        # Local dev: run in background thread to avoid blocking
+        import asyncio
+        import threading
+
+        from app.db.database import SessionLocal
+        from app.services.enrichment_service import EnrichmentService
+
+        def _run_enrichment():
+            async def _enrich():
+                service = EnrichmentService()
+                with SessionLocal() as db:
+                    await service.enrich_and_update_client(client_id, original_name, db)
+
+            asyncio.run(_enrich())
+
+        thread = threading.Thread(target=_run_enrichment, daemon=True)
+        thread.start()
+        logger.info(
+            f"[LOCAL] Started enrichment thread for client {client_id} ('{original_name}')"
+        )
+        return
+
+    # Production: Cloud Tasks
+    try:
+        client = tasks_v2.CloudTasksClient()
+        parent = settings.CLOUD_TASKS_QUEUE_PATH
+
+        task = {
+            "http_request": {
+                "http_method": tasks_v2.HttpMethod.POST,
+                "url": f"{settings.RESOLVED_BACKEND_URL}/api/v1/tasks/enrich-client",
+                "headers": {"Content-Type": "application/json"},
+                "oidc_token": {
+                    "service_account_email": settings.CLOUD_TASKS_SA_EMAIL,
+                    "audience": settings.CLOUD_RUN_AUDIENCE_URL,
+                },
+                "body": json.dumps(
+                    {"client_id": client_id, "original_name": original_name}
+                ).encode(),
+            }
+        }
+
+        logger.info(
+            f"🧠 Enqueuing ICE enrichment task for client {client_id} ('{original_name}')"
+        )
+        response = client.create_task(request={"parent": parent, "task": task})
+        logger.info(f"ICE task created: {response.name}")
+
+    except Exception as e:
+        # Don't fail case creation if enrichment task fails - it's a nice-to-have
+        logger.error(
+            f"Failed to enqueue ICE enrichment task for client {client_id}: {e}"
+        )
 
 
 async def run_process_document_extraction_standalone(doc_id: UUID, org_id: str):

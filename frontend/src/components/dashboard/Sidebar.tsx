@@ -30,6 +30,7 @@ export function Sidebar({
 }: SidebarProps) {
     const navItems = [
         { href: "/dashboard", label: "I Miei Report", icon: LayoutDashboard },
+        { href: "/dashboard/clienti", label: "Clienti", icon: UserIcon }, // Using UserIcon (Users alias) as placeholder, better import Users
         { href: "/dashboard/create", label: "Nuova Perizia", icon: FilePlus },
         { href: "/dashboard/profile", label: "Profilo", icon: UserIcon },
     ];

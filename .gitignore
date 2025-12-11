@@ -74,3 +74,4 @@ backend/clean.sh
 .gitignore
 .gitignore
 backend/sonar-project.properties
+backend/scripts/backfill_client_enrichment.py

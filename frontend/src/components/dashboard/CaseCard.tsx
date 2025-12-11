@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Folder, Calendar, ArrowRight } from "lucide-react";
+import { Folder, Calendar, ArrowRight, Building2 } from "lucide-react";
 import { CaseSummary } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -91,6 +91,15 @@ export const CaseCard = memo(function CaseCard({ caseItem: c, index }: CaseCardP
                     )}
 
                     <div className="flex items-center gap-2 text-sm text-muted-foreground pt-1">
+                        {c.client_logo_url ? (
+                            <img
+                                src={c.client_logo_url}
+                                alt={c.client_name || "Client Logo"}
+                                className="h-4 w-4 rounded-full object-contain"
+                            />
+                        ) : (
+                            <Building2 className="h-3.5 w-3.5" />
+                        )}
                         <span className="font-medium text-foreground">{c.client_name || "Cliente non specificato"}</span>
                         <span>•</span>
                         <Calendar className="h-3.5 w-3.5" />
