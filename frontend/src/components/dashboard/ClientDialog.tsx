@@ -82,7 +82,14 @@ export function ClientDialog({ client, trigger, open, onOpenChange, onSuccess }:
                     vat_number: cleanVat || null,
                     website: cleanWebsite || null,
                     address_street: cleanAddress || null,
-                    city: cleanCity || null
+                    city: cleanCity || null,
+                    // Additional fields from schema
+                    zip_code: null,
+                    province: null,
+                    country: null,
+                    referente: null,
+                    email: null,
+                    telefono: null,
                 };
                 result = await api.clients.update(token, client.id, updateData);
             } else {
@@ -91,7 +98,15 @@ export function ClientDialog({ client, trigger, open, onOpenChange, onSuccess }:
                     vat_number: cleanVat || null,
                     website: cleanWebsite || null,
                     address_street: cleanAddress || null,
-                    city: cleanCity || null
+                    city: cleanCity || null,
+                    // Additional fields from schema
+                    zip_code: null,
+                    province: null,
+                    country: "Italia", // Default
+                    referente: null,
+                    email: null,
+                    telefono: null,
+                    logo_url: null,
                 };
                 result = await api.clients.create(token, createData);
             }

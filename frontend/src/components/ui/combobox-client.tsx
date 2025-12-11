@@ -56,7 +56,7 @@ export function ClientCombobox({ value, onChange, disabled }: ClientComboboxProp
                 const token = await getToken()
                 if (token) {
                     // If query is empty, we search for "" to get initial list
-                    const res = await api.clients.search(token, debouncedQuery)
+                    const res = await api.clients.list(token, { q: debouncedQuery, limit: 10 })
                     if (active) setClients(res)
                 }
             } catch (err) {
