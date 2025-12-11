@@ -19,6 +19,7 @@ from PIL import Image
 
 # --- Security Constants (External Audit) ---
 MAX_RECURSION_DEPTH = 3
+MAX_EML_ATTACHMENTS = 20  # Prevent inode exhaustion attacks
 MAX_ATTACHMENT_SIZE_BYTES = 25 * 1024 * 1024  # 25 MB
 MAX_B64_STRING_LENGTH = int(
     MAX_ATTACHMENT_SIZE_BYTES * 1.35
@@ -660,8 +661,26 @@ def process_eml_file(
     # Use StorageProvider to save attachments
     # storage = get_storage_provider() # Removed for now as we need local processing for extraction
 
-    for attachment in mail.attachments:
-        original_filename = attachment.get("filename", "untitled_attachment")
+    # --- Process Attachments (Hard Loop Limit with enumerate) ---
+    # Using enumerate ensures we hard-stop after MAX_EML_ATTACHMENTS even if items are skipped
+    # This prevents CPU exhaustion from 10,000 tiny images that get decoded but skipped
+    for i, attachment in enumerate(mail.attachments):
+        if i >= MAX_EML_ATTACHMENTS:
+            logger.warning(
+                f"Attachment limit ({MAX_EML_ATTACHMENTS}) reached for {eml_path}"
+            )
+            all_parts.append(
+                {
+                    "type": "warning",
+                    "filename": os.path.basename(eml_path),
+                    "message": f"Remaining attachments skipped (scanned {MAX_EML_ATTACHMENTS} items)",
+                }
+            )
+            break
+
+        # CRITICAL FIX: Handle case where 'filename' key exists but value is None
+        # attachment.get("filename", "default") returns None if key exists with None value
+        original_filename = attachment.get("filename") or "untitled_attachment"
 
         # Check for excluded extensions (use constant)
         _, ext = os.path.splitext(original_filename)
