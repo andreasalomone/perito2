@@ -16,7 +16,7 @@ from app.models import User
 # Configure structured logging
 logger = logging.getLogger("app.auth")
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 # -----------------------------------------------------------------------------
@@ -69,12 +69,35 @@ initialize_firebase()
 # 2. Authentication Dependency
 # -----------------------------------------------------------------------------
 def get_current_user_token(
-    creds: HTTPAuthorizationCredentials = Security(security),
+    creds: HTTPAuthorizationCredentials | None = Security(security),
 ) -> dict[str, Any]:
     """
     Validates the Firebase ID Token.
     Returns the decoded token dictionary.
     """
+    # DEV BYPASS: Skip Firebase validation for local development
+    if settings.RUN_LOCALLY and settings.SKIP_AUTH:
+        if settings.DEV_USER_UID and settings.DEV_USER_EMAIL:
+            logger.warning("⚠️ AUTH BYPASS: Using dev user for local testing")
+            return {
+                "uid": settings.DEV_USER_UID,
+                "email": settings.DEV_USER_EMAIL,
+            }
+        else:
+            logger.error("SKIP_AUTH=True but DEV_USER_UID/DEV_USER_EMAIL not set!")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Dev auth bypass misconfigured",
+            )
+
+    # Normal auth flow requires credentials
+    if not creds:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authorization header",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     token = creds.credentials
     try:
         # verify_id_token checks signature, expiration, and format

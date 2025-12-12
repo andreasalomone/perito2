@@ -115,7 +115,8 @@ def create_gcs_direct_part(gcs_uri: str, mime_type: str) -> types.Part:
 
     Requirements:
     - GCS bucket must be in the same GCP project as the Gemini API
-    - OR bucket must have public read access
+    - The Gemini API location must match the GCS bucket region
+    - MIME type must be valid for Vertex AI
 
     Args:
         gcs_uri: The GCS path (gs://bucket/path/to/file)
@@ -123,8 +124,20 @@ def create_gcs_direct_part(gcs_uri: str, mime_type: str) -> types.Part:
 
     Returns:
         A types.Part that can be used directly in prompts
+
+    Raises:
+        ValueError: If the GCS URI format is invalid or MIME type is missing
     """
-    logger.debug(f"Creating direct GCS Part for: {gcs_uri}")
+    # Validate inputs to provide better error context
+    if not gcs_uri or not gcs_uri.startswith("gs://"):
+        raise ValueError(
+            f"Invalid GCS URI format: '{gcs_uri}'. Must start with 'gs://'"
+        )
+
+    if not mime_type:
+        raise ValueError(f"MIME type is required for GCS file: {gcs_uri}")
+
+    logger.debug(f"Creating direct GCS Part for: {gcs_uri} (mime: {mime_type})")
     return types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type)
 
 

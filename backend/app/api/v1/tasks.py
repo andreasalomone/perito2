@@ -151,7 +151,9 @@ async def generate_report(
     """
     Async Worker: Compiles DOCX.
     """
-    logger.info(f"🚀 Generating Report: {payload.case_id} (language: {payload.language})")
+    logger.info(
+        f"🚀 Generating Report: {payload.case_id} (language: {payload.language})"
+    )
     try:
         await report_generation_service.run_generation_task(
             case_id=str(payload.case_id),

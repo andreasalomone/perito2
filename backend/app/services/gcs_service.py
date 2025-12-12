@@ -213,3 +213,39 @@ def delete_blob(gcs_path: str) -> bool:
         blob.delete()
         return True
     return False
+
+
+def gcs_blob_exists(gcs_uri: str) -> tuple[bool, str | None]:
+    """
+    Check if a blob exists in GCS.
+
+    Used for pre-flight validation before passing URIs to Gemini API
+    to prevent INVALID_ARGUMENT errors from non-existent files.
+
+    Args:
+        gcs_uri: Full GCS path (e.g., "gs://bucket/path/to/file.pdf")
+
+    Returns:
+        tuple[bool, str | None]: (exists, error_reason)
+        - If True, reason is None
+        - If False, reason contains "Not Found" or specific exception/error message
+    """
+    if not gcs_uri or not gcs_uri.startswith("gs://"):
+        return False, "Invalid URI format"
+
+    try:
+        client = get_storage_client()
+        path_parts = gcs_uri.replace("gs://", "").split("/", 1)
+        bucket_name = path_parts[0]
+        blob_name = path_parts[1] if len(path_parts) > 1 else ""
+
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+
+        if blob.exists():
+            return True, None
+        return False, "Not Found"
+
+    except Exception as e:
+        # Capture specific permission/network errors
+        return False, str(e)

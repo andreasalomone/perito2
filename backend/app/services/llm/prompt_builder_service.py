@@ -182,10 +182,12 @@ class PromptBuilderService:
 
         return keep
 
-    def _build_final_instruction(self, cache_active: bool, language: str = "italian") -> str:
+    def _build_final_instruction(
+        self, cache_active: bool, language: str = "italian"
+    ) -> str:
         """
         The final command that tells the model to start working.
-        
+
         Args:
             cache_active: Whether the system prompt cache is being used.
             language: Target output language for the report.
@@ -203,13 +205,15 @@ class PromptBuilderService:
             "english": "English",
             "spanish": "Spanish",
         }
-        
+
         # Normalize and validate language (reject unknown values)
         normalized_lang = language.lower().strip() if language else "italian"
         if normalized_lang not in ALLOWED_LANGUAGES:
-            logger.warning(f"Invalid language '{language}' received, defaulting to Italian")
+            logger.warning(
+                f"Invalid language '{language}' received, defaulting to Italian"
+            )
             normalized_lang = "italian"
-        
+
         language_instruction = ""
         target_lang = ALLOWED_LANGUAGES.get(normalized_lang)
         if target_lang:  # Non-Italian language

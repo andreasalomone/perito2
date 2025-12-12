@@ -181,6 +181,7 @@ class DocumentRegisterPayload(BaseModel):
 
 class GeneratePayload(BaseModel):
     """Payload for report generation with language option."""
+
     # SECURITY: Use Literal to restrict to allowed values only (defense in depth)
     language: Literal["italian", "english", "spanish"] = "italian"
 

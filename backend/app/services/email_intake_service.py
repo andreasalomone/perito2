@@ -4,13 +4,14 @@ Email Intake Service
 Core business logic for processing inbound emails from Brevo webhook.
 """
 
+import contextlib
 import hashlib
 import logging
 import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Dict, Optional
+from typing import Dict, Optional, TypeVar
 from uuid import UUID
 
 import httpx
@@ -39,6 +40,8 @@ from app.services.gcs_service import get_storage_client
 
 # Client is already imported above from app.models
 
+
+T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
@@ -79,227 +82,288 @@ class EmailIntakeService:
         Brevo sends payload with 'items' array containing email objects.
         Returns dict with processing result.
         """
-        # Get the first email from items array
         email_item = payload.first_email
         if not email_item:
             logger.warning("Received empty webhook payload")
             return {"status": "error", "reason": "empty payload"}
 
-        # Use MessageId for idempotency (unique per email)
         message_id = email_item.MessageId
         sender_email = email_item.sender_email
-
         logger.info(f"Processing email message_id={message_id} from={sender_email}")
 
         try:
-            # 1. Idempotency check
-            if self._is_webhook_processed(message_id):
-                logger.info(f"Message {message_id} already processed, skipping")
-                return {"status": "skipped", "reason": "duplicate message"}
-
-            # 2. Log webhook receipt (returns log for later update)
-            webhook_log = self._log_webhook(message_id, payload)
-
-            # 3. Look up user by sender email
-            user = self._get_user_by_email(sender_email)
-
-            if not user:
-                # Unauthorized - log and return
-                self._log_unauthorized_email(email_item)
-                logger.warning(f"Unauthorized email from {sender_email}")
-                return {"status": "unauthorized", "sender": sender_email}
-
-            # 4. Set RLS context for this user's organization
-            org_id = user.organization_id
-            self.db.execute(text(f"SET LOCAL app.current_org_id = '{org_id}'"))
-
-            # 5. Create email processing log entry
-            email_log = self._create_email_log(email_item, user, status="authorized")
-
-            # --- START NEW FLOW: Pre-process Attachments ---
-            import os
-            import tempfile
-
-            from app.services import document_processor
-
-            processed_attachments_for_llm = []
-
-            # We use a TemporaryDirectory to store downloaded attachments for processing logic
-            # These files are needed for 'document_processor' (which works on paths) AND for final GCS upload
-            with tempfile.TemporaryDirectory() as temp_dir:
-
-                # A. Download & Process Attachments (Safe Mode)
-                downloaded_files_map = (
-                    {}
-                )  # Map filename -> local_path for later GCS upload
-
-                if email_item.Attachments:
-                    logger.info(
-                        f"Pre-processing {len(email_item.Attachments)} attachments for AI context..."
-                    )
-
-                    for attachment in email_item.Attachments:
-                        try:
-                            # Filter unsupported types early (also done in _process_attachment, but good to save bandwidth)
-                            if (
-                                attachment.ContentType
-                                and attachment.ContentType
-                                not in settings.ALLOWED_MIME_TYPES.values()
-                            ):
-                                logger.debug(
-                                    f"Skipping unsupported type {attachment.ContentType} for {attachment.Name}"
-                                )
-                                continue
-
-                            # Download
-                            file_content = self._download_attachment_with_token(
-                                attachment.DownloadToken
-                            )
-
-                            # Save to temp
-                            safe_name = document_processor.sanitize_filename(
-                                attachment.Name
-                            )
-                            local_path = os.path.join(temp_dir, safe_name)
-                            with open(local_path, "wb") as f:
-                                f.write(file_content)
-
-                            downloaded_files_map[attachment.Name] = local_path
-
-                            # Process for LLM (Safe Mode: try/except)
-                            try:
-                                processed_data = (
-                                    document_processor.process_uploaded_file(
-                                        local_path, temp_dir
-                                    )
-                                )
-                                if processed_data:
-                                    processed_attachments_for_llm.extend(processed_data)
-                            except Exception as proc_error:
-                                logger.warning(
-                                    f"Failed to process attachment {attachment.Name} for LLM context: {proc_error}"
-                                )
-                                # Continue to next attachment - do not block flow
-
-                        except Exception as e:
-                            logger.warning(
-                                f"Failed to download/save attachment {attachment.Name} for pre-processing: {e}"
-                            )
-                            # Continue
-
-                # 6. AI EXTRACTION (Enriched with Attachments)
-                markdown_body = (
-                    email_item.ExtractedMarkdownMessage or email_item.RawTextBody
-                )
-                subject_line = email_item.Subject
-                try:
-                    # Pass the processed attachments to the extractor
-                    email_body = markdown_body or ""
-                    extracted = extract_case_data(
-                        email_body=email_body,
-                        subject=subject_line,
-                        sender_email=sender_email,
-                        attachments=processed_attachments_for_llm,  # <--- NEW ARGUMENT
-                    )
-                except Exception as e:
-                    logger.error(f"AI Extraction failed: {e}")
-                    extracted = None
-
-                # Log extraction result
-                if extracted and extracted.extraction_success:
-                    logger.info(
-                        f"AI extracted: ref={extracted.reference_code}, cliente={extracted.cliente}"
-                    )
-                elif extracted:
-                    logger.warning(f"AI extraction failed: {extracted.error_message}")
-                else:
-                    logger.warning(
-                        "AI extraction could not be performed due to an error."
-                    )
-
-                # 7. Fuzzy match or create client
-                client = None
-                if extracted and extracted.cliente:
-                    client = find_or_create_client(self.db, org_id, extracted.cliente)
-
-                # 8. Get reference code (AI extracted or parsed from subject)
-                ref_from_subject = self._parse_subject_line(email_item.Subject or "")
-                reference_code = (
-                    extracted.reference_code if extracted else None
-                ) or ref_from_subject
-
-                # 9. Find or create case with AI-extracted fields
-                # NOTE: If extraction failed, we pass an empty result object or handle it gracefully?
-                # _find_or_create_case_with_data expects a CaseExtractionResult.
-                if not extracted:
-                    extracted = CaseExtractionResult(extraction_success=False)
-
-                case = self._find_or_create_case_with_data(
-                    org_id=org_id,
-                    creator_id=user.id,
-                    reference_code=reference_code,
-                    extracted=extracted,
-                    client=client,
-                )
-                email_log.case_id = case.id
-
-                # 10. Process attachments (Finalize/Persist to GCS)
-                documents_created = 0
-                for attachment in email_item.Attachments:
-                    try:
-                        # OPTIMIZATION: If we already downloaded it, use the local file instead of re-downloading
-                        local_file_path = downloaded_files_map.get(attachment.Name)
-
-                        doc = self._process_attachment(
-                            attachment=attachment,
-                            email_log=email_log,
-                            case=case,
-                            org_id=org_id,
-                            pre_downloaded_path=local_file_path,  # <--- Update helper to support this
-                        )
-                        if doc:
-                            documents_created += 1
-                            # 11. Trigger AI extraction for each document
-                            # We still trigger this because the "Document Extraction" pipeline might handle things differently
-                            # or be more robust for the full report generation context.
-                            trigger_extraction_task(doc.id, str(org_id))
-                    except Exception as e:
-                        logger.error(
-                            f"Failed to finalize processing attachment {attachment.Name}: {e}"
-                        )
-                        # Continue with other attachments
-
-            # 12. Update email log and webhook log
-            email_log.status = "processed"
-            email_log.documents_created = documents_created
-            email_log.processed_at = datetime.now(timezone.utc)
-
-            # Mark webhook as processed (idempotency)
-            webhook_log.processed = True
-
-            self.db.commit()
-
-            logger.info(
-                f"Email processed: message_id={message_id}, case={case.id}, docs={documents_created}"
-            )
-
-            return {
-                "status": "processed",
-                "case_id": str(case.id),
-                "documents_created": documents_created,
-            }
-
+            return self._process_email_item(email_item, message_id, sender_email)
         except Exception as e:
             logger.error(f"Email processing failed: {e}", exc_info=True)
             self.db.rollback()
-
-            # Try to update email log with error
-            try:
-                self._update_email_log_error(message_id, str(e))
-            except Exception:
-                pass  # Best effort
-
+            self._safe_update_email_log_error(message_id, str(e))
             raise
+
+    def _process_email_item(
+        self, email_item: BrevoEmailItem, message_id: str, sender_email: str
+    ) -> Dict:
+        """Process a validated email item through the intake pipeline."""
+        # 1. Idempotency check
+        if self._is_webhook_processed(message_id):
+            logger.info(f"Message {message_id} already processed, skipping")
+            return {"status": "skipped", "reason": "duplicate message"}
+
+        # 2. Log webhook receipt (hash based on email_item for idempotency)
+        webhook_log = self._log_webhook(message_id, email_item)
+
+        # 3. Authorize sender
+        user = self._get_user_by_email(sender_email)
+        if not user:
+            self._log_unauthorized_email(email_item)
+            logger.warning(f"Unauthorized email from {sender_email}")
+            return {"status": "unauthorized", "sender": sender_email}
+
+        # 4. Set RLS context
+        org_id = user.organization_id
+        self.db.execute(text(f"SET LOCAL app.current_org_id = '{org_id}'"))
+
+        # 5. Create email log
+        email_log = self._create_email_log(email_item, user, status="authorized")
+
+        # 6. Process email content and attachments
+        result = self._process_authorized_email(
+            email_item=email_item,
+            email_log=email_log,
+            user=user,
+            org_id=org_id,
+        )
+
+        # 7. Finalize logs
+        email_log.status = "processed"
+        email_log.documents_created = result["documents_created"]
+        email_log.processed_at = datetime.now(timezone.utc)
+        webhook_log.processed = True
+        self.db.commit()
+
+        logger.info(
+            f"Email processed: message_id={message_id}, case={result['case'].id}, docs={result['documents_created']}"
+        )
+
+        return {
+            "status": "processed",
+            "case_id": str(result["case"].id),
+            "documents_created": result["documents_created"],
+        }
+
+    def _process_authorized_email(
+        self,
+        email_item: BrevoEmailItem,
+        email_log: EmailProcessingLog,
+        user: UserLookupResult,
+        org_id: UUID,
+    ) -> Dict:
+        """Process an authorized email: download attachments, extract data, create case."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Download and pre-process attachments
+            attachments = email_item.Attachments or []
+            downloaded_files_map, processed_attachments = (
+                self._download_and_preprocess_attachments(
+                    attachments=attachments,
+                    temp_dir=temp_dir,
+                )
+            )
+
+            # AI extraction
+            extracted = self._run_ai_extraction(
+                email_item=email_item,
+                sender_email=email_item.sender_email,
+                attachments=processed_attachments,
+            )
+
+            # Create or find case
+            case = self._prepare_case(
+                email_item=email_item,
+                extracted=extracted,
+                org_id=org_id,
+                user=user,
+            )
+            email_log.case_id = case.id
+
+            # Persist attachments to GCS
+            documents_created = self._persist_attachments_to_gcs(
+                attachments=attachments,
+                downloaded_files_map=downloaded_files_map,
+                email_log=email_log,
+                case=case,
+                org_id=org_id,
+            )
+
+        return {"case": case, "documents_created": documents_created}
+
+    def _download_and_preprocess_attachments(
+        self,
+        attachments: list,
+        temp_dir: str,
+    ) -> tuple[Dict[str, str], list]:
+        """Download attachments and process them for LLM context."""
+
+        from app.services import document_processor
+
+        downloaded_files_map: Dict[str, str] = {}
+        processed_for_llm: list = []
+
+        if not attachments:
+            return downloaded_files_map, processed_for_llm
+
+        logger.info(f"Pre-processing {len(attachments)} attachments for AI context...")
+
+        for attachment in attachments:
+            result = self._download_single_attachment(attachment, temp_dir)
+            if result is None:
+                continue
+
+            local_path = result
+            downloaded_files_map[attachment.Name] = local_path
+
+            # Process for LLM (safe mode)
+            try:
+                if processed_data := document_processor.process_uploaded_file(
+                    local_path, temp_dir
+                ):
+                    processed_for_llm.extend(processed_data)
+            except Exception as proc_error:
+                logger.warning(
+                    f"Failed to process attachment {attachment.Name} for LLM context: {proc_error}"
+                )
+
+        return downloaded_files_map, processed_for_llm
+
+    def _download_single_attachment(
+        self, attachment: BrevoAttachment, temp_dir: str
+    ) -> Optional[str]:
+        """Download a single attachment to temp directory. Returns local path or None."""
+        import os
+
+        from app.services import document_processor
+
+        # Filter unsupported types early
+        if (
+            attachment.ContentType
+            and attachment.ContentType not in settings.ALLOWED_MIME_TYPES.values()
+        ):
+            logger.debug(
+                f"Skipping unsupported type {attachment.ContentType} for {attachment.Name}"
+            )
+            return None
+
+        try:
+            file_content = self._download_attachment_with_token(
+                attachment.DownloadToken
+            )
+            safe_name = document_processor.sanitize_filename(attachment.Name)
+            local_path = os.path.join(temp_dir, safe_name)
+            with open(local_path, "wb") as f:
+                f.write(file_content)
+            return local_path
+        except Exception as e:
+            logger.warning(
+                f"Failed to download/save attachment {attachment.Name} for pre-processing: {e}"
+            )
+            return None
+
+    def _run_ai_extraction(
+        self,
+        email_item: BrevoEmailItem,
+        sender_email: str,
+        attachments: list,
+    ) -> CaseExtractionResult:
+        """Run AI extraction on email content and attachments."""
+        markdown_body = (
+            email_item.ExtractedMarkdownMessage or email_item.RawTextBody or ""
+        )
+        subject_line = email_item.Subject
+
+        try:
+            extracted = extract_case_data(
+                email_body=markdown_body,
+                subject=subject_line,
+                sender_email=sender_email,
+                attachments=attachments,
+            )
+        except Exception as e:
+            logger.error(f"AI Extraction failed: {e}")
+            extracted = None
+
+        self._log_extraction_result(extracted)
+        return extracted or CaseExtractionResult(extraction_success=False)
+
+    def _log_extraction_result(self, extracted: Optional[CaseExtractionResult]) -> None:
+        """Log the result of AI extraction."""
+        if extracted and extracted.extraction_success:
+            logger.info(
+                f"AI extracted: ref={extracted.reference_code}, cliente={extracted.cliente}"
+            )
+        elif extracted:
+            logger.warning(f"AI extraction failed: {extracted.error_message}")
+        else:
+            logger.warning("AI extraction could not be performed due to an error.")
+
+    def _prepare_case(
+        self,
+        email_item: BrevoEmailItem,
+        extracted: CaseExtractionResult,
+        org_id: UUID,
+        user: UserLookupResult,
+    ) -> Case:
+        """Find or create a case with extracted data."""
+        # Fuzzy match or create client
+        client = None
+        if extracted.cliente:
+            client = find_or_create_client(self.db, org_id, extracted.cliente)
+
+        # Get reference code
+        ref_from_subject = self._parse_subject_line(email_item.Subject or "")
+        reference_code = extracted.reference_code or ref_from_subject
+
+        return self._find_or_create_case_with_data(
+            org_id=org_id,
+            creator_id=user.id,
+            reference_code=reference_code,
+            extracted=extracted,
+            client=client,
+        )
+
+    def _persist_attachments_to_gcs(
+        self,
+        attachments: list,
+        downloaded_files_map: Dict[str, str],
+        email_log: EmailProcessingLog,
+        case: Case,
+        org_id: UUID,
+    ) -> int:
+        """Persist downloaded attachments to GCS and create document records."""
+        documents_created = 0
+
+        for attachment in attachments:
+            try:
+                local_file_path = downloaded_files_map.get(attachment.Name)
+                if doc := self._process_attachment(
+                    attachment=attachment,
+                    email_log=email_log,
+                    case=case,
+                    org_id=org_id,
+                    pre_downloaded_path=local_file_path,
+                ):
+                    documents_created += 1
+                    trigger_extraction_task(doc.id, str(org_id))
+            except Exception as e:
+                logger.error(
+                    f"Failed to finalize processing attachment {attachment.Name}: {e}"
+                )
+
+        return documents_created
+
+    def _safe_update_email_log_error(self, message_id: str, error_message: str) -> None:
+        """Safely update email log with error (best effort)."""
+        with contextlib.suppress(Exception):
+            self._update_email_log_error(message_id, error_message)
 
     # -------------------------------------------------------------------------
     # Helper Methods
@@ -313,10 +377,11 @@ class EmailIntakeService:
         return result.scalar_one_or_none() is not None
 
     def _log_webhook(
-        self, message_id: str, payload: BrevoInboundWebhook
+        self, message_id: str, email_item: BrevoEmailItem
     ) -> BrevoWebhookLog:
         """Log webhook receipt for idempotency tracking."""
-        payload_hash = hashlib.sha256(payload.model_dump_json().encode()).hexdigest()
+        # Use email_item for hashing since we don't have the full payload here
+        payload_hash = hashlib.sha256(email_item.model_dump_json().encode()).hexdigest()
 
         webhook_log = BrevoWebhookLog(
             webhook_id=message_id,
@@ -324,9 +389,7 @@ class EmailIntakeService:
             payload_hash=payload_hash,
             processed=False,
         )
-        self.db.add(webhook_log)
-        self.db.flush()
-        return webhook_log
+        return self._add_and_flush(webhook_log)
 
     def _get_user_by_email(self, email: str) -> Optional[UserLookupResult]:
         """
@@ -371,9 +434,7 @@ class EmailIntakeService:
             organization_id=user.organization_id if user else None,
             user_id=user.id if user else None,
         )
-        self.db.add(email_log)
-        self.db.flush()
-        return email_log
+        return self._add_and_flush(email_log)
 
     def _parse_subject_line(self, subject: str) -> Optional[str]:
         """
@@ -398,52 +459,11 @@ class EmailIntakeService:
             re.IGNORECASE,
         )
         if match:
-            return match.group(1).upper().strip()
+            return match[1].upper().strip()
 
         # Pattern 2: Any alphanumeric code at start
         match = re.match(r"^([A-Z0-9][-A-Z0-9/]{2,})", subject, re.IGNORECASE)
-        if match:
-            return match.group(1).upper().strip()
-
-        return None
-
-    def _find_or_create_case(
-        self,
-        org_id: UUID,
-        creator_id: str,
-        reference_code: Optional[str],
-        subject: Optional[str],
-    ) -> Case:
-        """Find existing case by reference code or create new one (legacy)."""
-
-        if reference_code:
-            # Try to find existing case with this reference code
-            result = self.db.execute(
-                select(Case).where(
-                    Case.organization_id == org_id,
-                    Case.reference_code == reference_code,
-                    Case.deleted_at.is_(None),
-                )
-            )
-            existing = result.scalar_one_or_none()
-            if existing:
-                logger.info(
-                    f"Found existing case {existing.id} for reference {reference_code}"
-                )
-                return existing
-
-        # Create new case
-        case = Case(
-            organization_id=org_id,
-            creator_id=creator_id,
-            reference_code=reference_code or self._generate_email_reference(),
-            status=CaseStatus.OPEN,
-        )
-        self.db.add(case)
-        self.db.flush()
-
-        logger.info(f"Created new case {case.id} for email")
-        return case
+        return match[1].upper().strip() if match else None
 
     def _find_or_create_case_with_data(
         self,
@@ -468,8 +488,7 @@ class EmailIntakeService:
                     Case.deleted_at.is_(None),
                 )
             )
-            existing = result.scalar_one_or_none()
-            if existing:
+            if existing := result.scalar_one_or_none():
                 # Update existing case with AI-extracted fields (if not already set)
                 self._apply_extracted_fields(existing, extracted, client)
                 logger.info(
@@ -703,9 +722,13 @@ class EmailIntakeService:
             mime_type=mime_type,
             ai_status=ExtractionStatus.PENDING,
         )
-        self.db.add(doc)
+        return self._add_and_flush(doc)
+
+    def _add_and_flush(self, entity: T) -> T:
+        """Add an entity to the database session and flush to get its ID."""
+        self.db.add(entity)
         self.db.flush()
-        return doc
+        return entity
 
     def _update_email_log_error(self, message_id: str, error_message: str):
         """Update email log with error status."""
@@ -714,8 +737,7 @@ class EmailIntakeService:
                 EmailProcessingLog.webhook_id == message_id
             )
         )
-        email_log = result.scalar_one_or_none()
-        if email_log:
+        if email_log := result.scalar_one_or_none():
             email_log.status = "failed"
             email_log.error_message = error_message
             self.db.commit()

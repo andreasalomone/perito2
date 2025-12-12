@@ -22,7 +22,9 @@ logger = logging.getLogger(__name__)
 # NOTE: Phase 3 optimization removed the download step - we now use Part.from_uri() directly
 
 
-async def run_generation_task(case_id: str, organization_id: str, language: str = "italian"):
+async def run_generation_task(
+    case_id: str, organization_id: str, language: str = "italian"
+):
     """
     Wrapper for background execution that manages its own ASYNC DB session.
     Uses AsyncSessionLocal for proper async database operations.
@@ -134,7 +136,9 @@ async def process_case_logic(case_id: str, organization_id: str, db: AsyncSessio
         )
 
 
-async def trigger_generation_task(case_id: str, organization_id: str, language: str = "italian"):
+async def trigger_generation_task(
+    case_id: str, organization_id: str, language: str = "italian"
+):
     """
     Enqueues the 'generate-report' task.
     """
@@ -160,12 +164,18 @@ async def trigger_generation_task(case_id: str, organization_id: str, language: 
                     "audience": settings.CLOUD_RUN_AUDIENCE_URL,  # Use Cloud Run URL, not custom domain
                 },
                 "body": json.dumps(
-                    {"case_id": str(case_id), "organization_id": organization_id, "language": language}
+                    {
+                        "case_id": case_id,
+                        "organization_id": organization_id,
+                        "language": language,
+                    }
                 ).encode(),
             }
         }
 
-        logger.info(f"🚀 Enqueuing generation task for case {case_id} with language: {language}")
+        logger.info(
+            f"🚀 Enqueuing generation task for case {case_id} with language: {language}"
+        )
         # PERF FIX: Wrap sync gRPC call in asyncio.to_thread() to prevent event loop blocking
         await asyncio.to_thread(
             client.create_task, request={"parent": parent, "task": task}
@@ -178,53 +188,34 @@ async def trigger_generation_task(case_id: str, organization_id: str, language: 
         raise
 
 
-async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSession, language: str = "italian"):
-    """
-    Phase 2: Generation
-    Called when all documents are processed.
-    1. Aggregates data.
-    2. Generates AI Report.
-    3. Creates Version 1.
-    
-    Args:
-        case_id: The case UUID
-        organization_id: The organization UUID
-        db: The async database session
-        language: The target output language for the report (italian, english, spanish)
-    """
-    # 1. Fetch case
-    result = await db.execute(select(Case).filter(Case.id == case_id).with_for_update())
-    case = result.scalars().first()
-    if not case:
-        logger.error(f"Case {case_id} not found")
-        return
+# --- Helper functions to reduce cognitive complexity of generate_report_logic ---
 
-    # DUPLICATE GENERATION PREVENTION: Check if already generating or done
-    # Note: We removed the check for 'generating' because case_service now sets this status
-    # BEFORE triggering the task to prevent race conditions. If we check it here,
-    # the valid task would abort itself.
-    # We rely on case_service's strict locking to ensure only one task is triggered.
 
-    # IDEMPOTENCY CHECK: Check if report already exists
+async def _check_existing_report(case_id: str, case: Case, db: AsyncSession) -> bool:
+    """Check if report already exists in DB. Returns True if we should abort generation."""
     result = await db.execute(
         select(ReportVersion).filter(
             ReportVersion.case_id == case_id, ReportVersion.version_number == 1
         )
     )
-    existing_report = result.scalars().first()
-
-    if existing_report:
+    if result.scalars().first():
         logger.info(
             f"Report for case {case_id} already exists. Aborting duplicate generation."
         )
-        # Ensure status is correct
         if case.status != CaseStatus.OPEN:
             case.status = CaseStatus.OPEN
             await db.commit()
-        return
+        return True
+    return False
 
-    # IDEMPOTENCY CHECK 2: Check if report exists in GCS but not in DB (partial failure recovery)
-    # FIX BUG-3: This handles the case where upload succeeded but commit failed
+
+async def _recover_orphaned_report(
+    case_id: str, organization_id: str, case: Case, db: AsyncSession
+) -> bool:
+    """
+    Check if report exists in GCS but not in DB (partial failure recovery).
+    Returns True if recovery was successful and we should abort generation.
+    """
     bucket_name = settings.STORAGE_BUCKET_NAME
     expected_blob_name = f"reports/{organization_id}/{case_id}/v1_AI_Draft.docx"
 
@@ -234,42 +225,44 @@ async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSes
         blob = bucket.blob(expected_blob_name)
         gcs_path_exists = await asyncio.to_thread(blob.exists)
 
-        if gcs_path_exists:
-            logger.warning(
-                f"Found orphaned report in GCS for case {case_id}. "
-                f"Recovering by creating DB record without regenerating."
-            )
-            # Create DB record pointing to existing GCS file (saves $0.50-$2.00 API call)
-            v1 = ReportVersion(
-                case_id=case_id,
-                organization_id=organization_id,
-                version_number=1,
-                docx_storage_path=f"gs://{bucket_name}/{expected_blob_name}",
-                ai_raw_output="[Recovered from GCS - original AI output not available]",
-                is_final=False,
-            )
-            db.add(v1)
-            case.status = CaseStatus.OPEN
-            await db.commit()
-            logger.info(f"✅ Recovered orphaned report for case {case_id}")
-            return
+        if not gcs_path_exists:
+            return False
+
+        logger.warning(
+            f"Found orphaned report in GCS for case {case_id}. "
+            f"Recovering by creating DB record without regenerating."
+        )
+        v1 = ReportVersion(
+            case_id=case_id,
+            organization_id=organization_id,
+            version_number=1,
+            docx_storage_path=f"gs://{bucket_name}/{expected_blob_name}",
+            ai_raw_output="[Recovered from GCS - original AI output not available]",
+            is_final=False,
+        )
+        db.add(v1)
+        case.status = CaseStatus.OPEN
+        await db.commit()
+        logger.info(f"✅ Recovered orphaned report for case {case_id}")
+        return True
     except Exception as e:
         logger.warning(
             f"Could not check GCS for existing report: {e}. Proceeding with generation."
         )
-        # Continue with normal generation if GCS check fails
+        return False
 
-    # Set granular status
-    case.status = CaseStatus.GENERATING
-    await db.commit()
 
-    # --- INVARIANT CHECK ---
-    # Re-fetch documents to get latest status
+async def _validate_documents_ready(
+    case_id: str, case: Case, db: AsyncSession
+) -> list | None:
+    """
+    Validate that documents are ready for generation.
+    Returns list of documents if ready, None if generation should abort.
+    """
     result = await db.execute(select(Document).filter(Document.case_id == case_id))
     all_docs = result.scalars().all()
 
-    # Check if all documents are processed
-    pending_docs = [
+    if pending_docs := [
         d
         for d in all_docs
         if d.ai_status
@@ -278,12 +271,11 @@ async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSes
             ExtractionStatus.ERROR.value,
             ExtractionStatus.SKIPPED.value,
         ]
-    ]
-    if pending_docs:
+    ]:
         logger.info(
             f"Case {case_id} has pending documents: {[d.id for d in pending_docs]}. Skipping generation."
         )
-        return
+        return None
 
     # Check if we have at least one processed document
     has_completed_docs = any(
@@ -291,261 +283,311 @@ async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSes
     )
     if not has_completed_docs:
         logger.error(
-            f"Cannot generate report for case {case_id}: No successfully processed documents found (all failed or empty)."
+            f"Cannot generate report for case {case_id}: No successfully processed documents found."
         )
         case.status = CaseStatus.ERROR
         await db.commit()
-        # STOP RETRIES: Return gracefully as this is an unrecoverable data state.
-        # Raising an error would cause Cloud Tasks to retry indefinitely.
-        return
+        return None
 
     processed_count = sum(
-        1 for d in all_docs if d.ai_status == ExtractionStatus.SUCCESS.value
+        d.ai_status == ExtractionStatus.SUCCESS.value for d in all_docs
     )
-    error_count = sum(1 for d in all_docs if d.ai_status == ExtractionStatus.ERROR)
+    error_count = sum(d.ai_status == ExtractionStatus.ERROR for d in all_docs)
     logger.info(
         f"Starting generation for case {case_id} with {processed_count} processed and {error_count} failed documents."
     )
 
-    # CRITICAL FIX: Release the lock before starting long-running AI operations.
-    # This prevents DB connection starvation and deadlocks.
-    await db.commit()
+    return list(all_docs)
+
+
+def _process_vision_item(item: dict, doc_gcs_path: str | None) -> None:
+    """Process a single vision item, setting up GCS URI."""
+    target_gcs_path = item.get("item_gcs_path") or doc_gcs_path
+
+    if not target_gcs_path:
+        logger.warning(f"Item {item.get('filename', 'unknown')} has no GCS source.")
+        item["type"] = "error"
+        item["error"] = "Missing GCS source path"
+        return
+
+    # Ensure fully qualified gs:// URI for Vertex AI
+    if not target_gcs_path.startswith("gs://"):
+        target_gcs_path = f"gs://{settings.STORAGE_BUCKET_NAME}/{target_gcs_path}"
+
+    item["gcs_uri"] = target_gcs_path
+    item["local_path"] = None
+    logger.debug(
+        f"Using GCS direct access for {item.get('filename', 'asset')}: {target_gcs_path}"
+    )
+
+
+def _deep_copy_extracted_data(doc: Document) -> dict | list:
+    """Deep copy extracted data to prevent mutating SQLAlchemy object."""
+    original_data_id = id(doc.ai_extracted_data)
+    data = copy.deepcopy(doc.ai_extracted_data)
+    assert original_data_id != id(data), f"Deep copy failed for document {doc.id}."
+    return data
+
+
+def _process_document_for_llm(doc: Document) -> tuple[list[dict], dict | None]:
+    """
+    Process a single document for LLM input.
+    Returns (processed_items, failed_doc_info or None).
+    """
+    if doc.ai_status == ExtractionStatus.SUCCESS.value and doc.ai_extracted_data:
+        data = _deep_copy_extracted_data(doc)
+
+        if isinstance(data, dict):
+            data = [data]
+
+        for item in data:
+            if item.get("type") == "vision":
+                _process_vision_item(item, doc.gcs_path)
+
+        return data, None
+
+    if doc.ai_status == ExtractionStatus.ERROR:
+        logger.warning(
+            f"Document {doc.id} ({doc.filename}) failed processing - skipping"
+        )
+        return [], {
+            "id": str(doc.id),
+            "filename": doc.filename,
+            "reason": "Processing failed",
+        }
+
+    # Document still pending or other status
+    logger.warning(
+        f"Document {doc.id} ({doc.filename}) is not processed (Status: {doc.ai_status}). Skipping."
+    )
+    return [], {
+        "id": str(doc.id),
+        "filename": doc.filename,
+        "reason": f"Status: {doc.ai_status}",
+    }
+
+
+async def _collect_documents_for_generation(
+    case_id: str, db: AsyncSession
+) -> tuple[list[dict], list[dict], int]:
+    """
+    Collect and process all documents for LLM generation.
+    Returns (processed_data_for_llm, failed_docs, total_doc_count).
+    """
+    result = await db.execute(select(Document).filter(Document.case_id == case_id))
+    documents = result.scalars().all()
 
     processed_data_for_llm = []
-    failed_docs = []  # Track failed documents for user visibility
-    # NOTE: Phase 3 optimization removed temp file downloads - GCS direct access via Part.from_uri()
+    failed_docs = []
+
+    for doc in documents:
+        items, failed_info = _process_document_for_llm(doc)
+        processed_data_for_llm.extend(items)
+        if failed_info:
+            failed_docs.append(failed_info)
+
+    return processed_data_for_llm, failed_docs, len(documents)
+
+
+async def _generate_and_upload_report(
+    processed_data_for_llm: list[dict],
+    case_id: str,
+    organization_id: str,
+    language: str,
+) -> tuple[str, str]:
+    """
+    Generate report with Gemini and upload DOCX to GCS.
+    Returns (report_text, final_docx_path).
+    """
+    logger.info("Generating text with Gemini...")
+    processed_files_models = [ProcessedFile(**item) for item in processed_data_for_llm]
+
+    report_result = await gemini_generator.generate(
+        processed_files=processed_files_models,
+        language=language,
+    )
+    report_text = report_result.content
+
+    logger.info("Generating DOCX...")
+    docx_stream = await asyncio.to_thread(
+        docx_generator.create_styled_docx, report_text
+    )
+
+    bucket_name = settings.STORAGE_BUCKET_NAME
+    blob_name = f"reports/{organization_id}/{case_id}/v1_AI_Draft.docx"
+
+    def upload_blob():
+        storage_client = get_storage_client()
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        blob.upload_from_file(
+            docx_stream,
+            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+        return f"gs://{bucket_name}/{blob_name}"
+
+    final_docx_path = await asyncio.to_thread(upload_blob)
+    return report_text, final_docx_path
+
+
+async def _save_report_version(
+    case_id: str,
+    organization_id: str,
+    report_text: str,
+    final_docx_path: str,
+    db: AsyncSession,
+) -> None:
+    """Save the generated report as Version 1 and optionally generate summary."""
+    result = await db.execute(select(Case).filter(Case.id == case_id).with_for_update())
+    case = result.scalars().first()
+
+    if not case:
+        raise ValueError(
+            f"Case {case_id} disappeared during generation. "
+            f"Likely deleted manually. Marking as permanent failure."
+        )
+
+    if case.status == CaseStatus.ERROR:
+        logger.warning(
+            "Case marked as error by another process during generation. Overwriting with success."
+        )
+
+    result = await db.execute(
+        select(ReportVersion).filter(
+            ReportVersion.case_id == case_id, ReportVersion.version_number == 1
+        )
+    )
+    if v1 := result.scalars().first():
+        v1.docx_storage_path = final_docx_path
+        v1.ai_raw_output = report_text
+
+    else:
+        v1 = ReportVersion(
+            case_id=case_id,
+            organization_id=organization_id,
+            version_number=1,
+            docx_storage_path=final_docx_path,
+            ai_raw_output=report_text,
+            is_final=False,
+        )
+        db.add(v1)
+    case.status = CaseStatus.OPEN
+    try:
+        await db.commit()
+        logger.info("✅ Case processing completed successfully. Version 1 created.")
+    except IntegrityError:
+        await db.rollback()
+        logger.error(
+            f"IntegrityError saving Version 1 for case {case_id}. Likely race condition."
+        )
+        raise
+
+    # Generate summary (non-blocking - failures don't affect main report)
+    try:
+        from app.services import summary_service
+
+        summary = await summary_service.generate_summary(report_text)
+        if summary:
+            case.ai_summary = summary
+            await db.commit()
+            logger.info(f"✅ Summary generated for case {case_id}")
+    except Exception as e:
+        logger.warning(f"⚠️ Summary generation failed (non-critical): {e}")
+
+
+async def _handle_generation_error(
+    case_id: str, error: Exception, db: AsyncSession
+) -> None:
+    """Handle errors during report generation by updating case status."""
+    logger.error(f"❌ Error during generation: {error}", exc_info=True)
+    try:
+        await db.rollback()
+        result = await db.execute(
+            select(Case).filter(Case.id == case_id).with_for_update()
+        )
+        if case := result.scalars().first():
+            case.status = CaseStatus.ERROR
+            await db.commit()
+    except Exception as db_e:
+        logger.error(f"Failed to update case status to error: {db_e}")
+
+    logger.critical(
+        f"🛑 Stopping Cloud Task retry loop for case {case_id} due to error: {error}"
+    )
+
+
+async def generate_report_logic(
+    case_id: str, organization_id: str, db: AsyncSession, language: str = "italian"
+):
+    """
+    Phase 2: Generation
+    Called when all documents are processed.
+    1. Aggregates data.
+    2. Generates AI Report.
+    3. Creates Version 1.
+
+    Args:
+        case_id: The case UUID
+        organization_id: The organization UUID
+        db: The async database session
+        language: The target output language for the report (italian, english, spanish)
+    """
+    # 1. Fetch case with lock
+    result = await db.execute(select(Case).filter(Case.id == case_id).with_for_update())
+    case = result.scalars().first()
+    if not case:
+        logger.error(f"Case {case_id} not found")
+        return
+
+    # 2. Idempotency checks
+    if await _check_existing_report(case_id, case, db):
+        return
+
+    if await _recover_orphaned_report(case_id, organization_id, case, db):
+        return
+
+    # 3. Set status and validate documents
+    case.status = CaseStatus.GENERATING
+    await db.commit()
+
+    all_docs = await _validate_documents_ready(case_id, case, db)
+    if all_docs is None:
+        return
+
+    # Release lock before long-running AI operations
+    await db.commit()
 
     try:
-        # 1. Fetch Processed Data (Re-query as we released the session)
-        # Note: We don't need a lock here as we are just reading data for the prompt.
-        result = await db.execute(select(Document).filter(Document.case_id == case_id))
-        documents = result.scalars().all()
-        if documents:
-            pass
-        for doc in documents:
-            if (
-                doc.ai_status == ExtractionStatus.SUCCESS.value
-                and doc.ai_extracted_data
-            ):
-                # FIX BUG-5: Deep copy the data to prevent mutating the SQLAlchemy object
-                # DEFENSIVE: Store original reference for assertion
-                original_data_id = id(doc.ai_extracted_data)
-                data = copy.deepcopy(doc.ai_extracted_data)
-                copied_data_id = id(data)
-
-                # Assertion: Verify deep copy created new object
-                assert original_data_id != copied_data_id, (
-                    f"Deep copy failed for document {doc.id}. "
-                    f"Original and copy have same memory address."
-                )
-
-                if isinstance(data, dict):
-                    data = [data]
-
-                # Update items with GCS URI for on-demand processing
-                for item in data:
-                    if item.get("type") == "vision":
-                        # Check if this specific item has its own GCS path (Artifact)
-                        # Fallback to the Document's main GCS path (Original)
-                        target_gcs_path = item.get("item_gcs_path") or doc.gcs_path
-
-                        if target_gcs_path:
-                            # FIX: Ensure fully qualified gs:// URI for Vertex AI
-                            if not target_gcs_path.startswith("gs://"):
-                                target_gcs_path = f"gs://{settings.STORAGE_BUCKET_NAME}/{target_gcs_path}"
-
-                            # Pass the GCS URI to the LLM handler.
-                            # Phase 3 Optimization: llm_handler uses Part.from_uri() directly
-                            # so NO download is needed here anymore.
-                            item["gcs_uri"] = target_gcs_path
-                            item["local_path"] = None  # No local file needed
-                            logger.debug(
-                                f"Using GCS direct access for {item.get('filename', 'asset')}: {target_gcs_path}"
-                            )
-                        else:
-                            logger.warning(
-                                f"Item {item.get('filename', 'unknown')} has no GCS source."
-                            )
-                            item["type"] = "error"
-                            item["error"] = "Missing GCS source path"
-
-                processed_data_for_llm.extend(data)
-            elif doc.ai_status == ExtractionStatus.ERROR:
-                # Track failed docs with reason
-                failed_docs.append(
-                    {
-                        "id": str(doc.id),
-                        "filename": doc.filename,
-                        "reason": "Processing failed",
-                    }
-                )
-                logger.warning(
-                    f"Document {doc.id} ({doc.filename}) failed processing - skipping"
-                )
-            else:
-                # Document still pending or other status
-                failed_docs.append(
-                    {
-                        "id": str(doc.id),
-                        "filename": doc.filename,
-                        "reason": f"Status: {doc.ai_status}",
-                    }
-                )
-                logger.warning(
-                    f"Document {doc.id} ({doc.filename}) is not processed (Status: {doc.ai_status}). Skipping."
-                )
+        # 4. Collect documents for generation
+        processed_data_for_llm, failed_docs, total_docs = (
+            await _collect_documents_for_generation(case_id, db)
+        )
 
         if not processed_data_for_llm:
             logger.error("No processed data available for generation.")
             raise ValueError("No processed data found")
 
-        # Log summary of what we're generating with
-        total_docs = len(documents)
-        processed_docs = len(processed_data_for_llm)
-        failed_count = len(failed_docs)
+        # Log summary
         logger.info(
-            f"Generating report from {processed_docs}/{total_docs} documents ({failed_count} failed/skipped)"
+            f"Generating report from {len(processed_data_for_llm)}/{total_docs} documents "
+            f"({len(failed_docs)} failed/skipped)"
         )
         if failed_docs:
             logger.warning(f"Failed documents: {[d['filename'] for d in failed_docs]}")
 
-        # 2. Generate with Gemini
-        logger.info("Generating text with Gemini...")
-
-        # Convert dicts to Pydantic models
-        processed_files_models = [
-            ProcessedFile(**item) for item in processed_data_for_llm
-        ]
-
-        report_result = await gemini_generator.generate(
-            processed_files=processed_files_models,
-            language=language,
-        )
-        report_text = report_result.content
-        # Token usage available in report_result.usage if needed for logging
-
-        # 3. Generate DOCX
-        logger.info("Generating DOCX...")
-        docx_stream = await asyncio.to_thread(
-            docx_generator.create_styled_docx, report_text
+        # 5. Generate and upload report
+        report_text, final_docx_path = await _generate_and_upload_report(
+            processed_data_for_llm, case_id, organization_id, language
         )
 
-        # 4. Upload Result
-        bucket_name = settings.STORAGE_BUCKET_NAME
-        blob_name = f"reports/{organization_id}/{case_id}/v1_AI_Draft.docx"
-
-        def upload_blob():
-            storage_client = get_storage_client()
-            bucket = storage_client.bucket(bucket_name)
-            blob = bucket.blob(blob_name)
-            blob.upload_from_file(
-                docx_stream,
-                content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            )
-            return f"gs://{bucket_name}/{blob_name}"
-
-        final_docx_path = await asyncio.to_thread(upload_blob)
-
-        # 5. Save Version 1
-        # Re-acquire Lock to save the result safely
-        result = await db.execute(
-            select(Case).filter(Case.id == case_id).with_for_update()
+        # 6. Save version and generate summary
+        await _save_report_version(
+            case_id, organization_id, report_text, final_docx_path, db
         )
-        case = result.scalars().first()
-
-        # FIX BUG-6: Defensive check with proper error signaling
-        if not case:
-            error_msg = (
-                f"Case {case_id} disappeared during generation. "
-                f"Likely deleted manually. Marking as permanent failure."
-            )
-            logger.error(error_msg)
-            # Raise exception to signal to Cloud Tasks that this is unrecoverable
-            # This prevents infinite retries
-            raise ValueError(error_msg)
-
-        if case.status == CaseStatus.ERROR:
-            logger.warning(
-                "Case marked as error by another process during generation. Overwriting with success."
-            )
-
-        result = await db.execute(
-            select(ReportVersion).filter(
-                ReportVersion.case_id == case_id, ReportVersion.version_number == 1
-            )
-        )
-        v1 = result.scalars().first()
-
-        if not v1:
-            v1 = ReportVersion(
-                case_id=case_id,
-                organization_id=organization_id,
-                version_number=1,
-                docx_storage_path=final_docx_path,
-                ai_raw_output=report_text,
-                is_final=False,
-            )
-            db.add(v1)
-        else:
-            v1.docx_storage_path = final_docx_path
-            v1.ai_raw_output = report_text
-
-        case.status = CaseStatus.OPEN
-        try:
-            await db.commit()
-            logger.info("✅ Case processing completed successfully. Version 1 created.")
-        except IntegrityError:
-            await db.rollback()
-            logger.error(
-                f"IntegrityError saving Version 1 for case {case_id}. Likely race condition."
-            )
-            raise
-
-        # 6. Generate Summary (non-blocking - failures don't affect main report)
-        try:
-            from app.services import summary_service
-
-            summary = await summary_service.generate_summary(report_text)
-            if summary:
-                case.ai_summary = summary
-                await db.commit()
-                logger.info(f"✅ Summary generated for case {case_id}")
-        except Exception as e:
-            logger.warning(f"⚠️ Summary generation failed (non-critical): {e}")
 
     except Exception as e:
-        logger.error(f"❌ Error during generation: {e}", exc_info=True)
-        # Re-acquire lock to set error state
-        try:
-            # FIX: Rollback any failed transaction state before starting new query
-            # This ensures we can update the status even if the error was a DB error
-            await db.rollback()
-
-            result = await db.execute(
-                select(Case).filter(Case.id == case_id).with_for_update()
-            )
-            case = result.scalars().first()
-            if case:
-                case.status = CaseStatus.ERROR
-                await db.commit()
-        except Exception as db_e:
-            logger.error(f"Failed to update case status to error: {db_e}")
-
-        # Don't raise if we want to swallow the error in the task worker,
-        # but usually we want to raise so Cloud Tasks might retry (if transient)
-        # For logic errors, maybe don't retry.
-        #
-        # [COST SAFEGUARD] MANUAL RETRY WORKFLOW
-        # We explicitly catch and swallow the error here to STOP Cloud Tasks from
-        # retrying indefinitely (or up to 100 times).
-        # The user must manually click "Retry" in the UI.
-
-        logger.critical(
-            f"🛑 Stopping Cloud Task retry loop for case {case_id} due to error: {e}"
-        )
-        return  # Return success to Cloud Tasks so it marks the task as completed.
-    finally:
-        pass  # Phase 3 optimization removed temp file cleanup - no longer needed
+        await _handle_generation_error(case_id, e, db)
+        return  # Return success to Cloud Tasks so it marks the task as completed
 
 
 async def generate_docx_variant(

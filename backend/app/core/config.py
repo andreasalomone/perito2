@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "production"  # "local", "production", "staging"
     RUN_LOCALLY: bool = False  # Default to False (Production)
 
+    # Dev Auth Bypass (only works when RUN_LOCALLY=True)
+    SKIP_AUTH: bool = False  # Bypass Firebase auth for local dev
+    DEV_USER_UID: str = ""  # Firebase UID to impersonate
+    DEV_USER_EMAIL: str = ""  # Email of dev user
+
     # CORS Settings
     # List of allowed origins for CORS
     BACKEND_CORS_ORIGINS: list[str] = [

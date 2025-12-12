@@ -31,6 +31,15 @@ from tenacity import (
 
 logger = logging.getLogger(__name__)
 
+# -----------------------------------------------------------------------------
+# MIME Type Constants
+# -----------------------------------------------------------------------------
+MIME_PDF = "application/pdf"
+MIME_JPEG = "image/jpeg"
+MIME_PNG = "image/png"
+MIME_GIF = "image/gif"
+MIME_WEBP = "image/webp"
+
 
 # -----------------------------------------------------------------------------
 # Helper: Retry Predicate
@@ -45,23 +54,19 @@ def _is_retryable_error(e: BaseException) -> bool:
         # Retry all Server Errors (5xx)
         return True
 
-    if isinstance(e, genai_errors.ClientError):
-        # Retry specific Client Errors (429 Resource Exhausted)
-        if e.code == 429:
-            return True
+    # Retry specific Client Errors (429 Resource Exhausted)
+    if isinstance(e, genai_errors.ClientError) and e.code == 429:
+        return True
 
     # 2. Legacy Google API Core Exceptions (Keep for backward compatibility)
-    if isinstance(
+    return isinstance(
         e,
         (
             google_exceptions.ServiceUnavailable,
             google_exceptions.TooManyRequests,
             google_exceptions.InternalServerError,
         ),
-    ):
-        return True
-
-    return False
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -224,7 +229,7 @@ class CleanupRetryQueue:
         # Log count only, avoid leaking PII (filenames)
         logger.info(f"Enqueued {len(file_names)} files for cleanup retry.")
 
-    async def _move_to_dead_letter(self, item: CleanupRetryItem) -> None:
+    def _move_to_dead_letter(self, item: CleanupRetryItem) -> None:
         self._dead_letter.append(item)
         logger.error(
             f"Moved {len(item.file_names)} files to dead-letter queue. "
@@ -287,7 +292,7 @@ class CleanupRetryQueue:
     async def _handle_failure(self, item: CleanupRetryItem, error_msg: str) -> None:
         item.last_error = error_msg
         if item.attempt >= item.max_attempts:
-            await self._move_to_dead_letter(item)
+            self._move_to_dead_letter(item)
         else:
             item.next_retry_at = item.calculate_next_retry()
             async with self._lock:
@@ -351,9 +356,11 @@ class GeminiReportGenerator:
             reraise=True,
         )
 
-    async def generate(self, processed_files: List[ProcessedFile], language: str = "italian") -> ReportResult:
+    async def generate(
+        self, processed_files: List[ProcessedFile], language: str = "italian"
+    ) -> ReportResult:
         """Main entry point for report generation.
-        
+
         Args:
             processed_files: List of files to process.
             language: Target output language for the report (italian, english, spanish).
@@ -383,11 +390,27 @@ class GeminiReportGenerator:
             )
             # Add skipped file errors so they appear in the prompt for user awareness
             upload_errors.extend(skipped_errors)
-
             # 2a. GCS Direct Parts - No download/upload needed
+            from app.services.gcs_service import gcs_blob_exists
             from app.services.llm.file_upload_service import create_gcs_direct_part
 
-            for candidate in gcs_candidates:
+            # Run GCS existence checks in parallel
+            check_tasks = [
+                asyncio.to_thread(gcs_blob_exists, c.gcs_uri) for c in gcs_candidates
+            ]
+            check_results = await asyncio.gather(*check_tasks)
+
+            for candidate, (exists, reason) in zip(gcs_candidates, check_results):
+                if not exists:
+                    error_msg = (
+                        f"Skipping GCS file '{candidate.display_name}': "
+                        f"File not found or inaccessible at {candidate.gcs_uri}. "
+                        f"Reason: {reason}"
+                    )
+                    logger.warning(error_msg)
+                    upload_errors.append(error_msg)
+                    continue
+
                 try:
                     part = create_gcs_direct_part(
                         candidate.gcs_uri, candidate.mime_type
@@ -454,20 +477,114 @@ class GeminiReportGenerator:
     # Vertex AI supported MIME types for vision assets
     VERTEX_SUPPORTED_MIME_TYPES = frozenset(
         {
-            "application/pdf",
-            "image/jpeg",
-            "image/png",
-            "image/gif",
-            "image/webp",
+            MIME_PDF,
+            MIME_JPEG,
+            MIME_PNG,
+            MIME_GIF,
+            MIME_WEBP,
         }
     )
+
+    # Extension to MIME type mapping for fallback detection
+    _EXTENSION_MIME_MAP = {
+        "jpg": MIME_JPEG,
+        "jpeg": MIME_JPEG,
+        "png": MIME_PNG,
+        "gif": MIME_GIF,
+        "webp": MIME_WEBP,
+        "pdf": MIME_PDF,
+    }
+
+    def _resolve_mime_type_from_extension(self, filename: str) -> Optional[str]:
+        """Resolve MIME type from filename extension as fallback."""
+        guessed_type, _ = mimetypes.guess_type(filename or "")
+        if guessed_type:
+            return guessed_type
+        ext = (filename or "").lower().rsplit(".", 1)[-1]
+        return self._EXTENSION_MIME_MAP.get(ext)
+
+    async def _resolve_actual_mime_type(
+        self, local_path: Optional[str], claimed_mime: Optional[str], filename: str
+    ) -> Optional[str]:
+        """
+        Resolve the actual MIME type for a file using magic bytes (priority)
+        or extension-based fallback.
+        """
+        # SECURITY: For local files, use magic bytes to detect true MIME type
+        if local_path:
+            magic_detected = await self._validate_magic_bytes(local_path)
+            if magic_detected:
+                return magic_detected
+
+        # Fallback to claimed MIME if valid
+        if claimed_mime and claimed_mime not in ("vision", "application/octet-stream"):
+            return claimed_mime
+
+        # Final fallback: extension-based detection
+        return self._resolve_mime_type_from_extension(filename)
+
+    async def _validate_and_classify_file(
+        self, f: ProcessedFile
+    ) -> Tuple[Optional[FileUploadServiceProtocol.UploadCandidate], Optional[str]]:
+        """
+        Validate a single file and create an upload candidate if valid.
+
+        Returns:
+            Tuple of (candidate_or_none, error_message_or_none)
+        """
+        local_path = f.local_path
+        gcs_uri = f.gcs_uri
+
+        # Skip files with no path
+        if not local_path and not gcs_uri:
+            return None, None
+
+        # SECURITY: Strict path validation for local files
+        if local_path and not await self._is_safe_path(local_path):
+            logger.warning(
+                f"Skipping unsafe or unauthorized file path: {local_path}",
+                extra={"security_event": True},
+            )
+            return None, f"Skipped '{f.filename}': invalid file path"
+
+        # Only process vision assets
+        if f.file_type != "vision":
+            return None, None
+
+        # Resolve MIME type
+        actual_mime_type = await self._resolve_actual_mime_type(
+            local_path, f.mime_type, f.filename
+        )
+
+        # STRICT VALIDATION: Skip files with unsupported MIME types
+        if (
+            not actual_mime_type
+            or actual_mime_type not in self.VERTEX_SUPPORTED_MIME_TYPES
+        ):
+            logger.warning(
+                f"Skipping '{f.filename}': unsupported MIME type '{actual_mime_type}'. "
+                f"Vertex AI requires: {self.VERTEX_SUPPORTED_MIME_TYPES}"
+            )
+            return None, (
+                f"Skipped '{f.filename}': unsupported file type "
+                f"(got '{actual_mime_type or 'unknown'}')"
+            )
+
+        candidate = self.file_upload_service.UploadCandidate(
+            file_path=local_path or gcs_uri,
+            mime_type=actual_mime_type,
+            display_name=f.filename,
+            is_vision_asset=True,
+            gcs_uri=gcs_uri,
+        )
+        return candidate, None
 
     async def _prepare_vision_assets(
         self, processed_files: List[ProcessedFile]
     ) -> Tuple[
         List[FileUploadServiceProtocol.UploadCandidate],
         List[FileUploadServiceProtocol.UploadCandidate],
-        List[str],  # Added: skipped file errors for user visibility
+        List[str],
     ]:
         """
         Separates vision assets into two groups:
@@ -477,85 +594,22 @@ class GeminiReportGenerator:
         Returns:
             Tuple of (gcs_candidates, upload_candidates, skipped_errors)
         """
-        gcs_candidates = []
-        upload_candidates = []
-        skipped_errors = []
+        gcs_candidates: List[FileUploadServiceProtocol.UploadCandidate] = []
+        upload_candidates: List[FileUploadServiceProtocol.UploadCandidate] = []
+        skipped_errors: List[str] = []
 
         for f in processed_files:
-            local_path = f.local_path
-            gcs_uri = f.gcs_uri
+            candidate, error = await self._validate_and_classify_file(f)
 
-            if not local_path and not gcs_uri:
+            if error:
+                skipped_errors.append(error)
                 continue
 
-            # SECURITY: Strict path validation for local files (async, non-blocking)
-            if local_path and not await self._is_safe_path(local_path):
-                logger.warning(
-                    f"Skipping unsafe or unauthorized file path: {local_path}",
-                    extra={"security_event": True},
-                )
-                skipped_errors.append(f"Skipped '{f.filename}': invalid file path")
+            if not candidate:
                 continue
 
-            # Only process vision assets (skip JSON/Text that goes into prompt)
-            # Note: file_type is the category ("vision", "text", "error"), not MIME type
-            if f.file_type not in ("vision",):
-                continue
-
-            # SECURITY: For local files, use magic bytes to detect true MIME type
-            # This prevents MIME spoofing attacks (e.g., exe renamed to jpg)
-            actual_mime_type: Optional[str] = None
-            if local_path:
-                actual_mime_type = await self._validate_magic_bytes(local_path)
-
-            # Fallback: If magic detection unavailable/failed, use extension-based
-            if not actual_mime_type:
-                actual_mime_type = f.mime_type
-                if not actual_mime_type or actual_mime_type in (
-                    "vision",
-                    "application/octet-stream",
-                ):
-                    guessed_type, _ = mimetypes.guess_type(f.filename or "")
-                    if guessed_type:
-                        actual_mime_type = guessed_type
-                    else:
-                        ext = (f.filename or "").lower().rsplit(".", 1)[-1]
-                        ext_map = {
-                            "jpg": "image/jpeg",
-                            "jpeg": "image/jpeg",
-                            "png": "image/png",
-                            "gif": "image/gif",
-                            "webp": "image/webp",
-                            "pdf": "application/pdf",
-                        }
-                        actual_mime_type = ext_map.get(ext)
-
-            # STRICT VALIDATION: Skip files with unsupported MIME types
-            if (
-                not actual_mime_type
-                or actual_mime_type not in self.VERTEX_SUPPORTED_MIME_TYPES
-            ):
-                logger.warning(
-                    f"Skipping '{f.filename}': unsupported MIME type '{actual_mime_type}'. "
-                    f"Vertex AI requires: {self.VERTEX_SUPPORTED_MIME_TYPES}"
-                )
-                skipped_errors.append(
-                    f"Skipped '{f.filename}': unsupported file type "
-                    f"(got '{actual_mime_type or 'unknown'}')"
-                )
-                continue
-
-            candidate = self.file_upload_service.UploadCandidate(
-                file_path=local_path or gcs_uri,
-                mime_type=actual_mime_type,
-                display_name=f.filename,
-                is_vision_asset=True,
-                gcs_uri=gcs_uri,
-            )
-
-            # If we have a GCS URI, use Part.from_uri() (no download needed)
-            # Otherwise, fall back to Gemini Files API upload
-            if gcs_uri:
+            # Classify by storage type: GCS direct vs upload required
+            if candidate.gcs_uri:
                 gcs_candidates.append(candidate)
                 logger.debug(f"GCS direct access for: {f.filename}")
             else:
@@ -612,9 +666,7 @@ class GeminiReportGenerator:
             return None  # Fall back to extension-based detection
         try:
             real_mime = magic.from_file(path, mime=True)
-            if real_mime in self.VERTEX_SUPPORTED_MIME_TYPES:
-                return real_mime
-            return None
+            return real_mime if real_mime in self.VERTEX_SUPPORTED_MIME_TYPES else None
         except Exception:
             return None
 
@@ -691,12 +743,29 @@ class GeminiReportGenerator:
 
         async for attempt in self.retry_policy:
             with attempt:
-                # Use aio (async) interface explicitly
-                return await self.client.aio.models.generate_content(
-                    model=model_name,
-                    contents=contents,
-                    config=config,
-                )
+                try:
+                    # Use aio (async) interface explicitly
+                    return await self.client.aio.models.generate_content(
+                        model=model_name,
+                        contents=contents,
+                        config=config,
+                    )
+                except Exception as e:
+                    # Log diagnostic info for INVALID_ARGUMENT errors
+                    if "INVALID_ARGUMENT" in str(e) or "400" in str(e):
+                        # Count content types for diagnostics
+                        part_types = {}
+                        for item in contents:
+                            type_name = type(item).__name__
+                            part_types[type_name] = part_types.get(type_name, 0) + 1
+
+                        logger.error(
+                            f"INVALID_ARGUMENT in generate_content - "
+                            f"Model: {model_name}, Cache: {cache_name is not None}, "
+                            f"Content parts: {len(contents)}, Types: {part_types}, "
+                            f"Error: {e}"
+                        )
+                    raise
 
     def _schedule_cleanup(self, uploaded_files: List[Any]) -> None:
         """Schedules cleanup of uploaded files using the robust queue."""
@@ -738,18 +807,17 @@ class GeminiReportGenerator:
 
     def _extract_usage(self, response: Any) -> TokenUsage:
         """Safe extraction of token usage."""
-        meta = getattr(response, "usage_metadata", None)
-        if not meta:
+        if meta := getattr(response, "usage_metadata", None):
+            # NOTE: Vertex AI SDK may return explicit None for some fields (not missing),
+            # so getattr's default won't help. Use 'or 0' to coalesce None -> 0.
+            return TokenUsage(
+                prompt_tokens=getattr(meta, "prompt_token_count", 0) or 0,
+                candidate_tokens=getattr(meta, "candidates_token_count", 0) or 0,
+                total_tokens=getattr(meta, "total_token_count", 0) or 0,
+                cached_tokens=getattr(meta, "cached_content_token_count", 0) or 0,
+            )
+        else:
             return TokenUsage()
-
-        # NOTE: Vertex AI SDK may return explicit None for some fields (not missing),
-        # so getattr's default won't help. Use 'or 0' to coalesce None -> 0.
-        return TokenUsage(
-            prompt_tokens=getattr(meta, "prompt_token_count", 0) or 0,
-            candidate_tokens=getattr(meta, "candidates_token_count", 0) or 0,
-            total_tokens=getattr(meta, "total_token_count", 0) or 0,
-            cached_tokens=getattr(meta, "cached_content_token_count", 0) or 0,
-        )
 
 
 # -----------------------------------------------------------------------------

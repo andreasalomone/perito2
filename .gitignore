@@ -75,3 +75,5 @@ backend/clean.sh
 .gitignore
 backend/sonar-project.properties
 backend/scripts/backfill_client_enrichment.py
+dev.sh
+backend/smart_check.sh
