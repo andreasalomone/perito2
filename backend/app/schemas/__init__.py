@@ -180,10 +180,13 @@ class DocumentRegisterPayload(BaseModel):
 
 
 class GeneratePayload(BaseModel):
-    """Payload for report generation with language option."""
+    """Payload for report generation with language and extra instructions options."""
 
     # SECURITY: Use Literal to restrict to allowed values only (defense in depth)
     language: Literal["italian", "english", "spanish"] = "italian"
+
+    # Optional extra instructions from the user (max 2000 chars for safety)
+    extra_instructions: Optional[str] = Field(default=None, max_length=2000)
 
 
 # --- CLIENTS ---

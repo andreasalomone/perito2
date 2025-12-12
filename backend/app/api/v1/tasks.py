@@ -1,5 +1,5 @@
 import logging
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from google.auth.transport import requests as google_requests
@@ -32,6 +32,12 @@ class CaseTaskPayload(TaskBase):
     # SECURITY: Strict allowlist for language values
     language: Literal["italian", "english", "spanish"] = Field(
         default="italian", description="Output language for report"
+    )
+    # Optional extra instructions from expert (max 2000 chars)
+    extra_instructions: Optional[str] = Field(
+        default=None,
+        max_length=2000,
+        description="Additional LLM instructions from expert",
     )
 
 
@@ -159,6 +165,7 @@ async def generate_report(
             case_id=str(payload.case_id),
             organization_id=str(payload.organization_id),
             language=payload.language,
+            extra_instructions=payload.extra_instructions,
         )
     except Exception as e:
         logger.error(f"❌ Gen Task Failed: {e}", exc_info=True)

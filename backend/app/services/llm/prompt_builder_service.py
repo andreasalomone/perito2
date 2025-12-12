@@ -1,4 +1,3 @@
-
 """Prompt builder service for assembling LLM prompts."""
 
 import html
@@ -52,6 +51,7 @@ class PromptBuilderService:
         upload_error_messages: List[str],
         use_cache: bool,
         language: str = "italian",
+        extra_instructions: Optional[str] = None,
     ) -> List[Union[str, types.Part, types.File]]:
         """
         Constructs the prompt.
@@ -61,6 +61,7 @@ class PromptBuilderService:
             upload_error_messages: Strings describing upload failures.
             use_cache: Boolean to determine if system prompt is needed.
             language: Target output language for the report (italian, english, spanish).
+            extra_instructions: Optional expert instructions to include in prompt.
         """
         final_parts: List[Union[str, types.Part, types.File]] = []
 
@@ -105,6 +106,14 @@ class PromptBuilderService:
         safe_text_parts = self._truncate_text_content(text_payloads)
         final_parts.extend(safe_text_parts)
 
+        # D. Extra Instructions from User (Expert guidance)
+        if extra_instructions:
+            safe_instructions = html.escape(extra_instructions.strip())
+            if safe_instructions:
+                final_parts.append(
+                    f"\n<extra_instructions>\nInformazioni aggiuntive dal perito:\n{safe_instructions}\n</extra_instructions>\n"
+                )
+
         final_parts.extend(
             (
                 "\n</case_evidence>\n\n",
@@ -130,13 +139,13 @@ class PromptBuilderService:
 
                 # Vision files have no text content to process here (referenced via Parts)
                 if item.type == "vision":
-                     # Re-adding the logic that likely should be there to satisfy the test
-                     safe_filename = html.escape(item.filename)
-                     # We use a self-closing tag to indicate the file is attached as a Part
-                     parts.append(
+                    # Re-adding the logic that likely should be there to satisfy the test
+                    safe_filename = html.escape(item.filename)
+                    # We use a self-closing tag to indicate the file is attached as a Part
+                    parts.append(
                         f'<file_reference filename="{safe_filename}" type="vision" status="attached_as_part" />\n'
-                     )
-                     continue
+                    )
+                    continue
 
                 # Sanitize to prevent XML Attribute Injection
                 # e.g. filename='"><script>...'
@@ -227,7 +236,7 @@ class PromptBuilderService:
 
                 # 2. Heuristic: Try to cut at the last newline for readability
                 # and to avoid splitting words/tags (mostly)
-                last_newline = head.rfind('\n')
+                last_newline = head.rfind("\n")
                 if last_newline > 0:
                     head = head[:last_newline]
 
@@ -284,9 +293,7 @@ class PromptBuilderService:
         language_instruction = ""
         target_lang = ALLOWED_LANGUAGES.get(normalized_lang)
         if target_lang:  # Non-Italian language
-            language_instruction = (
-                f"\n6. Write this report in {target_lang}."
-            )
+            language_instruction = f"\n6. Write this report in {target_lang}."
 
         return (
             "<task_execution>\n"

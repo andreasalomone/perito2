@@ -7,6 +7,8 @@ import { DocumentItem } from "@/components/cases/DocumentItem";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import {
     Select,
     SelectContent,
@@ -14,7 +16,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Upload, Play, FileText, AlertCircle, Loader2, Globe } from "lucide-react";
+import { Upload, Play, FileText, AlertCircle, Loader2, Globe, MessageSquare } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 // Language options for report generation
@@ -30,7 +32,7 @@ interface Step1IngestionProps {
     caseData: CaseDetail;
     caseId: string;
     onUploadComplete: () => void;
-    onGenerate: (language: ReportLanguage) => Promise<void>;
+    onGenerate: (language: ReportLanguage, extraInstructions?: string) => Promise<void>;
     onDeleteDocument: (docId: string) => Promise<void>;
     isGenerating: boolean;
     isProcessingDocs: boolean;
@@ -38,7 +40,7 @@ interface Step1IngestionProps {
 
 /**
  * Step 1: Ingestion (Acquisizione)
- * 
+ *
  * Users upload documents for the case.
  * Shows existing documents with their processing status.
  * Enables generation when at least one document is ready.
@@ -54,6 +56,8 @@ export function Step1_Ingestion({
 }: Step1IngestionProps) {
     const documents = caseData?.documents || [];
     const [selectedLanguage, setSelectedLanguage] = useState<ReportLanguage>("italian");
+    const [extraInstructions, setExtraInstructions] = useState<string>("");
+    const MAX_INSTRUCTIONS_LENGTH = 2000;
 
     // Count documents by status
     const successDocs = documents.filter(d => d.ai_status === 'SUCCESS');
@@ -149,52 +153,74 @@ export function Step1_Ingestion({
             )}
 
             {/* Language Selection & Generate Button */}
-            <div className="flex flex-col sm:flex-row justify-end items-stretch sm:items-center gap-3 pt-4">
-                {/* Language Dropdown */}
-                <div className="flex items-center gap-2">
-                    <Globe className="h-4 w-4 text-muted-foreground" />
-                    <Select
-                        value={selectedLanguage}
-                        onValueChange={(value) => setSelectedLanguage(value as ReportLanguage)}
+            <div className="flex flex-col gap-4 pt-4">
+                {/* Extra Instructions */}
+                <div className="space-y-2">
+                    <Label htmlFor="extra-instructions" className="flex items-center gap-2 text-sm font-medium">
+                        <MessageSquare className="h-4 w-4" />
+                        Istruzioni Aggiuntive (opzionale)
+                    </Label>
+                    <Textarea
+                        id="extra-instructions"
+                        placeholder="Es: Concentrati sui danni causati dall'acqua. Ignora i dettagli sulla responsabilità."
+                        value={extraInstructions}
+                        onChange={(e) => setExtraInstructions(e.target.value.slice(0, MAX_INSTRUCTIONS_LENGTH))}
                         disabled={isGenerating || isProcessingDocs}
-                    >
-                        <SelectTrigger className="w-[140px]">
-                            <SelectValue placeholder="Lingua" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {LANGUAGE_OPTIONS.map((lang) => (
-                                <SelectItem key={lang.value} value={lang.value}>
-                                    {lang.label}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                        className="min-h-[80px] resize-none"
+                    />
+                    <p className="text-xs text-muted-foreground text-right">
+                        {extraInstructions.length}/{MAX_INSTRUCTIONS_LENGTH}
+                    </p>
                 </div>
 
-                {/* Generate Button */}
-                <Button
-                    size="lg"
-                    disabled={!canGenerate}
-                    onClick={() => onGenerate(selectedLanguage)}
-                    className="min-w-[200px]"
-                >
-                    {isGenerating ? (
-                        <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Generazione in corso...
-                        </>
-                    ) : isProcessingDocs ? (
-                        <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Elaborazione documenti...
-                        </>
-                    ) : (
-                        <>
-                            <Play className="h-4 w-4 mr-2" />
-                            Genera Report
-                        </>
-                    )}
-                </Button>
+                {/* Language and Generate */}
+                <div className="flex flex-col sm:flex-row justify-end items-stretch sm:items-center gap-3">
+                    {/* Language Dropdown */}
+                    <div className="flex items-center gap-2">
+                        <Globe className="h-4 w-4 text-muted-foreground" />
+                        <Select
+                            value={selectedLanguage}
+                            onValueChange={(value) => setSelectedLanguage(value as ReportLanguage)}
+                            disabled={isGenerating || isProcessingDocs}
+                        >
+                            <SelectTrigger className="w-[140px]">
+                                <SelectValue placeholder="Lingua" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {LANGUAGE_OPTIONS.map((lang) => (
+                                    <SelectItem key={lang.value} value={lang.value}>
+                                        {lang.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* Generate Button */}
+                    <Button
+                        size="lg"
+                        disabled={!canGenerate}
+                        onClick={() => onGenerate(selectedLanguage, extraInstructions || undefined)}
+                        className="min-w-[200px]"
+                    >
+                        {isGenerating ? (
+                            <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Generazione in corso...
+                            </>
+                        ) : isProcessingDocs ? (
+                            <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Elaborazione documenti...
+                            </>
+                        ) : (
+                            <>
+                                <Play className="h-4 w-4 mr-2" />
+                                Genera Report
+                            </>
+                        )}
+                    </Button>
+                </div>
             </div>
 
             {/* Empty State */}

@@ -111,6 +111,7 @@ class PromptBuilderServiceProtocol(Protocol):
         upload_error_messages: List[str],
         use_cache: bool,
         language: str = "italian",
+        extra_instructions: Optional[str] = None,
     ) -> List[Any]: ...
 
 
@@ -357,20 +358,29 @@ class GeminiReportGenerator:
         )
 
     async def generate(
-        self, processed_files: List[ProcessedFile], language: str = "italian"
+        self,
+        processed_files: List[ProcessedFile],
+        language: str = "italian",
+        extra_instructions: Optional[str] = None,
     ) -> ReportResult:
         """Main entry point for report generation.
 
         Args:
             processed_files: List of files to process.
             language: Target output language for the report (italian, english, spanish).
+            extra_instructions: Optional additional instructions from expert.
         """
         # Cost Safeguard: Limit concurrent executions via instance semaphore
         async with self._semaphore:
-            return await self._generate_internal(processed_files, language)
+            return await self._generate_internal(
+                processed_files, language, extra_instructions
+            )
 
     async def _generate_internal(
-        self, processed_files: List[ProcessedFile], language: str = "italian"
+        self,
+        processed_files: List[ProcessedFile],
+        language: str = "italian",
+        extra_instructions: Optional[str] = None,
     ) -> ReportResult:
         """Internal generation logic (protected by semaphore)."""
         vision_parts: List[Any] = (
@@ -456,6 +466,7 @@ class GeminiReportGenerator:
                 upload_errors=upload_errors,
                 cache_name=cache_name,
                 language=language,
+                extra_instructions=extra_instructions,
             )
 
             # 4. Parse & Extract
@@ -681,6 +692,7 @@ class GeminiReportGenerator:
         upload_errors: List[str],
         cache_name: Optional[str],
         language: str = "italian",
+        extra_instructions: Optional[str] = None,
     ) -> Any:
 
         # Helper to regenerate prompt parts based on strategy
@@ -691,6 +703,7 @@ class GeminiReportGenerator:
                 upload_error_messages=upload_errors,
                 use_cache=use_cache,
                 language=language,
+                extra_instructions=extra_instructions,
             )
 
         # Strategy 1: Primary Model + Cache

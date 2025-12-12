@@ -2,6 +2,7 @@ import asyncio
 import copy
 import json
 import logging
+from typing import Optional
 
 from google.cloud import tasks_v2
 from sqlalchemy import select, text
@@ -23,7 +24,10 @@ logger = logging.getLogger(__name__)
 
 
 async def run_generation_task(
-    case_id: str, organization_id: str, language: str = "italian"
+    case_id: str,
+    organization_id: str,
+    language: str = "italian",
+    extra_instructions: Optional[str] = None,
 ):
     """
     Wrapper for background execution that manages its own ASYNC DB session.
@@ -37,7 +41,13 @@ async def run_generation_task(
                 {"org_id": organization_id},
             )
 
-            await generate_report_logic(case_id, organization_id, db, language=language)
+            await generate_report_logic(
+                case_id,
+                organization_id,
+                db,
+                language=language,
+                extra_instructions=extra_instructions,
+            )
         except Exception as e:
             logger.error(f"Async generation task failed: {e}")
             await db.rollback()
@@ -137,7 +147,10 @@ async def process_case_logic(case_id: str, organization_id: str, db: AsyncSessio
 
 
 async def trigger_generation_task(
-    case_id: str, organization_id: str, language: str = "italian"
+    case_id: str,
+    organization_id: str,
+    language: str = "italian",
+    extra_instructions: Optional[str] = None,
 ):
     """
     Enqueues the 'generate-report' task.
@@ -147,7 +160,12 @@ async def trigger_generation_task(
         # Run in background (fire and forget) or await if we want to block
         # Since this is usually called from a task or API, we can just run it.
         # But we need a fresh DB session if we run it directly.
-        await run_generation_task(case_id, organization_id, language=language)
+        await run_generation_task(
+            case_id,
+            organization_id,
+            language=language,
+            extra_instructions=extra_instructions,
+        )
         return
 
     try:
@@ -168,6 +186,7 @@ async def trigger_generation_task(
                         "case_id": case_id,
                         "organization_id": organization_id,
                         "language": language,
+                        "extra_instructions": extra_instructions,
                     }
                 ).encode(),
             }
@@ -394,6 +413,7 @@ async def _generate_and_upload_report(
     case_id: str,
     organization_id: str,
     language: str,
+    extra_instructions: Optional[str] = None,
 ) -> tuple[str, str]:
     """
     Generate report with Gemini and upload DOCX to GCS.
@@ -405,6 +425,7 @@ async def _generate_and_upload_report(
     report_result = await gemini_generator.generate(
         processed_files=processed_files_models,
         language=language,
+        extra_instructions=extra_instructions,
     )
     report_text = report_result.content
 
@@ -517,7 +538,11 @@ async def _handle_generation_error(
 
 
 async def generate_report_logic(
-    case_id: str, organization_id: str, db: AsyncSession, language: str = "italian"
+    case_id: str,
+    organization_id: str,
+    db: AsyncSession,
+    language: str = "italian",
+    extra_instructions: Optional[str] = None,
 ):
     """
     Phase 2: Generation
@@ -531,6 +556,7 @@ async def generate_report_logic(
         organization_id: The organization UUID
         db: The async database session
         language: The target output language for the report (italian, english, spanish)
+        extra_instructions: Optional additional instructions from expert
     """
     # 1. Fetch case with lock
     result = await db.execute(select(Case).filter(Case.id == case_id).with_for_update())
@@ -577,7 +603,11 @@ async def generate_report_logic(
 
         # 5. Generate and upload report
         report_text, final_docx_path = await _generate_and_upload_report(
-            processed_data_for_llm, case_id, organization_id, language
+            processed_data_for_llm,
+            case_id,
+            organization_id,
+            language,
+            extra_instructions=extra_instructions,
         )
 
         # 6. Save version and generate summary

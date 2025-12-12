@@ -42,8 +42,9 @@ def extract_text_from_response(response: Any) -> str:
     return report_content
 
 
-
-def _validate_candidate_finish_reason(candidate: Any, report_content: str) -> Optional[str]:
+def _validate_candidate_finish_reason(
+    candidate: Any, report_content: str
+) -> Optional[str]:
     """Validates the finish reason of a response candidate."""
     if not candidate or not candidate.finish_reason:
         return None

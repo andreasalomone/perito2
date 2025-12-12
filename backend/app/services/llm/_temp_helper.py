@@ -1,4 +1,15 @@
-def _validate_candidate_finish_reason(candidate: Any, report_content: str) -> Optional[str]:
+import logging
+from typing import Any, Optional
+
+from google import genai
+
+types = genai.types
+logger = logging.getLogger(__name__)
+
+
+def _validate_candidate_finish_reason(
+    candidate: Any, report_content: str
+) -> Optional[str]:
     """Validates the finish reason of a response candidate."""
     if not candidate or not candidate.finish_reason:
         return None

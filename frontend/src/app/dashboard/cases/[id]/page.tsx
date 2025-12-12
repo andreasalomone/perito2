@@ -89,11 +89,14 @@ export default function CaseWorkspace() {
 
     // --- Handlers ---
 
-    const handleGenerate = useCallback(async (language: ReportLanguage = "italian") => {
+    const handleGenerate = useCallback(async (language: ReportLanguage = "italian", extraInstructions?: string) => {
         setIsGenerating(true);
         try {
             const token = await getToken();
-            await axios.post(`${apiUrl}/api/v1/cases/${caseId}/generate`, { language }, {
+            await axios.post(`${apiUrl}/api/v1/cases/${caseId}/generate`, {
+                language,
+                extra_instructions: extraInstructions || null
+            }, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             toast.success("Generazione avviata! Il sistema ti avviserà al termine.");

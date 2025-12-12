@@ -3,7 +3,7 @@ import logging
 import os
 import shutil
 import tempfile
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 
 
 class PromptManager:
@@ -132,7 +132,9 @@ except Exception as e:
     SYSTEM_INSTRUCTION = ""
 
 try:
-    GUIDA_STILE_TERMINOLOGIA_ED_ESEMPI: str = prompt_manager.get_prompt_content("style_guide")
+    GUIDA_STILE_TERMINOLOGIA_ED_ESEMPI: str = prompt_manager.get_prompt_content(
+        "style_guide"
+    )
 except Exception as e:
     logging.getLogger(__name__).error(f"Error loading style_guide: {e}")
     GUIDA_STILE_TERMINOLOGIA_ED_ESEMPI = ""
