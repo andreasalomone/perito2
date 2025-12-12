@@ -18,17 +18,18 @@ import { ClientDetail } from "@/types";
 
 export default function ClientDetailPage() {
     const { id } = useParams();
-    const clientId = Array.isArray(id) ? id[0] : (id as string);
-    const { client, isLoading: isClientLoading, mutate: mutateClient } = useClient(clientId);
-    const { cases, isLoading: isCasesLoading } = useCases({ client_id: clientId });
-    const { getToken } = useAuth();
+    const clientId = Array.isArray(id) ? id[0] : id;
+
+    const { client, isLoading: isClientLoading, mutate: mutateClient } = useClient(clientId || "");
+    const { cases, isLoading: isCasesLoading } = useCases({ client_id: clientId || "" });
+    const { user, getToken } = useAuth();
     const [isEnriching, setIsEnriching] = useState(false);
 
     const handleEnrichment = async () => {
         setIsEnriching(true);
         try {
             const token = await getToken();
-            if (!token) return;
+            if (!token || !clientId) return;
             await api.clients.triggerEnrichment(token, clientId);
             toast.success("Arricchimento avviato", {
                 description: "I dati verranno aggiornati a breve.",
@@ -49,7 +50,8 @@ export default function ClientDetailPage() {
         mutateClient();
     };
 
-    if (isClientLoading) {
+    // Show loading while auth, params, or fetch is in progress
+    if (!user || !clientId || isClientLoading) {
         return <div className="p-8 space-y-8 animate-pulse">
             <div className="h-8 w-48 bg-muted rounded" />
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

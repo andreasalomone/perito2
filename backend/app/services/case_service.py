@@ -189,7 +189,9 @@ def create_case_with_client(
     except Exception as e:
         db.rollback()
         logger.error(f"Error creating case: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to create case: {str(e)}") from e
+        raise HTTPException(
+            status_code=500, detail=f"Failed to create case: {str(e)}"
+        ) from e
 
 
 def create_ai_version(
