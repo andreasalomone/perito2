@@ -78,3 +78,4 @@ backend/scripts/backfill_client_enrichment.py
 dev.sh
 backend/smart_check.sh
 user-feedback.md
+feat-doc-analysis.md
