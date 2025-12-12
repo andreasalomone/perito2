@@ -224,7 +224,7 @@ def sync_user(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while synchronizing user profile.",
-        )
+        ) from None
 
     except Exception as e:
         # Catch-all for unexpected errors (Network, DB connection lost, etc.)
@@ -233,4 +233,4 @@ def sync_user(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal Server Error",
-        )
+        ) from e

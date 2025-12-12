@@ -1,4 +1,4 @@
-name: PeritoAI Supply Chain Orchestration
+name: MyPerito Supply Chain Orchestration
 
 on:
   push:
@@ -126,7 +126,7 @@ jobs:
             echo "Creating new migration job..."
             gcloud run jobs create migrate-db-job --command python --args="-m,alembic,upgrade,head" $JOB_FLAGS
           fi
-          
+
           # Block deployment if migration fails
           gcloud run jobs execute migrate-db-job --wait --region ${{ env.REGION }}
 
@@ -165,19 +165,19 @@ jobs:
       - name: Verify Canary Health
         run: |
           echo "🔍 Retrieving Canary URL..."
-          
+
           # This filter asks Cloud Run: "Look at traffic tags, find the one named 'green', give me its URL"
           CANARY_URL=$(gcloud run services describe ${{ env.BACKEND_SERVICE }} \
             --region ${{ env.REGION }} \
             --format json | jq -r '.status.traffic[] | select(.tag=="green") | .url')
-          
+
           if [ -z "$CANARY_URL" ]; then
             echo "❌ Could not find a URL for tag 'green'. Deployment might have failed."
             exit 1
           fi
 
           echo "🧪 Smoke Testing Canary at: $CANARY_URL/health"
-          
+
           # Retry loop
           for i in {1..5}; do
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$CANARY_URL/health")
@@ -188,7 +188,7 @@ jobs:
             echo "⏳ Attempt $i: Got HTTP $HTTP_CODE. Retrying in 5s..."
             sleep 5
           done
-          
+
           echo "❌ Canary health check failed with HTTP $HTTP_CODE"
           exit 1
 

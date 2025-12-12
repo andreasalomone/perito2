@@ -66,7 +66,7 @@ export function DashboardLayoutClient({
                     <div className="bg-primary text-primary-foreground p-1 rounded">
                         <ShieldCheck className="h-5 w-5" />
                     </div>
-                    <img src="/myperito-black.svg" alt="PeritoAI" className="h-5 dark:invert" />
+                    <img src="/myperito-black.svg" alt="MyPerito" className="h-5 dark:invert" />
                 </div>
                 <Button variant="ghost" size="icon" onClick={toggle} aria-label={isOpen ? "Chiudi menu" : "Apri menu"}>
                     {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}

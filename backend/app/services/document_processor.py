@@ -243,7 +243,7 @@ def extract_text_from_docx(docx_path: str) -> List[Dict[str, Any]]:
             with zf.open("word/document.xml") as f:
                 # iterparse is a streaming parser
                 context = ET.iterparse(f, events=("end",))
-                for event, elem in context:
+                for _event, elem in context:
                     # w:t is the tag for text in Word XML
                     if elem.tag.endswith("}t") and elem.text:
                         text_content.append(elem.text)

@@ -49,7 +49,7 @@ export function Sidebar({
                             exit={{ opacity: 0, width: 0 }}
                             className="overflow-hidden"
                         >
-                            <img src="/myperito-black.svg" alt="PeritoAI" className="h-5 dark:invert" />
+                            <img src="/myperito-black.svg" alt="MyPerito" className="h-5 dark:invert" />
                         </motion.div>
                     )}
                 </div>

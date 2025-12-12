@@ -178,7 +178,7 @@ function LandingPage() {
           <div className="inline-flex items-center justify-center p-3 bg-primary/10 rounded-2xl mb-4">
             <img src="/perito-logo-black.svg" alt="Perito Logo" className="h-8 w-8 dark:invert" />
           </div>
-          <img src="/myperito-black.svg" alt="PeritoAI" className="h-10 mx-auto dark:invert" />
+          <img src="/myperito-black.svg" alt="MyPerito" className="h-10 mx-auto dark:invert" />
           <p className="text-lg text-muted-foreground">
             Per i periti del futuro.
           </p>

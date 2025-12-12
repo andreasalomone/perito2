@@ -1,5 +1,6 @@
 "use client";
 
+import { useParams } from "next/navigation";
 import { useClient } from "@/hooks/useClients";
 import { useCases } from "@/hooks/useCases";
 import { Button } from "@/components/ui/button";
@@ -15,9 +16,11 @@ import { toast } from "sonner";
 import { ClientDialog } from "@/components/dashboard/ClientDialog";
 import { ClientDetail } from "@/types";
 
-export default function ClientDetailPage({ params }: { params: { id: string } }) {
-    const { client, isLoading: isClientLoading, mutate: mutateClient } = useClient(params.id);
-    const { cases, isLoading: isCasesLoading } = useCases({ client_id: params.id });
+export default function ClientDetailPage() {
+    const { id } = useParams();
+    const clientId = Array.isArray(id) ? id[0] : (id as string);
+    const { client, isLoading: isClientLoading, mutate: mutateClient } = useClient(clientId);
+    const { cases, isLoading: isCasesLoading } = useCases({ client_id: clientId });
     const { getToken } = useAuth();
     const [isEnriching, setIsEnriching] = useState(false);
 
@@ -26,7 +29,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
         try {
             const token = await getToken();
             if (!token) return;
-            await api.clients.triggerEnrichment(token, params.id);
+            await api.clients.triggerEnrichment(token, clientId);
             toast.success("Arricchimento avviato", {
                 description: "I dati verranno aggiornati a breve.",
             });
@@ -206,7 +209,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
                     <div className="flex items-center justify-between">
                         <h2 className="text-xl font-semibold">Sinistri Recenti</h2>
                         {cases && cases.length > 0 && (
-                            <Link href={`/dashboard?client_id=${params.id}`}>
+                            <Link href={`/dashboard?client_id=${clientId}`}>
                                 <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary">
                                     Vedi tutti <ChevronRight className="ml-1 h-4 w-4" />
                                 </Button>

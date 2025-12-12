@@ -410,7 +410,7 @@ class GeminiReportGenerator:
             ]
             check_results = await asyncio.gather(*check_tasks)
 
-            for candidate, (exists, reason) in zip(gcs_candidates, check_results):
+            for candidate, (exists, reason) in zip(gcs_candidates, check_results, strict=True):
                 if not exists:
                     error_msg = (
                         f"Skipping GCS file '{candidate.display_name}': "

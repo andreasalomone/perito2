@@ -1,6 +1,6 @@
-# PeritoAI v2.1.0
+# MyPerito v2.1.0
 
-**PeritoAI** is an advanced, AI-powered **Case Management System** designed to streamline the workflow of insurance surveyors, legal experts, and claims adjusters. By leveraging the power of **Google's Gemini 2.5 LLM via the Gemini API**, it automates the extraction of critical information from uploaded documents and generates comprehensive, professionally formatted reports (DOCX).
+**MyPerito** is an advanced, AI-powered **Case Management System** designed to streamline the workflow of insurance surveyors, legal experts, and claims adjusters. By leveraging the power of **Google's Gemini 2.5 LLM via the Gemini API**, it automates the extraction of critical information from uploaded documents and generates comprehensive, professionally formatted reports (DOCX).
 
 ## 🎯 Target Audience
 

@@ -19,7 +19,7 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "PeritoAI | Perizie Powered by AI",
+  title: "MyPerito | Perizie Powered by AI",
   description: "Automazione professionale per perizie assicurative.",
   icons: {
     icon: [

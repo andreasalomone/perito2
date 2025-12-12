@@ -33,13 +33,11 @@ from app.db.database import AsyncSessionLocal
 
 
 def get_or_create_client(db: Session, name: str, organization_id: UUID) -> Client:
-    # 1. Try to find existing within this organization
-    client = (
+    if client := (
         db.query(Client)
         .filter(Client.name == name, Client.organization_id == organization_id)
         .first()
-    )
-    if client:
+    ):
         return client
 
     # 2. Try to create (Handle Race Condition with SAVEPOINT)
@@ -191,7 +189,7 @@ def create_case_with_client(
     except Exception as e:
         db.rollback()
         logger.error(f"Error creating case: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to create case: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create case: {str(e)}") from e
 
 
 def create_ai_version(
@@ -280,10 +278,7 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
         )
         raise
 
-    # 2. Find the LATEST AI Draft (not the earliest)
-    # FIX: Use the most recent non-final version as it represents the last successful generation
-    # This handles cases where earlier versions failed or were regenerated
-    ai_version = (
+    if ai_version := (
         db.query(ReportVersion)
         .filter(
             ReportVersion.case_id == case_id,
@@ -292,9 +287,7 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
         )
         .order_by(ReportVersion.version_number.desc())
         .first()
-    )  # Changed from .asc() to .desc()
-
-    if ai_version:
+    ):
         # 3. THE GOLD MINE: Create Training Pair
         pair = MLTrainingPair(
             case_id=case_id,
@@ -316,6 +309,20 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
     logger.info(f"Case {case_id} finalized and set to CLOSED status")
 
     db.commit()
+
+    # 5. Trigger async extraction of case details
+    # MUST be AFTER commit to ensure case is in CLOSED state
+    try:
+        trigger_case_details_extraction_task(
+            case_id=str(case_id),
+            organization_id=str(org_id),
+            final_docx_path=final_docx_path,
+            overwrite_existing=False,  # Preserve existing manual entries
+        )
+    except Exception as e:
+        # Don't fail finalization if extraction trigger fails
+        logger.error(f"Failed to trigger case details extraction: {e}")
+
     return final_version
 
 
@@ -457,6 +464,73 @@ def trigger_client_enrichment_task(client_id: str, original_name: str):
         # Don't fail case creation if enrichment task fails - it's a nice-to-have
         logger.error(
             f"Failed to enqueue ICE enrichment task for client {client_id}: {e}"
+        )
+
+
+def trigger_case_details_extraction_task(
+    case_id: str,
+    organization_id: str,
+    final_docx_path: str,
+    overwrite_existing: bool = False,
+) -> None:
+    """
+    Enqueue async task to extract case details from final report.
+
+    Called AFTER case finalization (after db.commit()) to populate CaseDetailsPanel.
+    Uses gemini-2.0-flash-lite-001 for cost-effective extraction.
+    """
+    if settings.RUN_LOCALLY:
+        # Local dev: run in background thread (like ICE enrichment)
+        import threading
+
+        from app.services.case_details_extractor import run_extraction_sync
+
+        def _run() -> None:
+            run_extraction_sync(
+                case_id=case_id,
+                org_id=organization_id,
+                final_docx_path=final_docx_path,
+                overwrite_existing=overwrite_existing,
+            )
+
+        thread = threading.Thread(target=_run, daemon=True)
+        thread.start()
+        logger.info(f"[LOCAL] Started case details extraction thread for {case_id}")
+        return
+
+    # Production: Cloud Tasks
+    try:
+        client = tasks_v2.CloudTasksClient()
+        parent = settings.CLOUD_TASKS_QUEUE_PATH
+
+        task = {
+            "http_request": {
+                "http_method": tasks_v2.HttpMethod.POST,
+                "url": f"{settings.RESOLVED_BACKEND_URL}/api/v1/tasks/extract-case-details",
+                "headers": {"Content-Type": "application/json"},
+                "oidc_token": {
+                    "service_account_email": settings.CLOUD_TASKS_SA_EMAIL,
+                    "audience": settings.CLOUD_RUN_AUDIENCE_URL,
+                },
+                "body": json.dumps(
+                    {
+                        "case_id": case_id,
+                        "organization_id": organization_id,
+                        "final_docx_path": final_docx_path,
+                        "overwrite_existing": overwrite_existing,
+                    }
+                ).encode(),
+            }
+        }
+
+        logger.info(f"📊 Enqueuing case details extraction task for case {case_id}")
+        response = client.create_task(request={"parent": parent, "task": task})
+        logger.info(f"Case details extraction task created: {response.name}")
+
+    except Exception as e:
+        # Don't fail finalization if extraction task fails - case is already saved
+        logger.error(
+            f"Failed to enqueue case details extraction task for {case_id}: {e}"
         )
 
 
@@ -629,8 +703,11 @@ async def _check_and_trigger_generation(
                     topic="generate_report",
                     organization_id=(
                         UUID(org_id) if isinstance(org_id, str) else org_id
-                    ),  # For tenant isolation
-                    payload={"case_id": str(case_id), "organization_id": str(org_id)},
+                    ),
+                    payload={
+                        "case_id": str(case_id),
+                        "organization_id": org_id,
+                    },
                 )
                 db.add(outbox_entry)
 
@@ -684,7 +761,7 @@ def _get_user_friendly_error(raw_error: str) -> str:
         "too large": "File o allegato troppo grande",
         "Unsupported file type": "Tipo di file non supportato",
     }
-    for key, msg in ERROR_MAP.items():
-        if key.lower() in raw_error.lower():
-            return msg
-    return "Errore durante l'elaborazione del documento"
+    return next(
+        (msg for key, msg in ERROR_MAP.items() if key.lower() in raw_error.lower()),
+        "Errore durante l'elaborazione del documento",
+    )

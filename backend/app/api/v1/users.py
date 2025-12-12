@@ -148,14 +148,14 @@ def invite_user(
         logger.warning(f"Race condition detected on invite for {request.email}")
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Email is already invited."
-        )
+        ) from None
     except Exception as e:
         db.rollback()
         logger.error(f"Database error inviting user: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error.",
-        )
+        ) from e
 
 
 # -----------------------------------------------------------------------------

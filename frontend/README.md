@@ -1,6 +1,6 @@
-# PeritoAI Frontend
+# MyPerito Frontend
 
-This is the frontend for the PeritoAI application, built with **Next.js 16** and **React 19**, styled with **Tailwind CSS v4**. It is designed to be deployed on Google Cloud Run.
+This is the frontend for the MyPerito application, built with **Next.js 16** and **React 19**, styled with **Tailwind CSS v4**. It is designed to be deployed on Google Cloud Run.
 
 ## 🚀 Getting Started
 

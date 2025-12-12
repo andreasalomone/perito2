@@ -136,11 +136,11 @@ def create_client(
 
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Client already exists")
+        raise HTTPException(status_code=409, detail="Client already exists") from None
     except Exception as e:
         logger.error(f"Error creating client: {e}")
         db.rollback()
-        raise HTTPException(status_code=500, detail="Failed to create client")
+        raise HTTPException(status_code=500, detail="Failed to create client") from e
 
 
 @router.get(
@@ -217,11 +217,11 @@ def update_client(
         return client
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Update causes conflict")
+        raise HTTPException(status_code=409, detail="Update causes conflict") from None
     except Exception as e:
         logger.error(f"Error updating client {client_id}: {e}")
         db.rollback()
-        raise HTTPException(status_code=500, detail="Failed to update client")
+        raise HTTPException(status_code=500, detail="Failed to update client") from e
 
 
 @router.post(

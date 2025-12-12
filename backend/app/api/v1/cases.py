@@ -315,7 +315,7 @@ def register_document(
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Failed to finalize document storage.",
-        )
+        ) from e
 
     # 3. Commit only if tagging succeeded (or we are okay with it, but here we enforce it)
     db.commit()
@@ -461,10 +461,10 @@ async def download_version(
             return {"download_url": url}
 
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         logger.error(f"Download generation failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        raise HTTPException(status_code=500, detail="Internal Server Error") from e
 
 
 def _delete_case_folders(org_id: str, case_id: str) -> int:
