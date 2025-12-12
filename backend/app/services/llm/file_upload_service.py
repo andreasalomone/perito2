@@ -31,8 +31,8 @@ from app.services.gcs_service import download_file_to_temp
 logger = logging.getLogger(__name__)
 
 # Constants
-MAX_CONCURRENT_UPLOADS = 5  # Prevent thread pool starvation
-MAX_CONCURRENT_DELETES = 10
+MAX_CONCURRENT_UPLOADS = settings.MAX_CONCURRENT_UPLOADS
+MAX_CONCURRENT_DELETES = settings.MAX_CONCURRENT_DELETES
 
 # Define Retriable Exceptions explicitly
 RETRIABLE_EXCEPTIONS = (
@@ -180,8 +180,17 @@ async def upload_single_file(
                 await asyncio.to_thread(
                     download_file_to_temp, candidate.gcs_uri, temp_file_path
                 )
-                target_path = temp_file_path
-                logger.debug(f"Downloaded {safe_name} to {temp_file_path}")
+
+                # TOCTOU Check: If file appeared during download, use it instead of temp
+                if os.path.exists(candidate.file_path):
+                    logger.info(
+                        f"File {safe_name} appeared locally during download. Using local file."
+                    )
+                    # target_path remains candidate.file_path
+                    # temp_file_path will be cleaned up in finally block
+                else:
+                    target_path = temp_file_path
+                    logger.debug(f"Downloaded {safe_name} to {temp_file_path}")
 
             logger.debug(f"Starting upload for: {candidate.display_name} ({safe_name})")
 

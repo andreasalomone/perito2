@@ -1,4 +1,8 @@
+import contextlib
+import logging
 import os
+import shutil
+import tempfile
 from typing import Dict, Optional, Tuple
 
 
@@ -22,54 +26,94 @@ class PromptManager:
         """Returns the file path for a given prompt name."""
         return self.PROMPT_FILES.get(prompt_name)
 
-    def get_prompt_content(self, prompt_name: str) -> Tuple[str, bool]:
+    def get_prompt_content(self, prompt_name: str) -> str:
         """
         Reads the content of a specific prompt file.
-        Returns: (content, success)
+        Returns: content matching the prompt_name.
+        Raises:
+            ValueError: If the prompt is not configured.
+            FileNotFoundError: If the prompt file does not exist.
+            IOError: If there is an error reading the file.
         """
         file_path = self.get_prompt_path(prompt_name)
         if not file_path:
-            return f"Error: Prompt file for '{prompt_name}' not configured.", False
+            raise ValueError(f"Error: Prompt file for '{prompt_name}' not configured.")
 
         if not os.path.exists(file_path):
-            return (
-                f"Error: Prompt file for '{prompt_name}' not found at {file_path}.",
-                False,
+            raise FileNotFoundError(
+                f"Error: Prompt file for '{prompt_name}' not found at {file_path}."
             )
 
         try:
             with open(file_path, "r", encoding="utf-8") as f:
-                return f.read(), True
+                return f.read()
         except Exception as e:
-            return f"Error reading file: {e}", False
+            raise IOError(f"Error reading file: {e}") from e
 
-    def update_prompt_content(self, prompt_name: str, content: str) -> Tuple[str, bool]:
+    def update_prompt_content(self, prompt_name: str, content: str) -> str:
         """
         Writes new content to a specific prompt file.
-        Returns: (message, success)
+        Returns: Success message.
+        Raises:
+            ValueError: If the prompt is not configured.
+            IOError: If there is an error writing to the file.
         """
         file_path = self.get_prompt_path(prompt_name)
         if not file_path:
-            return f"Error: Prompt file for '{prompt_name}' not configured.", False
+            raise ValueError(f"Error: Prompt file for '{prompt_name}' not configured.")
 
+        tmp_path = None
         try:
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(content)
+            # Create a temporary file in the same directory to ensure atomic move
+            dir_name = os.path.dirname(file_path)
+            with tempfile.NamedTemporaryFile(
+                "w", dir=dir_name, delete=False, encoding="utf-8"
+            ) as tmp_file:
+                # Capture path immediately for cleanup in case write fails
+                tmp_path = tmp_file.name
+                tmp_file.write(content)
+                tmp_file.flush()
+                # Ensure data is written to disk
+                os.fsync(tmp_file.fileno())
+
+            # Copy permissions if target exists
+            if os.path.exists(file_path):
+                with contextlib.suppress(OSError):
+                    shutil.copymode(file_path, tmp_path)
+            # Atomic replace
+            os.replace(tmp_path, file_path)
 
             friendly_name = prompt_name.replace("_", " ").capitalize()
-            return f"{friendly_name} prompt updated successfully.", True
+            return f"{friendly_name} prompt updated successfully."
         except Exception as e:
-            return f"Error writing to file: {e}", False
+            # Clean up temp file if it exists and wasn't moved
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception as cleanup_exc:
+                    logging.warning(
+                        f"Failed to clean up temporary file '{tmp_path}': {cleanup_exc}"
+                    )
+            raise IOError(f"Error writing to file: {e}") from e
 
     def get_all_prompts(self) -> Dict[str, str]:
         """
         Reads the content of all configured prompt files.
         Returns: Dict[prompt_name, content]
+        Raises: RuntimeError if any prompt fails to load.
         """
         all_prompts = {}
+        errors = []
         for name in self.PROMPT_FILES:
-            content, success = self.get_prompt_content(name)
-            all_prompts[name] = content
+            try:
+                content = self.get_prompt_content(name)
+                all_prompts[name] = content
+            except Exception as e:
+                errors.append(f"{name}: {e}")
+
+        if errors:
+            raise RuntimeError(f"Failed to load prompts: {'; '.join(errors)}")
+
         return all_prompts
 
 
@@ -77,32 +121,27 @@ class PromptManager:
 prompt_manager = PromptManager()
 
 
-# Helper function for backward compatibility and module-level loading
-def _load_prompt_from_file(file_path: str) -> str:
-    try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            return f.read()
-    except Exception as e:
-        import logging
-
-        logging.getLogger(__name__).error(f"Error loading prompt from {file_path}: {e}")
-        return ""
-
-
 # Load the prompts from their files (Module-level constants for app usage)
 # These are loaded once at startup.
 # If dynamic updates are needed during runtime without restart,
 # the app should use prompt_manager.get_prompt_content() instead.
-_system_instruction_path = prompt_manager.get_prompt_path("system_instruction")
-_style_guide_path = prompt_manager.get_prompt_path("style_guide")
-_schema_report_path = prompt_manager.get_prompt_path("schema_report")
-assert _system_instruction_path is not None
-assert _style_guide_path is not None
-assert _schema_report_path is not None
+try:
+    SYSTEM_INSTRUCTION: str = prompt_manager.get_prompt_content("system_instruction")
+except Exception as e:
+    logging.getLogger(__name__).error(f"Error loading system_instruction: {e}")
+    SYSTEM_INSTRUCTION = ""
 
-SYSTEM_INSTRUCTION: str = _load_prompt_from_file(_system_instruction_path)
-GUIDA_STILE_TERMINOLOGIA_ED_ESEMPI: str = _load_prompt_from_file(_style_guide_path)
-SCHEMA_REPORT: str = _load_prompt_from_file(_schema_report_path)
+try:
+    GUIDA_STILE_TERMINOLOGIA_ED_ESEMPI: str = prompt_manager.get_prompt_content("style_guide")
+except Exception as e:
+    logging.getLogger(__name__).error(f"Error loading style_guide: {e}")
+    GUIDA_STILE_TERMINOLOGIA_ED_ESEMPI = ""
+
+try:
+    SCHEMA_REPORT: str = prompt_manager.get_prompt_content("schema_report")
+except Exception as e:
+    logging.getLogger(__name__).error(f"Error loading schema_report: {e}")
+    SCHEMA_REPORT = ""
 
 # Backwards-compatible aliases
 PREDEFINED_STYLE_REFERENCE_TEXT: str = GUIDA_STILE_TERMINOLOGIA_ED_ESEMPI

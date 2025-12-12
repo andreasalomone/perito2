@@ -72,11 +72,11 @@ class LocalStorage(StorageProvider):
         # Security Check: Resolve and compare parents
         try:
             target_file.relative_to(self.base_path)
-        except ValueError:
+        except ValueError as e:
             logger.warning(
                 f"Security Alert: Path traversal attempt detected: {folder}/{filename}"
             )
-            raise StorageException("Invalid file path.")
+            raise StorageException("Invalid file path.") from e
 
         return target_file
 
@@ -104,7 +104,7 @@ class LocalStorage(StorageProvider):
 
         except OSError as e:
             logger.error(f"Local storage write failed: {e}")
-            raise StorageException(f"Failed to save file locally: {e}")
+            raise StorageException(f"Failed to save file locally: {e}") from e
 
 
 class GoogleCloudStorage(StorageProvider):
@@ -146,7 +146,7 @@ class GoogleCloudStorage(StorageProvider):
 
         except GoogleAPICallError as e:
             logger.error(f"GCS upload failed: {e}")
-            raise StorageException(f"Failed to upload to Cloud Storage: {e}")
+            raise StorageException(f"Failed to upload to Cloud Storage: {e}") from e
 
 
 # -----------------------------------------------------------------------------

@@ -67,6 +67,8 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_MB: int = 50
     MAX_TOTAL_UPLOAD_SIZE_MB: int = 200
     MAX_EXTRACTED_TEXT_LENGTH: int = 4000000
+    MAX_CONCURRENT_UPLOADS: int = 5  # Prevent thread pool starvation
+    MAX_CONCURRENT_DELETES: int = 10
 
     # Map extensions to MIME types (Source of Truth for Uploads)
     ALLOWED_MIME_TYPES: dict = {
