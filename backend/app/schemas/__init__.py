@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
@@ -177,6 +177,12 @@ class DocumentRegisterPayload(BaseModel):
     filename: str
     gcs_path: str
     mime_type: str
+
+
+class GeneratePayload(BaseModel):
+    """Payload for report generation with language option."""
+    # SECURITY: Use Literal to restrict to allowed values only (defense in depth)
+    language: Literal["italian", "english", "spanish"] = "italian"
 
 
 # --- CLIENTS ---

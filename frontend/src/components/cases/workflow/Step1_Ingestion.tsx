@@ -1,19 +1,36 @@
 "use client";
 
+import { useState } from "react";
 import { CaseDetail } from "@/types";
 import { CaseFileUploader } from "@/components/cases/CaseFileUploader";
 import { DocumentItem } from "@/components/cases/DocumentItem";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Upload, Play, FileText, AlertCircle, Loader2 } from "lucide-react";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { Upload, Play, FileText, AlertCircle, Loader2, Globe } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+
+// Language options for report generation
+export type ReportLanguage = "italian" | "english" | "spanish";
+
+const LANGUAGE_OPTIONS: { value: ReportLanguage; label: string }[] = [
+    { value: "italian", label: "Italiano" },
+    { value: "english", label: "English" },
+    { value: "spanish", label: "Español" },
+];
 
 interface Step1IngestionProps {
     caseData: CaseDetail;
     caseId: string;
     onUploadComplete: () => void;
-    onGenerate: () => Promise<void>;
+    onGenerate: (language: ReportLanguage) => Promise<void>;
     onDeleteDocument: (docId: string) => Promise<void>;
     isGenerating: boolean;
     isProcessingDocs: boolean;
@@ -36,6 +53,7 @@ export function Step1_Ingestion({
     isProcessingDocs,
 }: Step1IngestionProps) {
     const documents = caseData?.documents || [];
+    const [selectedLanguage, setSelectedLanguage] = useState<ReportLanguage>("italian");
 
     // Count documents by status
     const successDocs = documents.filter(d => d.ai_status === 'SUCCESS');
@@ -130,12 +148,34 @@ export function Step1_Ingestion({
                 </Alert>
             )}
 
-            {/* Generate Button */}
-            <div className="flex justify-end pt-4">
+            {/* Language Selection & Generate Button */}
+            <div className="flex flex-col sm:flex-row justify-end items-stretch sm:items-center gap-3 pt-4">
+                {/* Language Dropdown */}
+                <div className="flex items-center gap-2">
+                    <Globe className="h-4 w-4 text-muted-foreground" />
+                    <Select
+                        value={selectedLanguage}
+                        onValueChange={(value) => setSelectedLanguage(value as ReportLanguage)}
+                        disabled={isGenerating || isProcessingDocs}
+                    >
+                        <SelectTrigger className="w-[140px]">
+                            <SelectValue placeholder="Lingua" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {LANGUAGE_OPTIONS.map((lang) => (
+                                <SelectItem key={lang.value} value={lang.value}>
+                                    {lang.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+
+                {/* Generate Button */}
                 <Button
                     size="lg"
                     disabled={!canGenerate}
-                    onClick={onGenerate}
+                    onClick={() => onGenerate(selectedLanguage)}
                     className="min-w-[200px]"
                 >
                     {isGenerating ? (

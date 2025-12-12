@@ -105,6 +105,7 @@ class PromptBuilderServiceProtocol(Protocol):
         uploaded_file_objects: List[Any],
         upload_error_messages: List[str],
         use_cache: bool,
+        language: str = "italian",
     ) -> List[Any]: ...
 
 
@@ -350,14 +351,19 @@ class GeminiReportGenerator:
             reraise=True,
         )
 
-    async def generate(self, processed_files: List[ProcessedFile]) -> ReportResult:
-        """Main entry point for report generation."""
+    async def generate(self, processed_files: List[ProcessedFile], language: str = "italian") -> ReportResult:
+        """Main entry point for report generation.
+        
+        Args:
+            processed_files: List of files to process.
+            language: Target output language for the report (italian, english, spanish).
+        """
         # Cost Safeguard: Limit concurrent executions via instance semaphore
         async with self._semaphore:
-            return await self._generate_internal(processed_files)
+            return await self._generate_internal(processed_files, language)
 
     async def _generate_internal(
-        self, processed_files: List[ProcessedFile]
+        self, processed_files: List[ProcessedFile], language: str = "italian"
     ) -> ReportResult:
         """Internal generation logic (protected by semaphore)."""
         vision_parts: List[Any] = (
@@ -426,6 +432,7 @@ class GeminiReportGenerator:
                 uploaded_files=vision_parts,  # Now contains both Part and File objects
                 upload_errors=upload_errors,
                 cache_name=cache_name,
+                language=language,
             )
 
             # 4. Parse & Extract
@@ -621,6 +628,7 @@ class GeminiReportGenerator:
         uploaded_files: List[Any],
         upload_errors: List[str],
         cache_name: Optional[str],
+        language: str = "italian",
     ) -> Any:
 
         # Helper to regenerate prompt parts based on strategy
@@ -630,6 +638,7 @@ class GeminiReportGenerator:
                 uploaded_file_objects=uploaded_files,
                 upload_error_messages=upload_errors,
                 use_cache=use_cache,
+                language=language,
             )
 
         # Strategy 1: Primary Model + Cache

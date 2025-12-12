@@ -29,6 +29,10 @@ class TaskBase(BaseModel):
 
 class CaseTaskPayload(TaskBase):
     case_id: UUID4 = Field(..., description="Target Case UUID")
+    # SECURITY: Strict allowlist for language values
+    language: Literal["italian", "english", "spanish"] = Field(
+        default="italian", description="Output language for report"
+    )
 
 
 class DocumentTaskPayload(TaskBase):
@@ -147,10 +151,12 @@ async def generate_report(
     """
     Async Worker: Compiles DOCX.
     """
-    logger.info(f"🚀 Generating Report: {payload.case_id}")
+    logger.info(f"🚀 Generating Report: {payload.case_id} (language: {payload.language})")
     try:
         await report_generation_service.run_generation_task(
-            case_id=str(payload.case_id), organization_id=str(payload.organization_id)
+            case_id=str(payload.case_id),
+            organization_id=str(payload.organization_id),
+            language=payload.language,
         )
     except Exception as e:
         logger.error(f"❌ Gen Task Failed: {e}", exc_info=True)

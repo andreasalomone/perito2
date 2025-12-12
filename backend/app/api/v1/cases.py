@@ -346,8 +346,12 @@ async def trigger_generation(
     case_id: UUID,
     background_tasks: BackgroundTasks,
     db: Annotated[Session, Depends(get_db)],
+    payload: Optional[schemas.GeneratePayload] = None,
 ) -> dict:
     import asyncio
+
+    # Extract language from payload (default to Italian)
+    language = payload.language if payload else "italian"
 
     # PERF FIX: Wrap sync DB operations in asyncio.to_thread()
     def _get_case_and_update_status():
@@ -369,11 +373,12 @@ async def trigger_generation(
             generation_service.run_generation_task,
             case_id=str(case.id),
             organization_id=str(case.organization_id),
+            language=language,
         )
     else:
         # PROD: Cloud Tasks
         await generation_service.trigger_generation_task(
-            str(case.id), str(case.organization_id)
+            str(case.id), str(case.organization_id), language=language
         )
 
     return {"status": "generation_started"}

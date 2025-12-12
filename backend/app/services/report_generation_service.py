@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # NOTE: Phase 3 optimization removed the download step - we now use Part.from_uri() directly
 
 
-async def run_generation_task(case_id: str, organization_id: str):
+async def run_generation_task(case_id: str, organization_id: str, language: str = "italian"):
     """
     Wrapper for background execution that manages its own ASYNC DB session.
     Uses AsyncSessionLocal for proper async database operations.
@@ -35,7 +35,7 @@ async def run_generation_task(case_id: str, organization_id: str):
                 {"org_id": organization_id},
             )
 
-            await generate_report_logic(case_id, organization_id, db)
+            await generate_report_logic(case_id, organization_id, db, language=language)
         except Exception as e:
             logger.error(f"Async generation task failed: {e}")
             await db.rollback()
@@ -134,7 +134,7 @@ async def process_case_logic(case_id: str, organization_id: str, db: AsyncSessio
         )
 
 
-async def trigger_generation_task(case_id: str, organization_id: str):
+async def trigger_generation_task(case_id: str, organization_id: str, language: str = "italian"):
     """
     Enqueues the 'generate-report' task.
     """
@@ -143,7 +143,7 @@ async def trigger_generation_task(case_id: str, organization_id: str):
         # Run in background (fire and forget) or await if we want to block
         # Since this is usually called from a task or API, we can just run it.
         # But we need a fresh DB session if we run it directly.
-        await run_generation_task(case_id, organization_id)
+        await run_generation_task(case_id, organization_id, language=language)
         return
 
     try:
@@ -160,12 +160,12 @@ async def trigger_generation_task(case_id: str, organization_id: str):
                     "audience": settings.CLOUD_RUN_AUDIENCE_URL,  # Use Cloud Run URL, not custom domain
                 },
                 "body": json.dumps(
-                    {"case_id": str(case_id), "organization_id": organization_id}
+                    {"case_id": str(case_id), "organization_id": organization_id, "language": language}
                 ).encode(),
             }
         }
 
-        logger.info(f"🚀 Enqueuing generation task for case {case_id}")
+        logger.info(f"🚀 Enqueuing generation task for case {case_id} with language: {language}")
         # PERF FIX: Wrap sync gRPC call in asyncio.to_thread() to prevent event loop blocking
         await asyncio.to_thread(
             client.create_task, request={"parent": parent, "task": task}
@@ -178,13 +178,19 @@ async def trigger_generation_task(case_id: str, organization_id: str):
         raise
 
 
-async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSession):
+async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSession, language: str = "italian"):
     """
     Phase 2: Generation
     Called when all documents are processed.
     1. Aggregates data.
     2. Generates AI Report.
     3. Creates Version 1.
+    
+    Args:
+        case_id: The case UUID
+        organization_id: The organization UUID
+        db: The async database session
+        language: The target output language for the report (italian, english, spanish)
     """
     # 1. Fetch case
     result = await db.execute(select(Case).filter(Case.id == case_id).with_for_update())
@@ -412,7 +418,8 @@ async def generate_report_logic(case_id: str, organization_id: str, db: AsyncSes
         ]
 
         report_result = await gemini_generator.generate(
-            processed_files=processed_files_models
+            processed_files=processed_files_models,
+            language=language,
         )
         report_text = report_result.content
         # Token usage available in report_result.usage if needed for logging

@@ -27,6 +27,7 @@ import {
     Step3_Review,
     Step4_Closure,
 } from "@/components/cases/workflow";
+import { ReportLanguage } from "@/components/cases/workflow/Step1_Ingestion";
 
 export default function CaseWorkspace() {
     const { id } = useParams();
@@ -88,11 +89,11 @@ export default function CaseWorkspace() {
 
     // --- Handlers ---
 
-    const handleGenerate = useCallback(async () => {
+    const handleGenerate = useCallback(async (language: ReportLanguage = "italian") => {
         setIsGenerating(true);
         try {
             const token = await getToken();
-            await axios.post(`${apiUrl}/api/v1/cases/${caseId}/generate`, {}, {
+            await axios.post(`${apiUrl}/api/v1/cases/${caseId}/generate`, { language }, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             toast.success("Generazione avviata! Il sistema ti avviserà al termine.");
