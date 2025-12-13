@@ -18,8 +18,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Upload, UploadCloud, Play, FileText, AlertCircle, Loader2, Globe, MessageSquare } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { Upload, UploadCloud, Play, AlertCircle, Loader2, Globe, MessageSquare } from "lucide-react";
+import { AnimatePresence } from "framer-motion";
+import { StaggerList, StaggerItem } from "@/components/primitives";
 
 // Language options for report generation
 export type ReportLanguage = "italian" | "english" | "spanish";
@@ -137,54 +138,82 @@ export function IngestionPanel({
                         />
                     ) : (
                         <div className="space-y-4">
-                            <AnimatePresence mode="popLayout">
-                                <div className="grid gap-2">
+                            <StaggerList className="grid gap-2">
+                                <AnimatePresence mode="popLayout">
                                     {documents.map((doc) => (
-                                        <motion.div
-                                            key={doc.id}
-                                            layout
-                                            initial={{ opacity: 0, y: 10 }}
-                                            animate={{ opacity: 1, y: 0 }}
-                                            exit={{ opacity: 0, x: -10 }}
-                                            transition={{ duration: 0.2 }}
-                                        >
+                                        <StaggerItem key={doc.id}>
                                             <DocumentItem
                                                 doc={doc}
                                                 onDelete={() => onDeleteDocument(doc.id)}
                                             />
-                                        </motion.div>
+                                        </StaggerItem>
                                     ))}
-                                </div>
-                            </AnimatePresence>
+                                </AnimatePresence>
+                            </StaggerList>
                         </div>
                     )}
                 </CardContent>
             </Card>
 
-            {/* Early Analysis Section */}
+            {/* Early Analysis Section - Always reserve space to prevent CLS */}
             {(documentAnalysis || preliminaryReport) && (
                 <div className="grid md:grid-cols-2 gap-4">
-                    {documentAnalysis && (
-                        <DocumentAnalysisCard
-                            analysis={documentAnalysis.analysis}
-                            isStale={documentAnalysis.isStale}
-                            canAnalyze={documentAnalysis.canAnalyze}
-                            pendingDocs={documentAnalysis.pendingDocs}
-                            isLoading={documentAnalysis.isLoading}
-                            isGenerating={documentAnalysis.isGenerating}
-                            onGenerate={documentAnalysis.onGenerate}
-                        />
-                    )}
-                    {preliminaryReport && (
-                        <PreliminaryReportCard
-                            report={preliminaryReport.report}
-                            canGenerate={preliminaryReport.canGenerate}
-                            pendingDocs={preliminaryReport.pendingDocs}
-                            isLoading={preliminaryReport.isLoading}
-                            isGenerating={preliminaryReport.isGenerating}
-                            onGenerate={preliminaryReport.onGenerate}
-                        />
-                    )}
+                    {/* Document Analysis Card or Skeleton */}
+                    {documentAnalysis ? (
+                        documentAnalysis.isLoading && !documentAnalysis.analysis ? (
+                            <Card className="h-48 animate-pulse">
+                                <CardHeader className="pb-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="h-5 w-32 bg-muted rounded" />
+                                        <div className="h-5 w-20 bg-muted rounded" />
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="space-y-3">
+                                    <div className="h-4 w-full bg-muted rounded" />
+                                    <div className="h-4 w-3/4 bg-muted rounded" />
+                                    <div className="h-10 w-full bg-muted rounded" />
+                                </CardContent>
+                            </Card>
+                        ) : (
+                            <DocumentAnalysisCard
+                                analysis={documentAnalysis.analysis}
+                                isStale={documentAnalysis.isStale}
+                                canAnalyze={documentAnalysis.canAnalyze}
+                                pendingDocs={documentAnalysis.pendingDocs}
+                                isLoading={documentAnalysis.isLoading}
+                                isGenerating={documentAnalysis.isGenerating}
+                                onGenerate={documentAnalysis.onGenerate}
+                            />
+                        )
+                    ) : null}
+
+                    {/* Preliminary Report Card or Skeleton */}
+                    {preliminaryReport ? (
+                        preliminaryReport.isLoading && !preliminaryReport.report ? (
+                            <Card className="h-48 animate-pulse">
+                                <CardHeader className="pb-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="h-5 w-36 bg-muted rounded" />
+                                        <div className="h-5 w-24 bg-muted rounded" />
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="space-y-3">
+                                    <div className="h-4 w-full bg-muted rounded" />
+                                    <div className="h-4 w-2/3 bg-muted rounded" />
+                                    <div className="h-10 w-full bg-muted rounded" />
+                                </CardContent>
+                            </Card>
+                        ) : (
+                            <PreliminaryReportCard
+                                report={preliminaryReport.report}
+                                canGenerate={preliminaryReport.canGenerate}
+                                pendingDocs={preliminaryReport.pendingDocs}
+                                isLoading={preliminaryReport.isLoading}
+                                isGenerating={preliminaryReport.isGenerating}
+                                onGenerate={preliminaryReport.onGenerate}
+                            />
+                        )
+                    ) : null}
                 </div>
             )}
 

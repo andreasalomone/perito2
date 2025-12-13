@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { FileText, Loader2, RefreshCw, Clock, CheckCircle2, Edit, Download } from "lucide-react";
 import { ExpandableScreen, ExpandableScreenTrigger, ExpandableScreenContent } from "@/components/ui/expandable-screen";
 import { PreliminaryReport } from "@/types";
-import ReactMarkdown from "react-markdown";
+import { MarkdownContent } from "@/components/ui/markdown-content";
 import { useRef, useMemo } from "react";
 import { ScrollProgress } from "@/components/motion-primitives/scroll-progress";
 
@@ -171,22 +171,11 @@ export function PreliminaryReportCard({
                                 {/* Content */}
                                 <div ref={scrollRef} className="flex-1 overflow-y-auto p-8 md:p-12 bg-muted/10 relative">
                                     <div className="bg-background shadow-sm border rounded-xl p-8 md:p-12 min-h-full max-w-4xl mx-auto">
-                                        <div className="prose prose-lg dark:prose-invert max-w-none">
-                                            <ReactMarkdown
-                                                components={{
-                                                    h1: ({ children }) => <h1 className="text-3xl font-bold mt-8 mb-4 pb-2 border-b">{children}</h1>,
-                                                    h2: ({ children }) => <h2 className="text-2xl font-semibold mt-8 mb-4 text-purple-800 dark:text-purple-300">{children}</h2>,
-                                                    h3: ({ children }) => <h3 className="text-xl font-medium mt-6 mb-3">{children}</h3>,
-                                                    ul: ({ children }) => <ul className="list-disc list-inside my-4 space-y-2">{children}</ul>,
-                                                    ol: ({ children }) => <ol className="list-decimal list-inside my-4 space-y-2">{children}</ol>,
-                                                    p: ({ children }) => <p className="my-4 text-gray-700 dark:text-gray-300 leading-relaxed text-justify">{children}</p>,
-                                                    strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
-                                                    blockquote: ({ children }) => <blockquote className="border-l-4 border-purple-500 pl-4 italic my-4 bg-muted/30 p-2 rounded-r">{children}</blockquote>
-                                                }}
-                                            >
-                                                {report.content}
-                                            </ReactMarkdown>
-                                        </div>
+                                        <MarkdownContent
+                                            content={report.content}
+                                            variant="report"
+                                            className="prose-lg"
+                                        />
                                     </div>
                                 </div>
                             </div>

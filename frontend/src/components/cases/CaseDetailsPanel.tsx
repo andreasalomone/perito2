@@ -2,7 +2,7 @@ import { useState } from "react";
 import { CaseDetail } from "@/types";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import ReactMarkdown from "react-markdown";
+import { MarkdownContent } from "@/components/ui/markdown-content";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
     ChevronDown,
@@ -187,9 +187,7 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
                 field.type === "textarea" ? "whitespace-pre-wrap truncate-none line-clamp-4" : ""
             )}>
                 {field.type === "markdown" ? (
-                    <div className="prose prose-sm dark:prose-invert max-w-none">
-                        <ReactMarkdown>{String(value || "")}</ReactMarkdown>
-                    </div>
+                    <MarkdownContent content={String(value || "")} variant="compact" />
                 ) : (
                     formatValue(value)
                 )}

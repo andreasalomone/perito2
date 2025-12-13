@@ -48,9 +48,9 @@ export default function CaseWorkspace() {
         currentStep,
     } = useCaseDetail(caseId);
 
-    // Early Analysis hooks
-    const documentAnalysisHook = useDocumentAnalysis(caseId);
-    const preliminaryReportHook = usePreliminaryReport(caseId);
+    // Early Analysis hooks - poll only when documents are processing
+    const documentAnalysisHook = useDocumentAnalysis(caseId, isProcessingDocs ?? false);
+    const preliminaryReportHook = usePreliminaryReport(caseId, isProcessingDocs ?? false);
 
     // Redirect CLOSED/finalized cases to summary page
     useEffect(() => {

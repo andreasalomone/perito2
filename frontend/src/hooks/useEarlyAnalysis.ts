@@ -10,8 +10,11 @@ import { toast } from "sonner";
 /**
  * Hook for managing Document Analysis feature.
  * Provides fetching, staleness detection, and generation trigger.
+ *
+ * @param caseId - The case ID to fetch analysis for
+ * @param shouldPoll - Whether to poll for updates (default: false). Enable when documents are processing.
  */
-export function useDocumentAnalysis(caseId: string | undefined) {
+export function useDocumentAnalysis(caseId: string | undefined, shouldPoll: boolean = false) {
     const { user, getToken } = useAuth();
     const [isGenerating, setIsGenerating] = useState(false);
 
@@ -29,7 +32,7 @@ export function useDocumentAnalysis(caseId: string | undefined) {
         },
         {
             revalidateOnFocus: true,
-            refreshInterval: 5000,
+            refreshInterval: shouldPoll ? 5000 : 0, // Only poll when processing
             keepPreviousData: true,
         }
     );
@@ -81,8 +84,11 @@ export function useDocumentAnalysis(caseId: string | undefined) {
 /**
  * Hook for managing Preliminary Report feature.
  * Provides fetching and generation trigger.
+ *
+ * @param caseId - The case ID to fetch report for
+ * @param shouldPoll - Whether to poll for updates (default: false). Enable when documents are processing.
  */
-export function usePreliminaryReport(caseId: string | undefined) {
+export function usePreliminaryReport(caseId: string | undefined, shouldPoll: boolean = false) {
     const { user, getToken } = useAuth();
     const [isGenerating, setIsGenerating] = useState(false);
 
@@ -100,7 +106,7 @@ export function usePreliminaryReport(caseId: string | undefined) {
         },
         {
             revalidateOnFocus: true,
-            refreshInterval: 5000,
+            refreshInterval: shouldPoll ? 5000 : 0, // Only poll when processing
             keepPreviousData: true,
         }
     );

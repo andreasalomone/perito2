@@ -1,33 +1,18 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { FileSearch, Loader2, RefreshCw, AlertCircle, Clock, CheckCircle2 } from "lucide-react";
 import { DocumentAnalysis } from "@/types";
 import { cn } from "@/lib/utils";
-import ReactMarkdown from "react-markdown";
+import { MarkdownContent } from "@/components/ui/markdown-content";
 
 import { useRef } from "react";
 import { ScrollProgress } from "@/components/motion-primitives/scroll-progress";
 
 import { ExpandableScreen, ExpandableScreenTrigger, ExpandableScreenContent } from "@/components/ui/expandable-screen";
-
-// Helper for consistent markdown rendering inside card/modal
-const ExpandableMarkdown = ({ content }: { content: string }) => (
-    <ReactMarkdown
-        components={{
-            p: ({ children }) => <p className="my-3 text-base text-muted-foreground leading-relaxed">{children}</p>,
-            strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
-            ul: ({ children }) => <ul className="list-disc list-inside my-3 space-y-1">{children}</ul>,
-            li: ({ children }) => <li className="text-base">{children}</li>,
-            h3: ({ children }) => <h3 className="text-lg font-semibold mt-4 mb-2">{children}</h3>,
-        }}
-    >
-        {content}
-    </ReactMarkdown>
-);
 
 interface DocumentAnalysisCardProps {
     analysis: DocumentAnalysis | null;
@@ -177,7 +162,7 @@ export function DocumentAnalysisCard({
                                 <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 relative">
                                     {/* Summary with Markdown */}
                                     <div className="prose prose-blue dark:prose-invert max-w-none">
-                                        <ExpandableMarkdown content={analysis.summary} />
+                                        <MarkdownContent content={analysis.summary} variant="default" />
                                     </div>
 
                                     {/* Analysis Breakdown Grid */}

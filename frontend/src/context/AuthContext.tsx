@@ -113,7 +113,7 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
         });
 
         return () => unsubscribe();
-    }, [firebaseConfig]);
+    }, [firebaseConfig, apiUrl]);
 
     const login = async () => {
         if (authRef.current) {
