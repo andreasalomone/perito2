@@ -10,7 +10,7 @@ import { Eye, Download, ArrowRight, Edit, ExternalLink, Loader2 } from "lucide-r
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
-interface Step3ReviewProps {
+interface ReviewPanelProps {
     caseData: CaseDetail;
     onDownload: (version: ReportVersion, template: TemplateType) => Promise<void>;
     onOpenInDocs: (version: ReportVersion, template: TemplateType) => Promise<void>;
@@ -19,21 +19,21 @@ interface Step3ReviewProps {
 }
 
 /**
- * Step 3: Review (Revisione)
+ * ReviewPanel - Draft review and editing
  *
  * Shows the latest non-final draft with options to:
  * - Select template (BN/Salomone)
  * - Edit in Google Docs (main CTA)
  * - Download directly (secondary)
- * - Proceed to Step 4
+ * - Proceed to closure
  */
-export function Step3_Review({
+export function ReviewPanel({
     caseData,
     onDownload,
     onOpenInDocs,
     onProceedToClosure,
     onGoBackToIngestion,
-}: Step3ReviewProps) {
+}: ReviewPanelProps) {
     const versions = caseData?.report_versions || [];
     const [selectedTemplate, setSelectedTemplate] = useState<TemplateType>("bn");
     const [isOpening, setIsOpening] = useState(false);

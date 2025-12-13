@@ -20,14 +20,12 @@ import { mutate as globalMutate } from 'swr';
 
 // Workflow components
 import {
-    // WorkflowStepper removed - sidebar hidden for Dashboard feel
     ErrorStateOverlay,
-    Step1_Ingestion,
-    // Step2_Intelligence removed - processing now handled inline in Step1
-    Step3_Review,
-    Step4_Closure,
+    IngestionPanel,
+    ReviewPanel,
+    ClosurePanel,
+    ReportLanguage,
 } from "@/components/cases/workflow";
-import { ReportLanguage } from "@/components/cases/workflow/Step1_Ingestion";
 
 export default function CaseWorkspace() {
     const { id } = useParams();
@@ -332,7 +330,7 @@ export default function CaseWorkspace() {
                         onRetryGeneration={handleGenerate}
                     />
                 ) : displayStep === 1 ? (
-                    <Step1_Ingestion
+                    <IngestionPanel
                         caseData={caseData}
                         caseId={caseId as string}
                         onUploadComplete={mutate}
@@ -359,7 +357,7 @@ export default function CaseWorkspace() {
                         }}
                     />
                 ) : displayStep === 3 ? (
-                    <Step3_Review
+                    <ReviewPanel
                         caseData={caseData}
                         onDownload={handleDownload}
                         onOpenInDocs={handleOpenInDocs}
@@ -367,7 +365,7 @@ export default function CaseWorkspace() {
                         onGoBackToIngestion={handleGoBackToIngestion}
                     />
                 ) : displayStep === 4 ? (
-                    <Step4_Closure
+                    <ClosurePanel
                         caseData={caseData}
                         onFinalize={handleFinalize}
                         onConfirmDocs={handleConfirmDocs}

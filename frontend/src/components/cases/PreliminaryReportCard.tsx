@@ -4,11 +4,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { FileText, Loader2, RefreshCw, Clock, CheckCircle2 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { FileText, Loader2, RefreshCw, Clock, CheckCircle2, Edit, Download } from "lucide-react";
+import { ExpandableScreen, ExpandableScreenTrigger, ExpandableScreenContent } from "@/components/ui/expandable-screen";
 import { PreliminaryReport } from "@/types";
 import ReactMarkdown from "react-markdown";
-import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useRef, useMemo } from "react";
+import { ScrollProgress } from "@/components/motion-primitives/scroll-progress";
 
 interface PreliminaryReportCardProps {
     report: PreliminaryReport | null;
@@ -38,7 +40,7 @@ export function PreliminaryReportCard({
 }: PreliminaryReportCardProps) {
     const hasReport = report !== null;
     const isBlocked = pendingDocs > 0;
-    const [isExpanded, setIsExpanded] = useState(false);
+    const scrollRef = useRef<HTMLDivElement>(null);
 
     // Determine status for badge
     const getStatus = () => {
@@ -50,12 +52,18 @@ export function PreliminaryReportCard({
     const status = getStatus();
     const StatusIcon = status.icon;
 
-    // Truncate content for preview (first 500 chars)
-    const PREVIEW_LENGTH = 500;
-    const shouldTruncate = hasReport && report.content.length > PREVIEW_LENGTH;
-    const displayContent = isExpanded
-        ? report?.content
-        : report?.content?.slice(0, PREVIEW_LENGTH) + (shouldTruncate ? "..." : "");
+    // Stable date formatting to avoid hydration mismatch
+    const formattedDate = useMemo(() => {
+        if (!report) return "";
+        try {
+            return new Intl.DateTimeFormat('it-IT', {
+                dateStyle: 'long',
+                timeStyle: 'short'
+            }).format(new Date(report.created_at));
+        } catch {
+            return "Data sconosciuta";
+        }
+    }, [report]);
 
     return (
         <Card>
@@ -70,9 +78,6 @@ export function PreliminaryReportCard({
                         {status.label}
                     </Badge>
                 </div>
-                <CardDescription>
-                    Documento di lavoro interno generato dall&apos;AI per la revisione del caso.
-                </CardDescription>
             </CardHeader>
 
             <CardContent className="space-y-4">
@@ -86,89 +91,138 @@ export function PreliminaryReportCard({
                     </Alert>
                 )}
 
-                {/* Report Content */}
-                {hasReport && (
+                {/* Loading State */}
+                {isLoading && !hasReport && !isBlocked && (
                     <div className="space-y-3">
-                        <div className={cn(
-                            "prose prose-sm dark:prose-invert max-w-none",
-                            "bg-muted/30 rounded-lg p-4",
-                            !isExpanded && "max-h-[300px] overflow-hidden relative"
-                        )}>
-                            <ReactMarkdown
-                                components={{
-                                    h1: ({ children }) => <h1 className="text-xl font-bold mt-4 mb-2">{children}</h1>,
-                                    h2: ({ children }) => <h2 className="text-lg font-semibold mt-3 mb-2">{children}</h2>,
-                                    h3: ({ children }) => <h3 className="text-base font-medium mt-2 mb-1">{children}</h3>,
-                                    ul: ({ children }) => <ul className="list-disc list-inside my-2 space-y-1">{children}</ul>,
-                                    ol: ({ children }) => <ol className="list-decimal list-inside my-2 space-y-1">{children}</ol>,
-                                    p: ({ children }) => <p className="my-2 text-muted-foreground leading-relaxed">{children}</p>,
-                                    strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
-                                }}
-                            >
-                                {displayContent || ""}
-                            </ReactMarkdown>
+                        <Skeleton className="h-4 w-3/4" />
+                        <Skeleton className="h-4 w-1/2" />
+                        <Skeleton className="h-10 w-full" />
+                    </div>
+                )}
 
-                            {/* Fade overlay when truncated */}
-                            {!isExpanded && shouldTruncate && (
-                                <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-muted/80 to-transparent" />
-                            )}
+                {/* Report Content & Actions */}
+                {hasReport ? (
+                    <ExpandableScreen
+                        layoutId="preliminary-report-expand"
+                        triggerRadius="8px"
+                        contentRadius="12px"
+                    >
+                        <div className="space-y-4">
+                            <div className="bg-muted/30 rounded-lg p-6 border border-dashed flex flex-col items-center justify-center text-center space-y-4">
+                                <FileText className="h-10 w-10 text-purple-600 dark:text-purple-400" />
+                                <div className="space-y-1">
+                                    <h4 className="text-lg font-semibold">Report Disponibile</h4>
+                                    <p className="text-sm text-muted-foreground px-4">
+                                        Generato il {formattedDate}
+                                    </p>
+                                </div>
+                                <ExpandableScreenTrigger className="w-full max-w-xs">
+                                    <Button className="w-full bg-purple-600 hover:bg-purple-700 text-white shadow-lg shadow-purple-900/20 group">
+                                        <FileText className="h-4 w-4 mr-2 group-hover:scale-110 transition-transform" />
+                                        Vedi Report
+                                    </Button>
+                                </ExpandableScreenTrigger>
+                            </div>
                         </div>
 
-                        {/* Expand/Collapse Toggle */}
-                        {shouldTruncate && (
+                        <ExpandableScreenContent className="p-0">
+                            <div className="flex flex-col h-full max-w-5xl mx-auto w-full bg-background">
+                                {/* Header */}
+                                <div className="flex items-center justify-between p-6 border-b shrink-0 bg-background/95 backdrop-blur z-10 relative">
+                                    <div className="space-y-1">
+                                        <h2 className="text-2xl font-bold flex items-center gap-2 text-purple-700 dark:text-purple-400">
+                                            <FileText className="h-6 w-6" />
+                                            Report Preliminare
+                                        </h2>
+                                        <p className="text-muted-foreground">
+                                            Bozza di lavoro generata dall'AI.
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-3 mr-12">
+                                        <Button variant="outline" size="sm" disabled title="Funzionalità in arrivo">
+                                            <Edit className="h-4 w-4 mr-2" />
+                                            Modifica
+                                        </Button>
+                                        <Button variant="outline" size="sm" disabled title="Funzionalità in arrivo">
+                                            <Download className="h-4 w-4 mr-2" />
+                                            Download
+                                        </Button>
+                                        <div className="h-6 w-px bg-border mx-1" />
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-muted-foreground hover:text-destructive"
+                                            disabled={!canGenerate || isGenerating || isLoading}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onGenerate(true); // Force regenerate
+                                            }}
+                                        >
+                                            {isGenerating ? (
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                            ) : (
+                                                <RefreshCw className="h-4 w-4" />
+                                            )}
+                                        </Button>
+                                    </div>
+                                    <ScrollProgress containerRef={scrollRef} className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 to-pink-500 z-50" />
+                                </div>
+
+                                {/* Content */}
+                                <div ref={scrollRef} className="flex-1 overflow-y-auto p-8 md:p-12 bg-muted/10 relative">
+                                    <div className="bg-background shadow-sm border rounded-xl p-8 md:p-12 min-h-full max-w-4xl mx-auto">
+                                        <div className="prose prose-lg dark:prose-invert max-w-none">
+                                            <ReactMarkdown
+                                                components={{
+                                                    h1: ({ children }) => <h1 className="text-3xl font-bold mt-8 mb-4 pb-2 border-b">{children}</h1>,
+                                                    h2: ({ children }) => <h2 className="text-2xl font-semibold mt-8 mb-4 text-purple-800 dark:text-purple-300">{children}</h2>,
+                                                    h3: ({ children }) => <h3 className="text-xl font-medium mt-6 mb-3">{children}</h3>,
+                                                    ul: ({ children }) => <ul className="list-disc list-inside my-4 space-y-2">{children}</ul>,
+                                                    ol: ({ children }) => <ol className="list-decimal list-inside my-4 space-y-2">{children}</ol>,
+                                                    p: ({ children }) => <p className="my-4 text-gray-700 dark:text-gray-300 leading-relaxed text-justify">{children}</p>,
+                                                    strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+                                                    blockquote: ({ children }) => <blockquote className="border-l-4 border-purple-500 pl-4 italic my-4 bg-muted/30 p-2 rounded-r">{children}</blockquote>
+                                                }}
+                                            >
+                                                {report.content}
+                                            </ReactMarkdown>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </ExpandableScreenContent>
+                    </ExpandableScreen>
+                ) : (
+                    /* Empty State */
+                    !isLoading && !isBlocked && (
+                        <div className="space-y-4">
+                            <div className="text-center py-6 text-muted-foreground">
+                                <FileText className="h-10 w-10 mx-auto mb-3 opacity-50" />
+                                <p>Nessun report preliminare</p>
+                                <p className="text-sm">Genera un documento di lavoro per il caso.</p>
+                            </div>
                             <Button
-                                variant="ghost"
-                                size="sm"
-                                className="w-full text-muted-foreground"
-                                onClick={() => setIsExpanded(!isExpanded)}
+                                variant={hasReport ? "outline" : "default"}
+                                className="w-full"
+                                disabled={!canGenerate || isGenerating || isLoading || isBlocked}
+                                onClick={() => onGenerate(hasReport)}
                             >
-                                {isExpanded ? "Mostra meno" : "Mostra tutto"}
+                                {isGenerating ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        Generazione in corso...
+                                    </>
+                                ) : (
+                                    <>
+                                        <FileText className="h-4 w-4 mr-2" />
+                                        Genera Report Preliminare
+                                    </>
+                                )}
                             </Button>
-                        )}
-
-                        {/* Generation timestamp */}
-                        <p className="text-xs text-muted-foreground text-right">
-                            Generato: {new Date(report.created_at).toLocaleString("it-IT")}
-                        </p>
-                    </div>
+                        </div>
+                    )
                 )}
-
-                {/* Empty State */}
-                {!hasReport && !isLoading && !isBlocked && (
-                    <div className="text-center py-6 text-muted-foreground">
-                        <FileText className="h-10 w-10 mx-auto mb-3 opacity-50" />
-                        <p>Nessun report preliminare</p>
-                        <p className="text-sm">Genera un documento di lavoro per il caso.</p>
-                    </div>
-                )}
-
-                {/* Generate/Refresh Button */}
-                <div className="pt-2">
-                    <Button
-                        variant={hasReport ? "outline" : "default"}
-                        className="w-full"
-                        disabled={!canGenerate || isGenerating || isLoading || isBlocked}
-                        onClick={() => onGenerate(hasReport)}
-                    >
-                        {isGenerating ? (
-                            <>
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                Generazione in corso...
-                            </>
-                        ) : hasReport ? (
-                            <>
-                                <RefreshCw className="h-4 w-4 mr-2" />
-                                Rigenera Report
-                            </>
-                        ) : (
-                            <>
-                                <FileText className="h-4 w-4 mr-2" />
-                                Genera Report Preliminare
-                            </>
-                        )}
-                    </Button>
-                </div>
             </CardContent>
-        </Card>
+        </Card >
     );
 }

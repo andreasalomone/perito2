@@ -9,6 +9,26 @@ import { DocumentAnalysis } from "@/types";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 
+import { useRef } from "react";
+import { ScrollProgress } from "@/components/motion-primitives/scroll-progress";
+
+import { ExpandableScreen, ExpandableScreenTrigger, ExpandableScreenContent } from "@/components/ui/expandable-screen";
+
+// Helper for consistent markdown rendering inside card/modal
+const ExpandableMarkdown = ({ content }: { content: string }) => (
+    <ReactMarkdown
+        components={{
+            p: ({ children }) => <p className="my-3 text-base text-muted-foreground leading-relaxed">{children}</p>,
+            strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+            ul: ({ children }) => <ul className="list-disc list-inside my-3 space-y-1">{children}</ul>,
+            li: ({ children }) => <li className="text-base">{children}</li>,
+            h3: ({ children }) => <h3 className="text-lg font-semibold mt-4 mb-2">{children}</h3>,
+        }}
+    >
+        {content}
+    </ReactMarkdown>
+);
+
 interface DocumentAnalysisCardProps {
     analysis: DocumentAnalysis | null;
     isStale: boolean;
@@ -40,6 +60,7 @@ export function DocumentAnalysisCard({
 }: DocumentAnalysisCardProps) {
     const hasAnalysis = analysis !== null;
     const isBlocked = pendingDocs > 0;
+    const scrollRef = useRef<HTMLDivElement>(null);
 
     // Determine status for badge
     const getStatus = () => {
@@ -65,9 +86,6 @@ export function DocumentAnalysisCard({
                         {status.label}
                     </Badge>
                 </div>
-                <CardDescription>
-                    Estrazione automatica di informazioni chiave dai documenti caricati.
-                </CardDescription>
             </CardHeader>
 
             <CardContent className="space-y-4">
@@ -81,120 +99,164 @@ export function DocumentAnalysisCard({
                     </Alert>
                 )}
 
-                {/* Stale Warning */}
-                {isStale && hasAnalysis && (
+                {/* Stale Warning - Only show if analysis won't be immediately visible */}
+                {isStale && hasAnalysis && !isBlocked && (
                     <Alert variant="destructive" className="bg-amber-500/10 border-amber-500/50 text-amber-700 dark:text-amber-400">
                         <AlertCircle className="h-4 w-4" />
                         <AlertDescription>
-                            I documenti sono stati modificati. Rigenera l&apos;analisi per risultati aggiornati.
+                            I documenti sono stati modificati.
                         </AlertDescription>
                     </Alert>
                 )}
-                {/* Analysis Content */}
-                {hasAnalysis && (
-                    <div className="space-y-4">
-                        {/* Summary with Markdown */}
-                        <div>
-                            <h4 className="text-sm font-medium mb-2">Sintesi</h4>
-                            <div className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground">
-                                <ReactMarkdown
-                                    components={{
-                                        p: ({ children }) => <p className="my-1.5 text-sm text-muted-foreground leading-relaxed">{children}</p>,
-                                        strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
-                                        ul: ({ children }) => <ul className="list-disc list-inside my-1.5 space-y-0.5">{children}</ul>,
-                                        li: ({ children }) => <li className="text-sm">{children}</li>,
-                                    }}
-                                >
-                                    {analysis.summary}
-                                </ReactMarkdown>
-                            </div>
-                        </div>
 
-                        {/* Analysis Breakdown */}
-                        <div className="grid grid-cols-1 gap-4 pt-2">
-                            {/* Received Docs */}
-                            <div className="bg-green-50/50 dark:bg-green-900/10 p-3 rounded-md border border-green-200/50 dark:border-green-800/20">
-                                <h4 className="text-xs uppercase font-semibold text-green-700 dark:text-green-400 mb-2 flex items-center gap-2">
-                                    <CheckCircle2 className="h-3 w-3" />
-                                    Documenti Rilevati ({analysis.received_docs.length})
-                                </h4>
-                                <ul className="space-y-1.5">
-                                    {analysis.received_docs.map((doc, idx) => (
-                                        <li key={idx} className="text-sm text-muted-foreground flex items-start gap-2">
-                                            <span className="text-green-500 mt-1.5 h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" />
-                                            {doc}
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-
-                            {/* Missing Docs */}
-                            <div className="bg-red-50/50 dark:bg-red-900/10 p-3 rounded-md border border-red-200/50 dark:border-red-800/20">
-                                <h4 className="text-xs uppercase font-semibold text-red-700 dark:text-red-400 mb-2 flex items-center gap-2">
-                                    <AlertCircle className="h-3 w-3" />
-                                    Documenti Mancanti
-                                </h4>
-                                {analysis.missing_docs.length > 0 ? (
-                                    <ul className="space-y-1.5">
-                                        {analysis.missing_docs.map((doc, idx) => (
-                                            <li key={idx} className="text-sm text-muted-foreground flex items-start gap-2">
-                                                <span className="text-red-500 mt-1.5 h-1.5 w-1.5 rounded-full bg-red-500 shrink-0" />
-                                                {doc}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                ) : (
-                                    <p className="text-sm text-green-600 dark:text-green-400 italic flex items-center gap-2">
-                                        <CheckCircle2 className="h-4 w-4" />
-                                        Nessun documento critico mancante.
-                                    </p>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Empty State */}
-                {!hasAnalysis && !isLoading && !isBlocked && (
-                    <div className="text-center py-6 text-muted-foreground">
-                        <FileSearch className="h-10 w-10 mx-auto mb-3 opacity-50" />
-                        <p>Nessuna analisi disponibile</p>
-                        <p className="text-sm">Clicca per analizzare i documenti caricati.</p>
-                    </div>
-                )}
-
-                {/* Generate/Refresh Button */}
-                <div className="pt-2">
-                    <Button
-                        variant={isStale ? "default" : hasAnalysis ? "outline" : "default"}
-                        className="w-full"
-                        disabled={!canAnalyze || isGenerating || isLoading || isBlocked}
-                        onClick={() => onGenerate(isStale)}
+                {/* Analysis Content & Actions */}
+                {hasAnalysis ? (
+                    <ExpandableScreen
+                        layoutId="document-analysis-expand"
+                        triggerRadius="8px"
+                        contentRadius="12px"
                     >
-                        {isGenerating ? (
-                            <>
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                Analisi in corso...
-                            </>
-                        ) : isStale ? (
-                            <>
-                                <RefreshCw className="h-4 w-4 mr-2" />
-                                Aggiorna Analisi
-                            </>
-                        ) : hasAnalysis ? (
-                            <>
-                                <RefreshCw className="h-4 w-4 mr-2" />
-                                Rigenera
-                            </>
-                        ) : (
-                            <>
-                                <FileSearch className="h-4 w-4 mr-2" />
-                                Avvia Analisi
-                            </>
-                        )}
-                    </Button>
-                </div>
+                        <div className="space-y-4">
+                            <div className="bg-muted/30 rounded-lg p-4 border border-dashed flex flex-col items-center justify-center text-center space-y-3">
+                                <CheckCircle2 className="h-8 w-8 text-green-500" />
+                                <div className="space-y-1">
+                                    <h4 className="font-medium">Analisi Completata</h4>
+                                    <p className="text-sm text-muted-foreground px-4">
+                                        {analysis.received_docs.length} documenti rilevati, {analysis.missing_docs.length} mancanti.
+                                    </p>
+                                </div>
+                                <ExpandableScreenTrigger className="w-full">
+                                    <Button variant="outline" className="w-full border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-blue-900 dark:hover:bg-blue-950/50 dark:hover:text-blue-400 transition-colors group">
+                                        <FileSearch className="h-4 w-4 mr-2 group-hover:scale-110 transition-transform" />
+                                        Vedi Analisi
+                                    </Button>
+                                </ExpandableScreenTrigger>
+                            </div>
+                        </div>
+
+                        <ExpandableScreenContent className="p-0">
+                            <div className="flex flex-col h-full max-w-4xl mx-auto w-full">
+                                {/* Header */}
+                                <div className="flex items-center justify-between p-6 border-b shrink-0 bg-background/95 backdrop-blur z-10 relative">
+                                    <div className="space-y-1">
+                                        <h2 className="text-2xl font-bold flex items-center gap-2">
+                                            <FileSearch className="h-6 w-6 text-blue-600" />
+                                            Analisi Documenti
+                                        </h2>
+                                        <p className="text-muted-foreground">
+                                            Dettaglio dell'estrazione informazioni e verifica completezza.
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-2 mr-12"> {/* mr-12 to avoid close button */}
+                                        <Button
+                                            variant={isStale ? "default" : "outline"}
+                                            size="sm"
+                                            disabled={!canAnalyze || isGenerating || isLoading}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onGenerate(true); // Always force refresh here
+                                            }}
+                                        >
+                                            {isGenerating ? (
+                                                <>
+                                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                                    Analisi in corso...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <RefreshCw className="h-4 w-4 mr-2" />
+                                                    {isStale ? "Aggiorna Ora" : "Rigenera Analisi"}
+                                                </>
+                                            )}
+                                        </Button>
+                                    </div>
+                                    <ScrollProgress containerRef={scrollRef} className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 to-cyan-500 z-50" />
+                                </div>
+
+                                {/* Scrollable Content */}
+                                <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 relative">
+                                    {/* Summary with Markdown */}
+                                    <div className="prose prose-blue dark:prose-invert max-w-none">
+                                        <ExpandableMarkdown content={analysis.summary} />
+                                    </div>
+
+                                    {/* Analysis Breakdown Grid */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        {/* Received Docs */}
+                                        <div className="bg-green-50/50 dark:bg-green-900/10 p-5 rounded-xl border border-green-200/50 dark:border-green-800/20">
+                                            <h4 className="text-sm uppercase tracking-wide font-bold text-green-700 dark:text-green-400 mb-4 flex items-center gap-2">
+                                                <CheckCircle2 className="h-4 w-4" />
+                                                Documenti Rilevati ({analysis.received_docs.length})
+                                            </h4>
+                                            <ul className="space-y-2">
+                                                {analysis.received_docs.map((doc, idx) => (
+                                                    <li key={idx} className="text-sm text-foreground/80 flex items-start gap-3 bg-background/50 p-2 rounded-md border border-green-100 dark:border-green-900/30">
+                                                        <span className="text-green-500 mt-1 h-2 w-2 rounded-full bg-green-500 shrink-0" />
+                                                        {doc}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+
+                                        {/* Missing Docs */}
+                                        <div className="bg-red-50/50 dark:bg-red-900/10 p-5 rounded-xl border border-red-200/50 dark:border-red-800/20">
+                                            <h4 className="text-sm uppercase tracking-wide font-bold text-red-700 dark:text-red-400 mb-4 flex items-center gap-2">
+                                                <AlertCircle className="h-4 w-4" />
+                                                Documenti Mancanti
+                                            </h4>
+                                            {analysis.missing_docs.length > 0 ? (
+                                                <ul className="space-y-2">
+                                                    {analysis.missing_docs.map((doc, idx) => (
+                                                        <li key={idx} className="text-sm text-foreground/80 flex items-start gap-3 bg-background/50 p-2 rounded-md border border-red-100 dark:border-red-900/30">
+                                                            <span className="text-red-500 mt-1 h-2 w-2 rounded-full bg-red-500 shrink-0" />
+                                                            {doc}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            ) : (
+                                                <div className="h-full flex flex-col items-center justify-center p-4 text-center text-green-600 dark:text-green-400">
+                                                    <CheckCircle2 className="h-8 w-8 mb-2 opacity-50" />
+                                                    <p className="font-medium">Tutto completo</p>
+                                                    <p className="text-xs opacity-75">Nessun documento critico mancante.</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </ExpandableScreenContent>
+                    </ExpandableScreen>
+                ) : (
+                    /* Empty State logic when no analysis exists */
+                    !isLoading && !isBlocked && (
+                        <div className="space-y-4">
+                            <div className="text-center py-6 text-muted-foreground">
+                                <FileSearch className="h-10 w-10 mx-auto mb-3 opacity-50" />
+                                <p>Nessuna analisi disponibile</p>
+                                <p className="text-sm">Clicca per analizzare i documenti caricati.</p>
+                            </div>
+                            <Button
+                                variant="default"
+                                className="w-full"
+                                disabled={!canAnalyze || isGenerating || isLoading}
+                                onClick={() => onGenerate(false)}
+                            >
+                                {isGenerating ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        Analisi in corso...
+                                    </>
+                                ) : (
+                                    <>
+                                        <FileSearch className="h-4 w-4 mr-2" />
+                                        Avvia Analisi
+                                    </>
+                                )}
+                            </Button>
+                        </div>
+                    )
+                )}
             </CardContent>
-        </Card >
+        </Card>
     );
 }

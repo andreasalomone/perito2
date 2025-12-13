@@ -9,7 +9,7 @@ import { CheckCircle, Upload, Loader2, FileCheck, PartyPopper, RefreshCw } from 
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from 'canvas-confetti';
 
-interface Step4ClosureProps {
+interface ClosurePanelProps {
     caseData: CaseDetail;
     onFinalize: (file: File) => Promise<void>;
     onConfirmDocs: (versionId: string) => Promise<void>;
@@ -17,20 +17,20 @@ interface Step4ClosureProps {
 }
 
 /**
- * Step 4: Closure (Chiusura)
- * 
+ * ClosurePanel - Case finalization
+ *
  * Two paths to finalize:
  * 1. Upload local DOCX file
  * 2. Confirm Google Docs edits (if active draft exists)
- * 
+ *
  * Shows confetti on success before redirecting to summary.
  */
-export function Step4_Closure({
+export function ClosurePanel({
     caseData,
     onFinalize,
     onConfirmDocs,
     isLoading = false,
-}: Step4ClosureProps) {
+}: ClosurePanelProps) {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [isUploading, setIsUploading] = useState(false);
@@ -186,7 +186,7 @@ export function Step4_Closure({
                     {/* Upload zone */}
                     <div
                         onClick={() => fileInputRef.current?.click()}
-                        className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer 
+                        className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer
                        hover:border-primary hover:bg-primary/5 transition-colors"
                     >
                         <AnimatePresence mode="wait">

@@ -30,7 +30,7 @@ const LANGUAGE_OPTIONS: { value: ReportLanguage; label: string }[] = [
     { value: "spanish", label: "Español" },
 ];
 
-interface Step1IngestionProps {
+interface IngestionPanelProps {
     caseData: CaseDetail;
     caseId: string;
     onUploadComplete: () => void;
@@ -59,13 +59,13 @@ interface Step1IngestionProps {
 }
 
 /**
- * Step 1: Ingestion (Acquisizione)
+ * IngestionPanel - Document upload and early analysis
  *
  * Users upload documents for the case.
  * Shows existing documents with their processing status.
  * Enables generation when at least one document is ready.
  */
-export function Step1_Ingestion({
+export function IngestionPanel({
     caseData,
     caseId,
     onUploadComplete,
@@ -75,7 +75,7 @@ export function Step1_Ingestion({
     isProcessingDocs,
     documentAnalysis,
     preliminaryReport,
-}: Step1IngestionProps) {
+}: IngestionPanelProps) {
     const documents = caseData?.documents || [];
     const [selectedLanguage, setSelectedLanguage] = useState<ReportLanguage>("italian");
     const [extraInstructions, setExtraInstructions] = useState<string>("");
