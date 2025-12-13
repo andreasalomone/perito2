@@ -97,6 +97,13 @@ class Settings(BaseSettings):
     )
     # Low-cost model for case details extraction from final reports
     GEMINI_DETAILS_MODEL: str = "gemini-2.0-flash-lite-001"
+    # Early Analysis feature: Document analysis and preliminary reports
+    GEMINI_DOC_ANALYSIS_MODEL: str = (
+        "gemini-2.5-flash"  # Higher quality for missing doc inference
+    )
+    GEMINI_PRELIMINARY_MODEL: str = (
+        "gemini-2.5-flash"  # Higher quality for preliminary reports
+    )
     LLM_TEMPERATURE: float = 0.5
     LLM_MAX_TOKENS: int = 64000
     LLM_API_RETRY_ATTEMPTS: int = 2

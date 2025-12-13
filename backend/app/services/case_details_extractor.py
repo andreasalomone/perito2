@@ -592,21 +592,58 @@ def run_extraction_sync(
     """
     Synchronous wrapper for running extraction in local development.
     Used by threading.Thread in finalize_case.
+
+    CRITICAL: Creates fresh async connector inside this function because
+    asyncio.run() creates a new event loop, incompatible with the global one.
     """
     import asyncio
 
-    from app.db.database import AsyncSessionLocal
+    from app.core.config import settings
 
     async def _run() -> None:
-        result = await extract_case_details_from_docx(final_docx_path)
-        if result.extraction_success:
-            async with AsyncSessionLocal() as db:
-                await update_case_from_extraction(
-                    case_id, org_id, result, db, overwrite_existing
-                )
-        else:
-            logger.warning(
-                f"Extraction failed for case {case_id}: {result.error_message}"
+        # Create fresh Cloud SQL async connector inside this event loop
+        from google.cloud.sql.connector import IPTypes, create_async_connector
+        from sqlalchemy.ext.asyncio import (
+            AsyncSession,
+            async_sessionmaker,
+            create_async_engine,
+        )
+
+        connector = await create_async_connector()
+
+        async def getconn():
+            return await connector.connect_async(
+                settings.CLOUD_SQL_CONNECTION_NAME,
+                "asyncpg",
+                user=settings.DB_USER,
+                password=settings.DB_PASS,
+                db=settings.DB_NAME,
+                ip_type=IPTypes.PUBLIC,
             )
+
+        engine = create_async_engine(
+            "postgresql+asyncpg://",
+            async_creator=getconn,
+            pool_size=1,
+            max_overflow=0,
+        )
+        async_session = async_sessionmaker(
+            bind=engine, class_=AsyncSession, expire_on_commit=False
+        )
+
+        try:
+            result = await extract_case_details_from_docx(final_docx_path)
+            if result.extraction_success:
+                async with async_session() as db:
+                    await update_case_from_extraction(
+                        case_id, org_id, result, db, overwrite_existing
+                    )
+            else:
+                logger.warning(
+                    f"Extraction failed for case {case_id}: {result.error_message}"
+                )
+        finally:
+            await engine.dispose()
+            await connector.close_async()
 
     asyncio.run(_run())

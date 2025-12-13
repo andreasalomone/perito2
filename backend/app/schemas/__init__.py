@@ -189,6 +189,93 @@ class GeneratePayload(BaseModel):
     extra_instructions: Optional[str] = Field(default=None, max_length=2000)
 
 
+# --- DOCUMENT ANALYSIS ---
+class DocumentAnalysisRead(BaseModel):
+    """Response schema for document analysis results."""
+
+    id: UUID
+    summary: str
+    received_docs: List[str]
+    missing_docs: List[str]
+    document_hash: str  # SHA-256 hash of document IDs for staleness detection
+    is_stale: bool
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DocumentAnalysisResponse(BaseModel):
+    """GET response for document analysis endpoint."""
+
+    analysis: Optional[DocumentAnalysisRead] = None
+    can_update: bool = True  # False if docs are still processing
+    pending_docs: int = 0
+
+
+class DocumentAnalysisCreateResponse(BaseModel):
+    """POST response for document analysis endpoint."""
+
+    analysis: DocumentAnalysisRead
+    generated: bool = True  # False if returned cached (not stale)
+
+
+class DocumentAnalysisRequest(BaseModel):
+    """POST request for document analysis endpoint."""
+
+    force: bool = False  # If true, regenerate even if not stale
+
+
+# --- DOCUMENTS LIST ---
+class DocumentListItem(BaseModel):
+    """Schema for document list endpoint."""
+
+    id: UUID
+    filename: str
+    mime_type: Optional[str] = None
+    status: ExtractionStatus
+    can_preview: bool = False  # True for PDF, images
+    url: Optional[str] = None  # Signed URL
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DocumentsListResponse(BaseModel):
+    """Response for GET /cases/{case_id}/documents."""
+
+    documents: List[DocumentListItem]
+    total: int
+    pending_extraction: int = 0
+
+
+# --- PRELIMINARY REPORT ---
+class PreliminaryReportRead(BaseModel):
+    """Response schema for preliminary report."""
+
+    id: UUID
+    content: str  # The Markdown content (from ai_raw_output)
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PreliminaryReportResponse(BaseModel):
+    """GET response for preliminary report endpoint."""
+
+    report: Optional[PreliminaryReportRead] = None
+    can_generate: bool = True  # False if docs still processing
+    pending_docs: int = 0
+
+
+class PreliminaryReportCreateResponse(BaseModel):
+    """POST response for preliminary report endpoint."""
+
+    report: PreliminaryReportRead
+    generated: bool = True  # False if returned cached
+
+
+class PreliminaryReportRequest(BaseModel):
+    """POST request for preliminary report endpoint."""
+
+    force: bool = False  # If true, regenerate even if exists
+
+
 # --- CLIENTS ---
 from app.schemas.client import (
     ClientBase,

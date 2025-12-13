@@ -15,15 +15,24 @@ def get_storage_client():
 
 def get_signing_credentials():
     """
-    Get credentials for signing URLs in Cloud Run environment.
+    Get credentials for signing URLs.
 
-    Cloud Run's compute engine credentials don't have a private key,
-    so we need to use IAM SignBlob API via service_account_email + access_token.
+    For Cloud Run: Uses IAM SignBlob API (compute credentials lack private keys)
+    For Local Dev: Uses service account key directly if available, or returns None
+                   to signal that simple signing should be used.
 
     NOTE: Intentionally not cached because tokens expire (~1 hour).
     """
     credentials, project = google.auth.default()
 
+    # Check if credentials can sign directly (service account key file)
+    # This is typically the case for local development with GOOGLE_APPLICATION_CREDENTIALS
+    if hasattr(credentials, "sign_bytes"):
+        # Credentials have signing capability - use them directly
+        # No need for IAM SignBlob API
+        return None, credentials
+
+    # Cloud Run / Compute Engine credentials - need IAM SignBlob API
     # Refresh credentials to ensure we have a valid token
     auth_req = requests.Request()
     credentials.refresh(auth_req)
@@ -54,23 +63,37 @@ def generate_upload_signed_url(
     blob_name = f"uploads/{organization_id}/{case_id}/{filename}"
     blob = bucket.blob(blob_name)
 
-    # Get signing credentials for IAM SignBlob API
+    # Get signing credentials
     signing_email, credentials = get_signing_credentials()
 
-    # Generate the URL using IAM SignBlob API
-    url = blob.generate_signed_url(
-        version="v4",
-        # Allow PUT requests (uploads)
-        method="PUT",
-        # URL valid for 15 minutes
-        expiration=datetime.timedelta(minutes=15),
-        content_type=content_type,
-        # Enforce size limit at the GCS ingress layer to prevent "Infinite Cost" attacks
-        headers={"x-goog-content-length-range": f"0,{settings.MAX_FILE_SIZE_BYTES}"},
-        # Use IAM SignBlob API instead of local signing
-        service_account_email=signing_email,
-        access_token=credentials.token,
-    )
+    # Build signing parameters
+    # For local dev with service account key: signing_email is None, use credentials directly
+    # For Cloud Run: use IAM SignBlob API with email + access_token
+    if signing_email:
+        # Cloud Run: IAM SignBlob API
+        url = blob.generate_signed_url(
+            version="v4",
+            method="PUT",
+            expiration=datetime.timedelta(minutes=15),
+            content_type=content_type,
+            headers={
+                "x-goog-content-length-range": f"0,{settings.MAX_FILE_SIZE_BYTES}"
+            },
+            service_account_email=signing_email,
+            access_token=credentials.token,
+        )
+    else:
+        # Local dev: Direct signing with service account key
+        url = blob.generate_signed_url(
+            version="v4",
+            method="PUT",
+            expiration=datetime.timedelta(minutes=15),
+            content_type=content_type,
+            headers={
+                "x-goog-content-length-range": f"0,{settings.MAX_FILE_SIZE_BYTES}"
+            },
+            credentials=credentials,
+        )
 
     return {
         "upload_url": url,
@@ -128,12 +151,16 @@ def generate_download_signed_url(gcs_path: str) -> str:
     Valid for 15 minutes.
 
     Uses IAM SignBlob API for Cloud Run environments where credentials lack private keys.
+
+    Accepts paths in two formats:
+    - Full GCS URI: gs://bucket/path/to/file.pdf
+    - Relative path: uploads/org_id/case_id/file.pdf (uses default bucket)
     """
     client = get_storage_client()
 
-    # Parse gs://bucket_name/blob_name
+    # Handle paths without gs:// prefix by adding bucket name
     if not gcs_path.startswith("gs://"):
-        raise ValueError("Invalid GCS path format")
+        gcs_path = f"gs://{settings.STORAGE_BUCKET_NAME}/{gcs_path}"
 
     path_parts = gcs_path.replace("gs://", "").split("/", 1)
     bucket_name = path_parts[0]
@@ -142,17 +169,28 @@ def generate_download_signed_url(gcs_path: str) -> str:
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
 
-    # Get signing credentials for IAM SignBlob API
+    # Get signing credentials
     signing_email, credentials = get_signing_credentials()
 
-    url = blob.generate_signed_url(
-        version="v4",
-        method="GET",
-        expiration=datetime.timedelta(minutes=15),
-        # Use IAM SignBlob API instead of local signing
-        service_account_email=signing_email,
-        access_token=credentials.token,
-    )
+    # For local dev with service account key: signing_email is None, use credentials directly
+    # For Cloud Run: use IAM SignBlob API with email + access_token
+    if signing_email:
+        # Cloud Run: IAM SignBlob API
+        url = blob.generate_signed_url(
+            version="v4",
+            method="GET",
+            expiration=datetime.timedelta(minutes=15),
+            service_account_email=signing_email,
+            access_token=credentials.token,
+        )
+    else:
+        # Local dev: Direct signing with service account key
+        url = blob.generate_signed_url(
+            version="v4",
+            method="GET",
+            expiration=datetime.timedelta(minutes=15),
+            credentials=credentials,
+        )
 
     return url
 

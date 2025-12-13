@@ -12,9 +12,10 @@ import { batchUploadFiles } from "@/utils/batchUpload";
 interface CaseFileUploaderProps {
     caseId: string;
     onUploadComplete: () => void;
+    trigger?: React.ReactNode;
 }
 
-export function CaseFileUploader({ caseId, onUploadComplete }: CaseFileUploaderProps) {
+export function CaseFileUploader({ caseId, onUploadComplete, trigger }: CaseFileUploaderProps) {
     const { getToken } = useAuth();
     const { apiUrl } = useConfig();
     const docInputRef = useRef<HTMLInputElement>(null);
@@ -82,7 +83,7 @@ export function CaseFileUploader({ caseId, onUploadComplete }: CaseFileUploaderP
     };
 
     return (
-        <div>
+        <div onClick={() => trigger && docInputRef.current?.click()} className={trigger ? "cursor-pointer" : ""}>
             <input
                 type="file"
                 ref={docInputRef}
@@ -92,14 +93,19 @@ export function CaseFileUploader({ caseId, onUploadComplete }: CaseFileUploaderP
                 multiple
                 data-testid="file-upload-input"
             />
-            <Button
-                size="sm"
-                variant="outline"
-                onClick={() => docInputRef.current?.click()}
-            >
-                <UploadCloud className="h-4 w-4 mr-2" />
-                Carica
-            </Button>
+            {trigger || (
+                <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        docInputRef.current?.click();
+                    }}
+                >
+                    <UploadCloud className="h-4 w-4 mr-2" />
+                    Carica
+                </Button>
+            )}
         </div>
     );
 }

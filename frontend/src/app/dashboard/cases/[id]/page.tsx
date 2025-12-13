@@ -12,18 +12,18 @@ import axios from "axios";
 import { toast } from "sonner";
 import { handleApiError } from "@/lib/error";
 import { TemplateType } from "@/components/cases/VersionItem";
-import { cn } from "@/lib/utils";
 
 import { useCaseDetail, WorkflowStep } from "@/hooks/useCaseDetail";
+import { useDocumentAnalysis, usePreliminaryReport } from "@/hooks/useEarlyAnalysis";
 import { api } from "@/lib/api";
 import { mutate as globalMutate } from 'swr';
 
 // Workflow components
 import {
-    WorkflowStepper,
+    // WorkflowStepper removed - sidebar hidden for Dashboard feel
     ErrorStateOverlay,
     Step1_Ingestion,
-    Step2_Intelligence,
+    // Step2_Intelligence removed - processing now handled inline in Step1
     Step3_Review,
     Step4_Closure,
 } from "@/components/cases/workflow";
@@ -49,6 +49,10 @@ export default function CaseWorkspace() {
         setIsGenerating,
         currentStep,
     } = useCaseDetail(caseId);
+
+    // Early Analysis hooks
+    const documentAnalysisHook = useDocumentAnalysis(caseId);
+    const preliminaryReportHook = usePreliminaryReport(caseId);
 
     // Redirect CLOSED/finalized cases to summary page
     useEffect(() => {
@@ -85,7 +89,8 @@ export default function CaseWorkspace() {
     }, [currentStep, manualStep]);
 
     // Determine which step to display (manualStep overrides currentStep when set)
-    const displayStep: WorkflowStep = manualStep ?? currentStep;
+    // We treat step 2 (Processing) as step 1 (Ingestion/Analysis) to keep the Dashboard UI consistent
+    const displayStep: WorkflowStep = manualStep ?? (currentStep === 2 ? 1 : currentStep);
 
     // --- Handlers ---
 
@@ -240,20 +245,7 @@ export default function CaseWorkspace() {
         }
     }, [caseId, getToken, apiUrl, router]);
 
-    const handleStepClick = (step: number) => {
-        // Allow going back from Step 3 or Step 4 (manualStep)
-        const effectiveStep = manualStep ?? currentStep;
-        if (typeof effectiveStep === 'number') {
-            // Can go back to Step 1 from Step 3 or 4
-            if (step === 1 && effectiveStep >= 3) {
-                setManualStep(1);
-            }
-            // Can go back to Step 3 from Step 4
-            if (step === 3 && effectiveStep === 4) {
-                setManualStep(3);
-            }
-        }
-    };
+    // handleStepClick removed - WorkflowStepper no longer used
 
     const handleProceedToClosure = () => {
         // Move to step 4 (manual override since we don't have a version marked as "ready for closure")
@@ -327,93 +319,62 @@ export default function CaseWorkspace() {
 
             {/* Workflow Layout: Stepper + Content */}
 
-            {/* Mobile: Compact horizontal stepper */}
-            <div className="lg:hidden mb-6">
-                <div className="flex items-center justify-between px-2">
-                    {[1, 2, 3, 4].map((step, index) => {
-                        const isCompleted = typeof displayStep === 'number' && step < displayStep;
-                        const isActive = displayStep === step;
-                        const isError = displayStep === 'ERROR';
 
-                        return (
-                            <div key={step} className="flex items-center">
-                                <div
-                                    className={cn(
-                                        "w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium",
-                                        isError ? "bg-red-500 text-white" :
-                                            isCompleted ? "bg-green-500 text-white" :
-                                                isActive ? "bg-primary text-primary-foreground" :
-                                                    "bg-muted text-muted-foreground"
-                                    )}
-                                >
-                                    {isCompleted ? "✓" : step}
-                                </div>
-                                {index < 3 && (
-                                    <div
-                                        className={cn(
-                                            "w-8 h-1 mx-1",
-                                            isCompleted ? "bg-green-500" : "bg-muted"
-                                        )}
-                                    />
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
-                <p className="text-center text-sm text-muted-foreground mt-2">
-                    {displayStep === 'ERROR' ? 'Errore' :
-                        displayStep === 1 ? 'Acquisizione' :
-                            displayStep === 2 ? 'Elaborazione' :
-                                displayStep === 3 ? 'Revisione' : 'Chiusura'}
-                </p>
-            </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-8">
-                {/* Sidebar: Stepper (hidden on mobile) */}
-                <aside className="hidden lg:block lg:sticky lg:top-4 lg:self-start">
-                    <WorkflowStepper
-                        currentStep={displayStep}
-                        onStepClick={handleStepClick}
+
+
+            {/* Main: Step Content */}
+            <main className="min-h-[500px]">
+                {displayStep === 'ERROR' ? (
+                    <ErrorStateOverlay
+                        caseData={caseData}
+                        onDeleteDocument={handleDeleteDocument}
+                        onRetryGeneration={handleGenerate}
                     />
-                </aside>
+                ) : displayStep === 1 ? (
+                    <Step1_Ingestion
+                        caseData={caseData}
+                        caseId={caseId as string}
+                        onUploadComplete={mutate}
+                        onGenerate={handleGenerate}
+                        onDeleteDocument={handleDeleteDocument}
+                        isGenerating={isGeneratingReport ?? false}
+                        isProcessingDocs={isProcessingDocs ?? false}
+                        documentAnalysis={{
+                            analysis: documentAnalysisHook.analysis,
+                            isStale: documentAnalysisHook.isStale,
+                            canAnalyze: documentAnalysisHook.canAnalyze,
+                            pendingDocs: documentAnalysisHook.pendingDocs,
+                            isLoading: documentAnalysisHook.isLoading,
+                            isGenerating: documentAnalysisHook.isGenerating,
+                            onGenerate: documentAnalysisHook.generate,
+                        }}
+                        preliminaryReport={{
+                            report: preliminaryReportHook.report,
+                            canGenerate: preliminaryReportHook.canGenerate,
+                            pendingDocs: preliminaryReportHook.pendingDocs,
+                            isLoading: preliminaryReportHook.isLoading,
+                            isGenerating: preliminaryReportHook.isGenerating,
+                            onGenerate: preliminaryReportHook.generate,
+                        }}
+                    />
+                ) : displayStep === 3 ? (
+                    <Step3_Review
+                        caseData={caseData}
+                        onDownload={handleDownload}
+                        onOpenInDocs={handleOpenInDocs}
+                        onProceedToClosure={handleProceedToClosure}
+                        onGoBackToIngestion={handleGoBackToIngestion}
+                    />
+                ) : displayStep === 4 ? (
+                    <Step4_Closure
+                        caseData={caseData}
+                        onFinalize={handleFinalize}
+                        onConfirmDocs={handleConfirmDocs}
+                    />
+                ) : null}
+            </main>
 
-                {/* Main: Step Content */}
-                <main className="min-h-[500px]">
-                    {displayStep === 'ERROR' ? (
-                        <ErrorStateOverlay
-                            caseData={caseData}
-                            onDeleteDocument={handleDeleteDocument}
-                            onRetryGeneration={handleGenerate}
-                        />
-                    ) : displayStep === 1 ? (
-                        <Step1_Ingestion
-                            caseData={caseData}
-                            caseId={caseId as string}
-                            onUploadComplete={mutate}
-                            onGenerate={handleGenerate}
-                            onDeleteDocument={handleDeleteDocument}
-                            isGenerating={isGeneratingReport ?? false}
-                            isProcessingDocs={isProcessingDocs ?? false}
-                        />
-                    ) : displayStep === 2 ? (
-                        <Step2_Intelligence caseData={caseData} />
-                    ) : displayStep === 3 ? (
-                        <Step3_Review
-                            caseData={caseData}
-                            onDownload={handleDownload}
-                            onOpenInDocs={handleOpenInDocs}
-                            onProceedToClosure={handleProceedToClosure}
-                            onGoBackToIngestion={handleGoBackToIngestion}
-                        />
-                    ) : displayStep === 4 ? (
-                        <Step4_Closure
-                            caseData={caseData}
-                            onFinalize={handleFinalize}
-                            onConfirmDocs={handleConfirmDocs}
-                        />
-                    ) : null}
-                </main>
-            </div>
-        </div>
+        </div >
     );
 }

@@ -20,6 +20,13 @@ class PromptManager:
             ),
             "style_guide": os.path.join(self._current_dir, "style_guide.txt"),
             "schema_report": os.path.join(self._current_dir, "schema_report.txt"),
+            # Early Analysis feature prompts
+            "document_analysis": os.path.join(
+                self._current_dir, "document_analysis_prompt.txt"
+            ),
+            "preliminary_report": os.path.join(
+                self._current_dir, "preliminary_report_prompt.txt"
+            ),
         }
 
     def get_prompt_path(self, prompt_name: str) -> Optional[str]:

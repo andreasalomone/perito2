@@ -142,7 +142,11 @@ export function useCaseDetail(id: string | undefined) {
         }
 
         // Step 3: Draft exists but not finalized
-        if (displayData.report_versions && displayData.report_versions.length > 0) {
+        // NOTE: Exclude preliminary reports (source='preliminary') - they don't count as drafts
+        const draftVersions = displayData.report_versions?.filter(
+            v => !v.is_final && v.source !== 'preliminary'
+        ) ?? [];
+        if (draftVersions.length > 0) {
             return 3;
         }
 

@@ -170,6 +170,7 @@ def get_case_detail(case_id: UUID, db: Annotated[Session, Depends(get_db)]) -> C
     return case
 
 
+
 @router.patch("/{case_id}", response_model=schemas.CaseDetail)
 def update_case(
     case_id: UUID,
@@ -580,3 +581,376 @@ def delete_document(
     db.commit()
     logger.info(f"Document {doc_id} deleted from case {case_id}.")
     return
+
+
+# -----------------------------------------------------------------------------
+# Early Analysis Feature: Documents List & Document Analysis
+# -----------------------------------------------------------------------------
+
+# MIME types that support inline preview
+PREVIEWABLE_MIME_TYPES = {
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/gif",
+}
+
+
+@router.get(
+    "/{case_id}/documents",
+    response_model=schemas.DocumentsListResponse,
+    summary="List Documents",
+    description="Get all documents for a case with signed URLs for preview/download.",
+)
+async def list_documents(
+    case_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """
+    Returns all documents for a case with:
+    - Signed URLs for preview/download
+    - Preview capability flag based on MIME type
+    - Extraction status
+    """
+    import asyncio
+
+    case = db.get(Case, case_id)
+    if not case or case.deleted_at:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    # Fetch all documents
+    docs = db.scalars(
+        select(Document)
+        .where(Document.case_id == case_id)
+        .order_by(Document.created_at.desc())
+    ).all()
+
+    # Count pending documents
+    pending_count = sum(
+        1
+        for d in docs
+        if d.ai_status in [ExtractionStatus.PENDING, ExtractionStatus.PROCESSING]
+    )
+
+    # Generate signed URLs (wrap sync call)
+    def build_document_list():
+        result = []
+        for doc in docs:
+            url = None
+            if doc.gcs_path:
+                try:
+                    url = gcs_service.generate_download_signed_url(doc.gcs_path)
+                except Exception as e:
+                    logger.warning(f"Failed to generate signed URL for {doc.id}: {e}")
+
+            can_preview = (
+                doc.mime_type in PREVIEWABLE_MIME_TYPES if doc.mime_type else False
+            )
+
+            result.append(
+                {
+                    "id": doc.id,
+                    "filename": doc.filename,
+                    "mime_type": doc.mime_type,
+                    "status": doc.ai_status,
+                    "can_preview": can_preview,
+                    "url": url,
+                }
+            )
+        return result
+
+    documents_list = await asyncio.to_thread(build_document_list)
+
+    return {
+        "documents": documents_list,
+        "total": len(docs),
+        "pending_extraction": pending_count,
+    }
+
+
+@router.get(
+    "/{case_id}/document-analysis",
+    response_model=schemas.DocumentAnalysisResponse,
+    summary="Get Document Analysis",
+    description="Retrieve the latest document analysis for a case.",
+)
+async def get_document_analysis(
+    case_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """
+    Returns the most recent document analysis for a case, if it exists.
+    Also indicates whether a new analysis can be triggered (no pending docs).
+    """
+
+
+    from app.db.database import AsyncSessionLocal
+    from app.services import document_analysis_service
+
+    case = db.get(Case, case_id)
+    if not case or case.deleted_at:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    # Use async session for async service calls
+    async with AsyncSessionLocal() as async_db:
+        # Set RLS context
+        from sqlalchemy import text
+
+        await async_db.execute(
+            text("SELECT set_config('app.current_org_id', :oid, false)"),
+            {"oid": str(case.organization_id)},
+        )
+
+        # Get analysis and check staleness
+        is_stale, analysis = await document_analysis_service.check_analysis_staleness(
+            case_id, async_db
+        )
+
+        # Check for pending documents
+        has_pending, pending_count = (
+            await document_analysis_service.check_has_pending_documents(
+                case_id, async_db
+            )
+        )
+
+    response = {
+        "analysis": analysis,
+        "can_update": not has_pending,
+        "pending_docs": pending_count,
+    }
+
+    return response
+
+
+@router.post(
+    "/{case_id}/document-analysis",
+    response_model=schemas.DocumentAnalysisCreateResponse,
+    summary="Run Document Analysis",
+    description="Trigger AI analysis of uploaded documents.",
+)
+async def create_document_analysis(
+    case_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+    payload: Optional[schemas.DocumentAnalysisRequest] = None,
+) -> dict:
+    """
+    Runs AI document analysis using Gemini.
+
+    Returns cached analysis if not stale (unless force=True).
+    Blocks if documents are still being processed.
+    """
+    from sqlalchemy import text
+
+    from app.db.database import AsyncSessionLocal
+    from app.services import document_analysis_service
+
+    case = db.get(Case, case_id)
+    if not case or case.deleted_at:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    force = payload.force if payload else False
+
+    # Use async session for async service calls
+    async with AsyncSessionLocal() as async_db:
+        # Set RLS context
+        await async_db.execute(
+            text("SELECT set_config('app.current_org_id', :oid, false)"),
+            {"oid": str(case.organization_id)},
+        )
+
+        try:
+            # Check if we can return cached version
+            if not force:
+                is_stale, existing = (
+                    await document_analysis_service.check_analysis_staleness(
+                        case_id, async_db
+                    )
+                )
+                if existing and not is_stale:
+                    logger.info(f"Returning cached analysis for case {case_id}")
+                    return {"analysis": existing, "generated": False}
+
+            # Run the analysis
+            analysis = await document_analysis_service.run_document_analysis(
+                case_id=case_id,
+                org_id=case.organization_id,
+                db=async_db,
+                force=force,
+            )
+
+            return {"analysis": analysis, "generated": True}
+
+        except document_analysis_service.AnalysisBlockedError as e:
+            logger.warning(f"Analysis blocked for case {case_id}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(e),
+            ) from None
+
+        except document_analysis_service.AnalysisGenerationError as e:
+            logger.error(f"Analysis generation failed for case {case_id}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Analysis generation failed, please retry.",
+            ) from None
+
+
+# =============================================================================
+# PRELIMINARY REPORT ENDPOINTS
+# =============================================================================
+
+
+@router.get(
+    "/{case_id}/preliminary",
+    response_model=schemas.PreliminaryReportResponse,
+    summary="Get Preliminary Report",
+    description="Retrieve the latest preliminary report for a case.",
+)
+async def get_preliminary_report(
+    case_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """
+    Returns the most recent preliminary report for a case, if it exists.
+    Also indicates whether a new report can be generated (no pending docs).
+    """
+
+
+    from app.db.database import AsyncSessionLocal
+    from app.services import preliminary_report_service
+
+    case = db.get(Case, case_id)
+    if not case or case.deleted_at:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    # Use async session for async service calls
+    async with AsyncSessionLocal() as async_db:
+        # Set RLS context
+        from sqlalchemy import text
+
+        await async_db.execute(
+            text("SELECT set_config('app.current_org_id', :oid, false)"),
+            {"oid": str(case.organization_id)},
+        )
+
+        # Get existing report
+        report = await preliminary_report_service.get_latest_preliminary_report(
+            case_id, async_db
+        )
+
+        # Check for pending documents
+        has_pending, pending_count = (
+            await preliminary_report_service.check_has_pending_documents(
+                case_id, async_db
+            )
+        )
+
+        # Build response with mapped fields
+        report_data = None
+        if report:
+            report_data = {
+                "id": report.id,
+                "content": report.ai_raw_output or "",
+                "created_at": report.created_at,
+            }
+
+        return {
+            "report": report_data,
+            "can_generate": not has_pending,
+            "pending_docs": pending_count,
+        }
+
+
+@router.post(
+    "/{case_id}/preliminary",
+    response_model=schemas.PreliminaryReportCreateResponse,
+    summary="Generate Preliminary Report",
+    description="Generate an AI preliminary report for a case.",
+    status_code=status.HTTP_200_OK,
+)
+async def create_preliminary_report(
+    case_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+    request: schemas.PreliminaryReportRequest = schemas.PreliminaryReportRequest(),
+) -> dict:
+    """
+    Trigger AI preliminary report generation.
+
+    - Returns 409 if documents are still being processed
+    - Returns 200 with generated=False if returning cached (unless force=True)
+    - Returns 200 with generated=True if new report was generated
+    """
+
+
+    from app.db.database import AsyncSessionLocal
+    from app.services import preliminary_report_service
+
+    case = db.get(Case, case_id)
+    if not case or case.deleted_at:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    force = request.force if request else False
+
+    async with AsyncSessionLocal() as async_db:
+        # Set RLS context
+        from sqlalchemy import text
+
+        await async_db.execute(
+            text("SELECT set_config('app.current_org_id', :oid, false)"),
+            {"oid": str(case.organization_id)},
+        )
+
+        try:
+            # Check if we can return cached version
+            if not force:
+                existing = (
+                    await preliminary_report_service.get_latest_preliminary_report(
+                        case_id, async_db
+                    )
+                )
+                if existing:
+                    logger.info(
+                        f"Returning cached preliminary report for case {case_id}"
+                    )
+                    return {
+                        "report": {
+                            "id": existing.id,
+                            "content": existing.ai_raw_output or "",
+                            "created_at": existing.created_at,
+                        },
+                        "generated": False,
+                    }
+
+            # Run the report generation
+            report = await preliminary_report_service.run_preliminary_report(
+                case_id=case_id,
+                org_id=case.organization_id,
+                db=async_db,
+                force=force,
+            )
+
+            return {
+                "report": {
+                    "id": report.id,
+                    "content": report.ai_raw_output or "",
+                    "created_at": report.created_at,
+                },
+                "generated": True,
+            }
+
+        except preliminary_report_service.PreliminaryBlockedError as e:
+            logger.warning(f"Preliminary report blocked for case {case_id}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(e),
+            ) from None
+
+        except preliminary_report_service.PreliminaryReportError as e:
+            logger.error(
+                f"Preliminary report generation failed for case {case_id}: {e}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Report generation failed, please retry.",
+            ) from None

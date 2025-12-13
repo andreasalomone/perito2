@@ -15,6 +15,7 @@ export const ReportVersionSchema = z.object({
     id: z.string().uuid(),
     version_number: z.number(),
     is_final: z.boolean(),
+    source: z.string().optional().nullable(), // 'preliminary' | 'final' | null
     created_at: z.string().datetime(),
     error_message: z.string().optional().nullable(),
     // Google Docs Live Draft support
@@ -22,6 +23,53 @@ export const ReportVersionSchema = z.object({
     edit_link: z.string().optional().nullable(),
 });
 export type ReportVersion = z.infer<typeof ReportVersionSchema>;
+
+// Document Analysis Types (Early Analysis Feature)
+// Document Analysis Types (Early Analysis Feature)
+export const DocumentAnalysisSchema = z.object({
+    id: z.string().uuid(),
+    summary: z.string(),
+    received_docs: z.array(z.string()),
+    missing_docs: z.array(z.string()),
+    document_hash: z.string(),
+    is_stale: z.boolean(),
+    created_at: z.string().datetime(),
+});
+export type DocumentAnalysis = z.infer<typeof DocumentAnalysisSchema>;
+
+export const DocumentAnalysisResponseSchema = z.object({
+    analysis: DocumentAnalysisSchema.nullable(),
+    can_update: z.boolean(),
+    pending_docs: z.number(),
+});
+export type DocumentAnalysisResponse = z.infer<typeof DocumentAnalysisResponseSchema>;
+
+export const DocumentAnalysisCreateResponseSchema = z.object({
+    analysis: DocumentAnalysisSchema,
+    generated: z.boolean(),
+});
+export type DocumentAnalysisCreateResponse = z.infer<typeof DocumentAnalysisCreateResponseSchema>;
+
+// Preliminary Report Types (Early Analysis Feature)
+export const PreliminaryReportSchema = z.object({
+    id: z.string().uuid(),
+    content: z.string(),
+    created_at: z.string().datetime(),
+});
+export type PreliminaryReport = z.infer<typeof PreliminaryReportSchema>;
+
+export const PreliminaryReportResponseSchema = z.object({
+    report: PreliminaryReportSchema.nullable(),
+    can_generate: z.boolean(),
+    pending_docs: z.number(),
+});
+export type PreliminaryReportResponse = z.infer<typeof PreliminaryReportResponseSchema>;
+
+export const PreliminaryReportCreateResponseSchema = z.object({
+    report: PreliminaryReportSchema,
+    generated: z.boolean(),
+});
+export type PreliminaryReportCreateResponse = z.infer<typeof PreliminaryReportCreateResponseSchema>;
 
 // Client Types
 // Client Types

@@ -18,7 +18,17 @@ import {
     ClientUpdate,
     ClientDetail,
     ClientListItem,
-    EnrichedClientData
+    EnrichedClientData,
+    // Document Analysis (Early Analysis Feature)
+    DocumentAnalysisResponseSchema,
+    DocumentAnalysisCreateResponseSchema,
+    DocumentAnalysisResponse,
+    DocumentAnalysisCreateResponse,
+    // Preliminary Report (Early Analysis Feature)
+    PreliminaryReportResponseSchema,
+    PreliminaryReportCreateResponseSchema,
+    PreliminaryReportResponse,
+    PreliminaryReportCreateResponse,
 } from "@/types";
 import { OrganizationSchema, AllowedEmailSchema, Organization, AllowedEmail } from "@/types/admin";
 import { GlobalStatsSchema, OrgStatsSchema, UserStatsSchema, GlobalStats, OrgStats, UserStats } from "@/types/stats";
@@ -146,7 +156,39 @@ export const api = {
             await axios.delete(`${getBaseUrl()}/api/v1/cases/${caseId}/documents/${docId}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-        }
+        },
+
+        // Document Analysis (Early Analysis Feature)
+        getDocumentAnalysis: (token: string, caseId: string) =>
+            fetchWithValidation<DocumentAnalysisResponse>(
+                `${getBaseUrl()}/api/v1/cases/${caseId}/document-analysis`,
+                token,
+                DocumentAnalysisResponseSchema
+            ),
+
+        createDocumentAnalysis: (token: string, caseId: string, force: boolean = false) =>
+            fetchWithValidation<DocumentAnalysisCreateResponse>(
+                `${getBaseUrl()}/api/v1/cases/${caseId}/document-analysis`,
+                token,
+                DocumentAnalysisCreateResponseSchema,
+                { method: "POST", data: { force } }
+            ),
+
+        // Preliminary Report (Early Analysis Feature)
+        getPreliminaryReport: (token: string, caseId: string) =>
+            fetchWithValidation<PreliminaryReportResponse>(
+                `${getBaseUrl()}/api/v1/cases/${caseId}/preliminary`,
+                token,
+                PreliminaryReportResponseSchema
+            ),
+
+        createPreliminaryReport: (token: string, caseId: string, force: boolean = false) =>
+            fetchWithValidation<PreliminaryReportCreateResponse>(
+                `${getBaseUrl()}/api/v1/cases/${caseId}/preliminary`,
+                token,
+                PreliminaryReportCreateResponseSchema,
+                { method: "POST", data: { force } }
+            ),
     },
     clients: {
         list: (token: string, params: { q?: string; limit?: number; skip?: number } = {}) =>

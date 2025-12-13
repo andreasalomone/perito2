@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { CaseDetail } from "@/types";
+import { CaseDetail, DocumentAnalysis, PreliminaryReport } from "@/types";
 import { CaseFileUploader } from "@/components/cases/CaseFileUploader";
 import { DocumentItem } from "@/components/cases/DocumentItem";
+import { DocumentAnalysisCard } from "@/components/cases/DocumentAnalysisCard";
+import { PreliminaryReportCard } from "@/components/cases/PreliminaryReportCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -16,7 +18,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Upload, Play, FileText, AlertCircle, Loader2, Globe, MessageSquare } from "lucide-react";
+import { Upload, UploadCloud, Play, FileText, AlertCircle, Loader2, Globe, MessageSquare } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 // Language options for report generation
@@ -36,6 +38,24 @@ interface Step1IngestionProps {
     onDeleteDocument: (docId: string) => Promise<void>;
     isGenerating: boolean;
     isProcessingDocs: boolean;
+    // Early Analysis props (optional for backward compatibility)
+    documentAnalysis?: {
+        analysis: DocumentAnalysis | null;
+        isStale: boolean;
+        canAnalyze: boolean;
+        pendingDocs: number;
+        isLoading: boolean;
+        isGenerating: boolean;
+        onGenerate: (force?: boolean) => void;
+    };
+    preliminaryReport?: {
+        report: PreliminaryReport | null;
+        canGenerate: boolean;
+        pendingDocs: number;
+        isLoading: boolean;
+        isGenerating: boolean;
+        onGenerate: (force?: boolean) => void;
+    };
 }
 
 /**
@@ -53,6 +73,8 @@ export function Step1_Ingestion({
     onDeleteDocument,
     isGenerating,
     isProcessingDocs,
+    documentAnalysis,
+    preliminaryReport,
 }: Step1IngestionProps) {
     const documents = caseData?.documents || [];
     const [selectedLanguage, setSelectedLanguage] = useState<ReportLanguage>("italian");
@@ -72,63 +94,98 @@ export function Step1_Ingestion({
 
     return (
         <div className="space-y-6">
-            {/* Header */}
-            <div>
-                <h2 className="text-xl font-semibold flex items-center gap-2">
-                    <Upload className="h-5 w-5" />
-                    Carica Documenti
-                </h2>
-                <p className="text-muted-foreground text-sm mt-1">
-                    Carica i documenti del caso per generare la perizia.
-                </p>
-            </div>
-
-            {/* Upload Zone */}
-            <Card>
-                <CardContent className="pt-6">
-                    <CaseFileUploader
-                        caseId={caseId}
-                        onUploadComplete={onUploadComplete}
-                    />
+            {/* Unified Ingestion Card */}
+            <Card className="border-2 border-dashed bg-muted/5">
+                <CardHeader className="pb-4">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <CardTitle className="text-xl flex items-center gap-2">
+                                <Upload className="h-5 w-5 text-primary" />
+                                Gestione Documenti
+                            </CardTitle>
+                            <CardDescription className="mt-1">
+                                {documents.length > 0
+                                    ? `${documents.length} documenti caricati. Carica altri file se necessario.`
+                                    : "Carica i documenti del caso per iniziare l'analisi."}
+                            </CardDescription>
+                        </div>
+                        {documents.length > 0 && (
+                            <CaseFileUploader
+                                caseId={caseId}
+                                onUploadComplete={onUploadComplete}
+                            />
+                        )}
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    {documents.length === 0 ? (
+                        <CaseFileUploader
+                            caseId={caseId}
+                            onUploadComplete={onUploadComplete}
+                            trigger={
+                                <div className="flex flex-col items-center justify-center py-12 px-4 rounded-lg border-2 border-dashed border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50 cursor-pointer transition-all">
+                                    <div className="p-4 rounded-full bg-background shadow-sm mb-4">
+                                        <UploadCloud className="h-8 w-8 text-primary" />
+                                    </div>
+                                    <h3 className="font-semibold text-lg mb-1">Carica file del caso</h3>
+                                    <p className="text-sm text-muted-foreground text-center max-w-sm mb-4">
+                                        Supporta PDF, DOCX, Immagini, EML.
+                                    </p>
+                                    <Button variant="default">Seleziona File</Button>
+                                </div>
+                            }
+                        />
+                    ) : (
+                        <div className="space-y-4">
+                            <AnimatePresence mode="popLayout">
+                                <div className="grid gap-2">
+                                    {documents.map((doc) => (
+                                        <motion.div
+                                            key={doc.id}
+                                            layout
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, x: -10 }}
+                                            transition={{ duration: 0.2 }}
+                                        >
+                                            <DocumentItem
+                                                doc={doc}
+                                                onDelete={() => onDeleteDocument(doc.id)}
+                                            />
+                                        </motion.div>
+                                    ))}
+                                </div>
+                            </AnimatePresence>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 
-            {/* Documents List */}
-            {documents.length > 0 && (
-                <Card>
-                    <CardHeader className="pb-3">
-                        <CardTitle className="text-base flex items-center justify-between">
-                            <span className="flex items-center gap-2">
-                                <FileText className="h-4 w-4" />
-                                Documenti Caricati
-                            </span>
-                            <span className="text-sm font-normal text-muted-foreground">
-                                {successDocs.length}/{documents.length} elaborati
-                            </span>
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <AnimatePresence mode="popLayout">
-                            <div className="grid gap-2">
-                                {documents.map((doc) => (
-                                    <motion.div
-                                        key={doc.id}
-                                        layout
-                                        initial={{ opacity: 0, y: 10 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        exit={{ opacity: 0, x: -10 }}
-                                        transition={{ duration: 0.2 }}
-                                    >
-                                        <DocumentItem
-                                            doc={doc}
-                                            onDelete={() => onDeleteDocument(doc.id)}
-                                        />
-                                    </motion.div>
-                                ))}
-                            </div>
-                        </AnimatePresence>
-                    </CardContent>
-                </Card>
+            {/* Early Analysis Section */}
+            {(documentAnalysis || preliminaryReport) && (
+                <div className="grid md:grid-cols-2 gap-4">
+                    {documentAnalysis && (
+                        <DocumentAnalysisCard
+                            analysis={documentAnalysis.analysis}
+                            isStale={documentAnalysis.isStale}
+                            canAnalyze={documentAnalysis.canAnalyze}
+                            pendingDocs={documentAnalysis.pendingDocs}
+                            isLoading={documentAnalysis.isLoading}
+                            isGenerating={documentAnalysis.isGenerating}
+                            onGenerate={documentAnalysis.onGenerate}
+                        />
+                    )}
+                    {preliminaryReport && (
+                        <PreliminaryReportCard
+                            report={preliminaryReport.report}
+                            canGenerate={preliminaryReport.canGenerate}
+                            pendingDocs={preliminaryReport.pendingDocs}
+                            isLoading={preliminaryReport.isLoading}
+                            isGenerating={preliminaryReport.isGenerating}
+                            onGenerate={preliminaryReport.onGenerate}
+                        />
+                    )}
+                </div>
             )}
 
             {/* Error Warning */}
@@ -223,14 +280,7 @@ export function Step1_Ingestion({
                 </div>
             </div>
 
-            {/* Empty State */}
-            {documents.length === 0 && !isProcessingDocs && (
-                <div className="text-center py-8 text-muted-foreground">
-                    <Upload className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                    <p>Nessun documento caricato</p>
-                    <p className="text-sm">Trascina file o clicca per caricare</p>
-                </div>
-            )}
+
         </div>
     );
 }
