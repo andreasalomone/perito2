@@ -9,6 +9,7 @@ import { FileText, Loader2, RefreshCw, Clock, CheckCircle2, Edit, Download } fro
 import { ExpandableScreen, ExpandableScreenTrigger, ExpandableScreenContent } from "@/components/ui/expandable-screen";
 import { PreliminaryReport } from "@/types";
 import { MarkdownContent } from "@/components/ui/markdown-content";
+import { ReportGeneratingSkeleton } from "@/components/cases/ReportGeneratingSkeleton";
 import { useRef, useMemo } from "react";
 import { ScrollProgress } from "@/components/motion-primitives/scroll-progress";
 
@@ -182,32 +183,29 @@ export function PreliminaryReportCard({
                         </ExpandableScreenContent>
                     </ExpandableScreen>
                 ) : (
-                    /* Empty State */
+                    /* Empty State or Generating State */
                     !isLoading && !isBlocked && (
                         <div className="space-y-4">
-                            <div className="text-center py-6 text-muted-foreground">
-                                <FileText className="h-10 w-10 mx-auto mb-3 opacity-50" />
-                                <p>Nessun report preliminare</p>
-                                <p className="text-sm">Genera un documento di lavoro per il caso.</p>
-                            </div>
-                            <Button
-                                variant={hasReport ? "outline" : "default"}
-                                className="w-full"
-                                disabled={!canGenerate || isGenerating || isLoading || isBlocked}
-                                onClick={() => onGenerate(hasReport)}
-                            >
-                                {isGenerating ? (
-                                    <>
-                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                        Generazione in corso...
-                                    </>
-                                ) : (
-                                    <>
+                            {isGenerating ? (
+                                <ReportGeneratingSkeleton variant="report" estimatedTime="~15 sec" />
+                            ) : (
+                                <>
+                                    <div className="text-center py-6 text-muted-foreground">
+                                        <FileText className="h-10 w-10 mx-auto mb-3 opacity-50" />
+                                        <p>Nessun report preliminare</p>
+                                        <p className="text-sm">Genera un documento di lavoro per il caso.</p>
+                                    </div>
+                                    <Button
+                                        variant={hasReport ? "outline" : "default"}
+                                        className="w-full"
+                                        disabled={!canGenerate || isGenerating || isLoading || isBlocked}
+                                        onClick={() => onGenerate(hasReport)}
+                                    >
                                         <FileText className="h-4 w-4 mr-2" />
                                         Genera Report Preliminare
-                                    </>
-                                )}
-                            </Button>
+                                    </Button>
+                                </>
+                            )}
                         </div>
                     )
                 )}

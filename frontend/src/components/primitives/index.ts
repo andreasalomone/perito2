@@ -13,6 +13,7 @@
 // ============================================================================
 export { Button, buttonVariants } from "@/components/ui/button";
 export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
+export { ExpandableCard } from "@/components/ui/expandable";
 export { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 export { Badge } from "@/components/ui/badge";
 export { Skeleton } from "@/components/ui/skeleton";
@@ -23,7 +24,9 @@ export { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 export { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 export { StatusBadge } from "@/components/ui/status-badge";
 export { MarkdownContent } from "@/components/ui/markdown-content";
+export { ReportGeneratingSkeleton } from "@/components/cases/ReportGeneratingSkeleton";
 export { ExpandableScreen, ExpandableScreenTrigger, ExpandableScreenContent } from "@/components/ui/expandable-screen";
+export { ModeToggle } from "@/components/ui/mode-toggle";
 
 // ============================================================================
 // Motion Primitives (custom - our reusable animation components)

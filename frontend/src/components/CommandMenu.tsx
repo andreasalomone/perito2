@@ -11,11 +11,13 @@ import {
     CommandSeparator,
 } from "@/components/ui/command"
 import { useRouter } from "next/navigation"
-import { FileText, Plus, LayoutDashboard, Settings } from "lucide-react"
+import { FileText, Plus, LayoutDashboard, Settings, Sun, Moon, Laptop } from "lucide-react"
+import { useTheme } from "next-themes"
 
 export function CommandMenu() {
     const [open, setOpen] = React.useState(false)
     const router = useRouter()
+    const { setTheme } = useTheme()
 
     React.useEffect(() => {
         const down = (e: KeyboardEvent) => {
@@ -46,6 +48,21 @@ export function CommandMenu() {
                     <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/create"))}>
                         <Plus className="mr-2 h-4 w-4" />
                         Nuovo Sinistro
+                    </CommandItem>
+                </CommandGroup>
+                <CommandSeparator />
+                <CommandGroup heading="Tema">
+                    <CommandItem onSelect={() => runCommand(() => setTheme("light"))}>
+                        <Sun className="mr-2 h-4 w-4" />
+                        Chiaro
+                    </CommandItem>
+                    <CommandItem onSelect={() => runCommand(() => setTheme("dark"))}>
+                        <Moon className="mr-2 h-4 w-4" />
+                        Scuro
+                    </CommandItem>
+                    <CommandItem onSelect={() => runCommand(() => setTheme("system"))}>
+                        <Laptop className="mr-2 h-4 w-4" />
+                        Sistema
                     </CommandItem>
                 </CommandGroup>
                 <CommandSeparator />

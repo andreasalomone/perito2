@@ -8,6 +8,7 @@ import { FileSearch, Loader2, RefreshCw, AlertCircle, Clock, CheckCircle2 } from
 import { DocumentAnalysis } from "@/types";
 import { cn } from "@/lib/utils";
 import { MarkdownContent } from "@/components/ui/markdown-content";
+import { ReportGeneratingSkeleton } from "@/components/cases/ReportGeneratingSkeleton";
 
 import { useRef } from "react";
 import { ScrollProgress } from "@/components/motion-primitives/scroll-progress";
@@ -212,32 +213,29 @@ export function DocumentAnalysisCard({
                         </ExpandableScreenContent>
                     </ExpandableScreen>
                 ) : (
-                    /* Empty State logic when no analysis exists */
+                    /* Empty State or Generating State */
                     !isLoading && !isBlocked && (
                         <div className="space-y-4">
-                            <div className="text-center py-6 text-muted-foreground">
-                                <FileSearch className="h-10 w-10 mx-auto mb-3 opacity-50" />
-                                <p>Nessuna analisi disponibile</p>
-                                <p className="text-sm">Clicca per analizzare i documenti caricati.</p>
-                            </div>
-                            <Button
-                                variant="default"
-                                className="w-full"
-                                disabled={!canAnalyze || isGenerating || isLoading}
-                                onClick={() => onGenerate(false)}
-                            >
-                                {isGenerating ? (
-                                    <>
-                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                        Analisi in corso...
-                                    </>
-                                ) : (
-                                    <>
+                            {isGenerating ? (
+                                <ReportGeneratingSkeleton variant="analysis" estimatedTime="~10 sec" />
+                            ) : (
+                                <>
+                                    <div className="text-center py-6 text-muted-foreground">
+                                        <FileSearch className="h-10 w-10 mx-auto mb-3 opacity-50" />
+                                        <p>Nessuna analisi disponibile</p>
+                                        <p className="text-sm">Clicca per analizzare i documenti caricati.</p>
+                                    </div>
+                                    <Button
+                                        variant="default"
+                                        className="w-full"
+                                        disabled={!canAnalyze || isGenerating || isLoading}
+                                        onClick={() => onGenerate(false)}
+                                    >
                                         <FileSearch className="h-4 w-4 mr-2" />
                                         Avvia Analisi
-                                    </>
-                                )}
-                            </Button>
+                                    </Button>
+                                </>
+                            )}
                         </div>
                     )
                 )}
