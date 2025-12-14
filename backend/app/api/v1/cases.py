@@ -278,6 +278,7 @@ def register_document(
     case_id: UUID,
     payload: schemas.DocumentRegisterPayload,
     db: Annotated[Session, Depends(get_db)],
+    background_tasks: BackgroundTasks,
 ) -> Document:
     """
     Registers a GCS blob as a Document.
@@ -336,8 +337,10 @@ def register_document(
 
     db.refresh(new_doc)
 
-    # 3. Trigger Async Processing
-    case_service.trigger_extraction_task(new_doc.id, str(case.organization_id))
+    # 3. Trigger Async Processing (non-blocking for faster API response)
+    background_tasks.add_task(
+        case_service.trigger_extraction_task, new_doc.id, str(case.organization_id)
+    )
 
     return new_doc
 

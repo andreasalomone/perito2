@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/select";
 import { Upload, UploadCloud, Play, AlertCircle, Loader2, Globe, MessageSquare } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
-import { StaggerList, StaggerItem } from "@/components/primitives";
+import { StaggerList, StaggerItem, ReportGeneratingSkeleton, FadeIn } from "@/components/primitives";
 
 // Language options for report generation
 export type ReportLanguage = "italian" | "english" | "spanish";
@@ -236,6 +236,17 @@ export function IngestionPanel({
                         Elaborazione documenti in corso... ({pendingDocs.length} rimanenti)
                     </AlertDescription>
                 </Alert>
+            )}
+
+            {/* Optimistic Report Skeleton - Shows immediately when generation starts */}
+            {isGenerating && (
+                <FadeIn>
+                    <ReportGeneratingSkeleton
+                        variant="report"
+                        estimatedTime="~30 sec"
+                        className="mt-4"
+                    />
+                </FadeIn>
             )}
 
             {/* Language Selection & Generate Button */}

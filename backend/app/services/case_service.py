@@ -728,17 +728,59 @@ def _perform_extraction_logic(doc: Document, tmp_dir: str):
     """
     Core extraction logic: Download -> Extract -> Upload Artifacts.
     This function is SYNCHRONOUS and blocking.
+
+    OPTIMIZATION: Vision files (PDF/images) skip download since LLM reads
+    directly from GCS at generation time.
     """
+    import time
+    start_time = time.perf_counter()
+
+    # Check if file is vision-only (PDF/images)
+    ext = os.path.splitext(doc.filename)[1].lower()
+    VISION_EXTS = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".gif"}
+
+    if ext in VISION_EXTS:
+        # FAST PATH: Vision files don't need local extraction
+        # LLM reads directly from GCS via Part.from_uri() at generation time
+        logger.info(f"⚡ Fast path: {doc.filename} (vision-only, skipping GCS download)")
+
+        mime_map = {
+            ".pdf": "application/pdf",
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".webp": "image/webp",
+            ".gif": "image/gif",
+        }
+
+        doc.ai_extracted_data = [
+            {
+                "type": "vision",
+                "path": None,  # Not used - LLM uses gcs_path
+                "gcs_path": doc.gcs_path,
+                "mime_type": mime_map.get(ext, "application/octet-stream"),
+                "filename": doc.filename,
+            }
+        ]
+
+        logger.info(f"📊 {doc.filename}: {time.perf_counter() - start_time:.3f}s (fast path)")
+        return
+
+    # STANDARD PATH: Text files (DOCX, XLSX, TXT, EML) need local processing
     # 1. Download
+    download_start = time.perf_counter()
     local_filename = f"extract_{doc.id}_{doc.filename}"
     local_path = os.path.join(tmp_dir, local_filename)
 
     logger.info(f"Downloading {doc.gcs_path} for extraction...")
     download_file_to_temp(doc.gcs_path, local_path)
+    download_duration = time.perf_counter() - download_start
 
     # 2. Extract
+    extract_start = time.perf_counter()
     logger.info(f"Extracting text from {local_filename}...")
     processed = document_processor.process_uploaded_file(local_path, tmp_dir)
+    extract_duration = time.perf_counter() - extract_start
 
     # --- Persist extracted artifacts to GCS ---
     storage_client = get_storage_client()
@@ -760,6 +802,12 @@ def _perform_extraction_logic(doc: Document, tmp_dir: str):
 
     # Update doc object (in memory, caller saves to DB)
     doc.ai_extracted_data = processed  # type: ignore[assignment]
+
+    total_duration = time.perf_counter() - start_time
+    logger.info(
+        f"📊 {doc.filename}: download={download_duration:.2f}s, "
+        f"extract={extract_duration:.2f}s, total={total_duration:.2f}s"
+    )
 
 
 async def _check_and_trigger_generation(

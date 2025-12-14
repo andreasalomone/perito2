@@ -32,6 +32,10 @@ RETRIABLE_GEMINI_EXCEPTIONS = (
     google_exceptions.Aborted,
 )
 
+# In-memory cache to avoid expensive client.caches.list() on every generation (~1s savings)
+from cachetools import TTLCache
+_memory_cache: TTLCache = TTLCache(maxsize=1, ttl=300)  # 5 minute TTL
+
 
 def get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
     """Retrieves an existing prompt cache or creates a new one.
@@ -49,6 +53,11 @@ def get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
     if not settings.ENABLE_GEMINI_CACHE:
         logger.info("Gemini Context Caching is DISABLED via settings.")
         return None
+
+    # Check memory cache first (avoid API call)
+    if cached_name := _memory_cache.get("active_cache"):
+        logger.debug(f"Using memory-cached cache name: {cached_name}")
+        return cached_name
 
     display_name = settings.CACHE_DISPLAY_NAME
     model_name = settings.LLM_MODEL_NAME
@@ -156,5 +165,9 @@ def get_or_create_prompt_cache(client: genai.Client) -> Optional[str]:
                 "Proceeding without cache - no cost savings on system prompt."
             )
             return None
+
+    # Store in memory cache for subsequent calls
+    if active_cache_name:
+        _memory_cache["active_cache"] = active_cache_name
 
     return active_cache_name

@@ -503,17 +503,34 @@ async def _save_report_version(
         )
         raise
 
-    # Generate summary (non-blocking - failures don't affect main report)
-    try:
-        from app.services import summary_service
+    # Generate summary in background (fire-and-forget, ~3-5s savings)
+    async def _generate_summary_background():
+        try:
+            async with AsyncSessionLocal() as bg_db:
+                from sqlalchemy import text
+                from app.services import summary_service
 
-        summary = await summary_service.generate_summary(report_text)
-        if summary:
-            case.ai_summary = summary
-            await db.commit()
-            logger.info(f"✅ Summary generated for case {case_id}")
-    except Exception as e:
-        logger.warning(f"⚠️ Summary generation failed (non-critical): {e}")
+                # Set RLS context for background session
+                await bg_db.execute(
+                    text("SELECT set_config('app.current_org_id', :org_id, false)"),
+                    {"org_id": organization_id},
+                )
+
+                summary = await summary_service.generate_summary(report_text)
+                if summary:
+                    result = await bg_db.execute(
+                        select(Case).filter(Case.id == case_id).with_for_update()
+                    )
+                    if c := result.scalars().first():
+                        c.ai_summary = summary
+                        await bg_db.commit()
+                        logger.info(f"✅ Background summary generated for case {case_id}")
+        except Exception as e:
+            logger.warning(f"⚠️ Background summary generation failed: {e}")
+
+    # Store task reference to prevent premature garbage collection
+    _background_task = asyncio.create_task(_generate_summary_background())
+    # Note: _background_task is intentionally "unused" - we just need to keep the reference
 
 
 async def _handle_generation_error(

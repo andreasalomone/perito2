@@ -79,8 +79,8 @@ export function useCaseDetail(id: string | undefined) {
         return () => document.removeEventListener("visibilitychange", handleVisibility);
     }, [caseData?.status, mutateCase]);
 
-    // 5. Adaptive polling interval (faster during generation)
-    const pollInterval = caseData?.status === "GENERATING" ? 2000 : 5000;
+    // 5. Adaptive polling interval (faster during any active async work)
+    const pollInterval = (caseData?.status === "GENERATING" || caseData?.documents.some(d => ["PROCESSING", "PENDING"].includes(d.ai_status))) ? 2000 : 5000;
 
     // 6. Lightweight Polling (Status Only)
     const { data: statusData } = useSWR<CaseStatus>(
