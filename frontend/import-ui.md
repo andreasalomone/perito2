@@ -156,6 +156,68 @@ export function MyModal() {
 
 ---
 
+## 📋 Real Example: Adding BadtzUI ExpandableCard
+
+> **Key Concept:** This is ADDING a new component, not swapping. ExpandableCard has different props than Card.
+
+### 1. Install
+
+```bash
+cd frontend
+npx shadcn@latest add https://badtz-ui.com/r/expandable-card.json
+```
+
+### 2. Check It Landed
+
+```bash
+ls src/components/ui/expandable-card.tsx  # Should exist
+```
+
+### 3. Add to Primitives Barrel
+
+```typescript
+// frontend/src/components/primitives/index.ts
+
+// Add the new export (don't remove Card - they're different!)
+export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
+export { ExpandableCard } from "@/components/ui/expandable-card";  // ← NEW
+```
+
+### 4. Use It
+
+```tsx
+import { ExpandableCard } from "@/components/primitives";
+
+<ExpandableCard
+  title="Case Summary"
+  description="AI Analysis"
+  src="/images/case-preview.webp"
+>
+  <p>Detailed content goes here...</p>
+</ExpandableCard>
+```
+
+### ExpandableCard Props
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `title` | `string` | Header title |
+| `description` | `string` | Subtitle text |
+| `src` | `string` | Image URL for header |
+| `children` | `ReactNode` | Expandable content |
+| `className` | `string` | Styling for collapsed state |
+| `classNameExpanded` | `string` | Styling for expanded state |
+
+### Swap vs Add: Which to Use?
+
+| Scenario | Action |
+|----------|--------|
+| New component has **same props** as old | **Swap** in `primitives/index.ts` |
+| New component has **different props** | **Add** as new export, keep old one |
+| Gradual migration | **Add** first, migrate files one-by-one, then remove old |
+
+---
+
 ## 🎯 Quick Reference: Component Props
 
 ### Dialog (motion-primitives style)
