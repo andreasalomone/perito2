@@ -7,6 +7,7 @@ from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from firebase_admin import auth, credentials
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -299,6 +300,86 @@ def get_registration_db(
                         f"FAILED TO RESET RLS CONTEXT in get_registration_db after rollback: {e2}"
                     )
                     db.invalidate()
+
+
+# -----------------------------------------------------------------------------
+# 3c. Async Database Session with RLS (for async endpoints)
+# -----------------------------------------------------------------------------
+from app.db.database import AsyncSessionLocal
+
+
+async def get_async_db(
+    current_user_token: dict[str, Any] = Depends(get_current_user_token),
+) -> AsyncSession:
+    """
+    Async Database Session Dependency with proper RLS context.
+
+    This is the safe alternative to creating AsyncSessionLocal inside endpoints.
+    It properly:
+    1. Sets RLS context before yielding
+    2. Resets context on cleanup (even on error)
+    3. Invalidates connection if reset fails
+
+    Usage:
+        @router.get("/endpoint")
+        async def my_endpoint(db: AsyncSession = Depends(get_async_db)):
+            ...
+    """
+    """
+    uid = current_user_token["uid"]
+    connection_dirtied = False
+
+    async with AsyncSessionLocal() as db:
+        try:
+            # 1. Get user's organization (one query to set context)
+            result = await db.execute(
+                text("SELECT organization_id FROM users WHERE id = :uid"),
+                {"uid": uid}
+            )
+            user_row = result.fetchone()
+
+            if not user_row:
+                logger.warning(f"get_async_db: User {uid} not found in database.")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="User account not initialized.",
+                )
+
+            org_id = str(user_row.organization_id)
+
+            # 2. Set RLS variables (is_local=false to persist across statements)
+            await db.execute(
+                text("SELECT set_config('app.current_user_uid', :uid, false)"),
+                {"uid": uid}
+            )
+            await db.execute(
+                text("SELECT set_config('app.current_org_id', :oid, false)"),
+                {"oid": org_id}
+            )
+            connection_dirtied = True
+
+            logger.debug(f"get_async_db: Set RLS context for user {uid} in org {org_id}")
+
+            yield db
+
+        finally:
+            # 3. CRITICAL: Reset RLS context before returning to pool
+            if connection_dirtied:
+                try:
+                    await db.execute(
+                        text("RESET app.current_user_uid; RESET app.current_org_id;")
+                    )
+                except Exception as e:
+                    logger.warning(f"get_async_db: Initial RESET failed: {e}. Attempting rollback.")
+                    try:
+                        await db.rollback()
+                        await db.execute(
+                            text("RESET app.current_user_uid; RESET app.current_org_id;")
+                        )
+                    except Exception as e2:
+                        logger.critical(f"get_async_db: FAILED TO RESET RLS after rollback: {e2}")
+                        # Invalidate connection to prevent potential data leak
+                        await db.invalidate()
 
 
 # -----------------------------------------------------------------------------

@@ -5,9 +5,10 @@ AI-powered preliminary report generation for the "Early Analysis" feature.
 Follows the document_analysis_service.py pattern for lightweight LLM calls.
 """
 
+import hashlib
 import html
 import logging
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 
 from google import genai
@@ -32,6 +33,18 @@ class PreliminaryBlockedError(Exception):
     """Raised when documents are still being processed."""
 
     pass
+
+
+def compute_document_hash(documents: List[Document]) -> str:
+    """
+    Compute a hash of document IDs to detect changes.
+    Same pattern as document_analysis_service.
+    """
+    if not documents:
+        return hashlib.sha256(b"").hexdigest()
+    sorted_ids = sorted(str(doc.id) for doc in documents)
+    combined = "|".join(sorted_ids)
+    return hashlib.sha256(combined.encode("utf-8")).hexdigest()
 
 
 async def get_latest_preliminary_report(
@@ -117,21 +130,29 @@ async def run_preliminary_report(
             f"Cannot generate report: {pending_count} documents are still being processed"
         )
 
-    # 2. Check for existing report (unless force=True)
-    if not force:
-        existing = await get_latest_preliminary_report(case_id, db)
-        if existing:
-            logger.info(f"Returning existing preliminary report for case {case_id}")
-            return existing
-
-    # 3. Fetch all documents with their extracted data
+    # 2. Fetch current documents for hash comparison
     docs_stmt = (
         select(Document)
         .where(Document.case_id == case_id)
         .where(Document.ai_status == ExtractionStatus.SUCCESS)
     )
     docs_result = await db.execute(docs_stmt)
-    documents = docs_result.scalars().all()
+    documents = list(docs_result.scalars().all())
+    current_hash = compute_document_hash(documents)
+
+    # 3. Check for existing report (unless force=True)
+    if not force:
+        existing = await get_latest_preliminary_report(case_id, db)
+        if existing:
+            # Check if documents have changed since last report
+            # We store the hash in template_used field as a workaround
+            # (avoids schema migration)
+            cached_hash = existing.template_used or ""
+            if cached_hash == current_hash:
+                logger.info(f"Returning existing preliminary report for case {case_id}")
+                return existing
+            else:
+                logger.info(f"Documents changed, regenerating preliminary report for case {case_id}")
 
     if not documents:
         raise PreliminaryBlockedError("No documents available for report generation")
@@ -231,6 +252,7 @@ async def run_preliminary_report(
             is_final=False,
             source="preliminary",  # Mark as preliminary report
             version_number=next_version,
+            template_used=current_hash,  # Store hash for staleness detection
         )
 
         db.add(new_version)

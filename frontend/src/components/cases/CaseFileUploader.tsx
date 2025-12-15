@@ -6,7 +6,6 @@ import { UploadCloud, FileText, CheckCircle2, XCircle, RotateCcw } from "lucide-
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { useConfig } from "@/context/ConfigContext";
-import { batchUploadFiles } from "@/utils/batchUpload";
 import axios from "axios";
 
 interface FileStatus {
@@ -50,52 +49,47 @@ export function CaseFileUploader({ caseId, onUploadComplete, trigger }: CaseFile
         try {
             const token = await getToken();
 
-            // 1. Get signed URL
-            const signRes = await axios.post(
-                `${apiUrl}/api/v1/cases/${caseId}/documents/upload-url`,
-                null,
-                {
-                    headers: { Authorization: `Bearer ${token}` },
-                    params: { filename: fileItem.file.name, content_type: fileItem.file.type }
-                }
+            // 1. Initiate upload (pre-registers document + returns signed URL)
+            const initRes = await axios.post(
+                `${apiUrl}/api/v1/cases/${caseId}/documents/initiate-upload`,
+                { filename: fileItem.file.name, content_type: fileItem.file.type },
+                { headers: { Authorization: `Bearer ${token}` } }
             );
 
-            // Update progress: signed URL obtained
+            const { document_id, upload_url } = initRes.data;
+
+            // Update progress: document registered, starting upload
             setFiles(prev => prev.map(f =>
-                f.id === fileItem.id ? { ...f, progress: 20 } : f
+                f.id === fileItem.id ? { ...f, progress: 15 } : f
             ));
 
             // 2. Upload to GCS with progress
             const maxFileSize = 50 * 1024 * 1024; // 50MB
-            await axios.put(signRes.data.upload_url, fileItem.file, {
+            await axios.put(upload_url, fileItem.file, {
                 headers: {
                     "Content-Type": fileItem.file.type,
                     "x-goog-content-length-range": `0,${maxFileSize}`
                 },
                 onUploadProgress: (progressEvent) => {
                     if (progressEvent.total) {
-                        // Map 20-80% of progress to the actual upload
-                        const uploadProgress = Math.round((progressEvent.loaded / progressEvent.total) * 60);
+                        // Map 15-85% of progress to the actual upload
+                        const uploadProgress = Math.round((progressEvent.loaded / progressEvent.total) * 70);
                         setFiles(prev => prev.map(f =>
-                            f.id === fileItem.id ? { ...f, progress: 20 + uploadProgress } : f
+                            f.id === fileItem.id ? { ...f, progress: 15 + uploadProgress } : f
                         ));
                     }
                 }
             });
 
-            // Update progress: uploaded, now registering
+            // Update progress: uploaded, now confirming
             setFiles(prev => prev.map(f =>
-                f.id === fileItem.id ? { ...f, progress: 85 } : f
+                f.id === fileItem.id ? { ...f, progress: 90 } : f
             ));
 
-            // 3. Register document
+            // 3. Confirm upload (triggers AI extraction)
             await axios.post(
-                `${apiUrl}/api/v1/cases/${caseId}/documents/register`,
-                {
-                    filename: fileItem.file.name,
-                    gcs_path: signRes.data.gcs_path,
-                    mime_type: fileItem.file.type
-                },
+                `${apiUrl}/api/v1/cases/${caseId}/documents/${document_id}/confirm-upload`,
+                null,
                 { headers: { Authorization: `Bearer ${token}` } }
             );
 

@@ -50,6 +50,11 @@ class CaseBase(BaseModel):
     note: Optional[str] = None
     # ai_summary REMOVED from Base to avoid bloat in List View
 
+    # Serialize Decimal as float for frontend compatibility (Zod expects number)
+    model_config = ConfigDict(
+        json_encoders={Decimal: lambda v: float(v) if v is not None else None}
+    )
+
 
 class CaseCreate(CaseBase):
     client_name: Optional[str] = None  # Helper to find/create Client
@@ -137,6 +142,44 @@ class CaseSummary(CaseBase):
         return None
 
 
+# --- LIGHTWEIGHT LIST ITEM (Reduces payload ~85%) ---
+class CaseListItem(BaseModel):
+    """
+    Minimal schema for GET /cases/ list endpoint.
+    Only includes fields actually displayed in dashboard cards.
+    """
+    id: UUID
+    organization_id: UUID
+    client_id: Optional[UUID] = None
+    reference_code: str
+    status: CaseStatus
+    created_at: datetime
+
+    # Hold relationships during serialization but exclude from JSON
+    client: Optional[Any] = Field(default=None, exclude=True)
+    creator: Optional[Any] = Field(default=None, exclude=True)
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @computed_field
+    def client_name(self) -> Optional[str]:
+        if self.client:
+            return self.client.name
+        return None
+
+    @computed_field
+    def client_logo_url(self) -> Optional[str]:
+        if self.client and hasattr(self.client, "logo_url"):
+            return self.client.logo_url
+        return None
+
+    @computed_field
+    def creator_email(self) -> Optional[str]:
+        if self.creator:
+            return self.creator.email
+        return None
+
+
 # --- VERSIONS ---
 class VersionRead(BaseModel):
     id: UUID
@@ -178,6 +221,19 @@ class DocumentRegisterPayload(BaseModel):
     filename: str
     gcs_path: str
     mime_type: str
+
+
+class InitiateUploadPayload(BaseModel):
+    """Payload for combined upload initiation (reduces 3 requests to 2)."""
+    filename: str
+    content_type: str
+
+
+class InitiateUploadResponse(BaseModel):
+    """Response from initiate-upload with document ID and signed URL."""
+    document_id: UUID
+    upload_url: str
+    gcs_path: str
 
 
 class GeneratePayload(BaseModel):

@@ -150,72 +150,76 @@ export function IngestionPanel({
                                     ))}
                                 </AnimatePresence>
                             </StaggerList>
+                            {/* Guidance when all documents are in error state */}
+                            {documents.length > 0 && documents.every(d => d.ai_status === 'ERROR') && (
+                                <div className="p-3 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+                                    <p>⚠️ Tutti i file hanno errori. Ricarica i file corretti o procedi con documenti validi.</p>
+                                </div>
+                            )}
                         </div>
                     )}
                 </CardContent>
             </Card>
 
-            {/* Early Analysis Section - Always reserve space to prevent CLS */}
-            {(documentAnalysis || preliminaryReport) && (
-                <div className="grid md:grid-cols-2 gap-4">
-                    {/* Document Analysis Card or Skeleton */}
-                    {documentAnalysis ? (
-                        documentAnalysis.isLoading && !documentAnalysis.analysis ? (
-                            <Card className="h-48 animate-pulse">
-                                <CardHeader className="pb-3">
-                                    <div className="flex items-center justify-between">
-                                        <div className="h-5 w-32 bg-muted rounded" />
-                                        <div className="h-5 w-20 bg-muted rounded" />
-                                    </div>
-                                </CardHeader>
-                                <CardContent className="space-y-3">
-                                    <div className="h-4 w-full bg-muted rounded" />
-                                    <div className="h-4 w-3/4 bg-muted rounded" />
-                                    <div className="h-10 w-full bg-muted rounded" />
-                                </CardContent>
-                            </Card>
-                        ) : (
-                            <DocumentAnalysisCard
-                                analysis={documentAnalysis.analysis}
-                                isStale={documentAnalysis.isStale}
-                                canAnalyze={documentAnalysis.canAnalyze}
-                                pendingDocs={documentAnalysis.pendingDocs}
-                                isLoading={documentAnalysis.isLoading}
-                                isGenerating={documentAnalysis.isGenerating}
-                                onGenerate={documentAnalysis.onGenerate}
-                            />
-                        )
-                    ) : null}
+            {/* Early Analysis Section - Always render to prevent CLS */}
+            <div className="grid md:grid-cols-2 gap-4 min-h-[200px]">
+                {/* Document Analysis Card or Skeleton */}
+                {documentAnalysis ? (
+                    documentAnalysis.isLoading && !documentAnalysis.analysis ? (
+                        <Card className="h-48 animate-pulse">
+                            <CardHeader className="pb-3">
+                                <div className="flex items-center justify-between">
+                                    <div className="h-5 w-32 bg-muted rounded" />
+                                    <div className="h-5 w-20 bg-muted rounded" />
+                                </div>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                                <div className="h-4 w-full bg-muted rounded" />
+                                <div className="h-4 w-3/4 bg-muted rounded" />
+                                <div className="h-10 w-full bg-muted rounded" />
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        <DocumentAnalysisCard
+                            analysis={documentAnalysis.analysis}
+                            isStale={documentAnalysis.isStale}
+                            canAnalyze={documentAnalysis.canAnalyze}
+                            pendingDocs={documentAnalysis.pendingDocs}
+                            isLoading={documentAnalysis.isLoading}
+                            isGenerating={documentAnalysis.isGenerating}
+                            onGenerate={documentAnalysis.onGenerate}
+                        />
+                    )
+                ) : <Card className="h-48 animate-pulse bg-muted/30" />}
 
-                    {/* Preliminary Report Card or Skeleton */}
-                    {preliminaryReport ? (
-                        preliminaryReport.isLoading && !preliminaryReport.report ? (
-                            <Card className="h-48 animate-pulse">
-                                <CardHeader className="pb-3">
-                                    <div className="flex items-center justify-between">
-                                        <div className="h-5 w-36 bg-muted rounded" />
-                                        <div className="h-5 w-24 bg-muted rounded" />
-                                    </div>
-                                </CardHeader>
-                                <CardContent className="space-y-3">
-                                    <div className="h-4 w-full bg-muted rounded" />
-                                    <div className="h-4 w-2/3 bg-muted rounded" />
-                                    <div className="h-10 w-full bg-muted rounded" />
-                                </CardContent>
-                            </Card>
-                        ) : (
-                            <PreliminaryReportCard
-                                report={preliminaryReport.report}
-                                canGenerate={preliminaryReport.canGenerate}
-                                pendingDocs={preliminaryReport.pendingDocs}
-                                isLoading={preliminaryReport.isLoading}
-                                isGenerating={preliminaryReport.isGenerating}
-                                onGenerate={preliminaryReport.onGenerate}
-                            />
-                        )
-                    ) : null}
-                </div>
-            )}
+                {/* Preliminary Report Card or Skeleton */}
+                {preliminaryReport ? (
+                    preliminaryReport.isLoading && !preliminaryReport.report ? (
+                        <Card className="h-48 animate-pulse">
+                            <CardHeader className="pb-3">
+                                <div className="flex items-center justify-between">
+                                    <div className="h-5 w-36 bg-muted rounded" />
+                                    <div className="h-5 w-24 bg-muted rounded" />
+                                </div>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                                <div className="h-4 w-full bg-muted rounded" />
+                                <div className="h-4 w-2/3 bg-muted rounded" />
+                                <div className="h-10 w-full bg-muted rounded" />
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        <PreliminaryReportCard
+                            report={preliminaryReport.report}
+                            canGenerate={preliminaryReport.canGenerate}
+                            pendingDocs={preliminaryReport.pendingDocs}
+                            isLoading={preliminaryReport.isLoading}
+                            isGenerating={preliminaryReport.isGenerating}
+                            onGenerate={preliminaryReport.onGenerate}
+                        />
+                    )
+                ) : <Card className="h-48 animate-pulse bg-muted/30" />}
+            </div>
 
             {/* Error Warning */}
             {hasErrors && (
@@ -268,6 +272,9 @@ export function IngestionPanel({
                     <p className="text-xs text-muted-foreground text-right">
                         {extraInstructions.length}/{MAX_INSTRUCTIONS_LENGTH}
                     </p>
+                    {extraInstructions.length >= MAX_INSTRUCTIONS_LENGTH && (
+                        <p className="text-xs text-amber-600 text-right">Limite raggiunto</p>
+                    )}
                 </div>
 
                 {/* Language and Generate */}
