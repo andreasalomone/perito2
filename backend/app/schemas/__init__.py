@@ -103,6 +103,7 @@ class CaseSummary(CaseBase):
 
     # Hold the client relationship during serialization but exclude from JSON output
     client: Optional[Any] = Field(default=None, exclude=True)
+    creator: Optional[Any] = Field(default=None, exclude=True)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -141,6 +142,20 @@ class CaseSummary(CaseBase):
             return email
         return None
 
+    @computed_field
+    def creator_name(self) -> Optional[str]:
+        """
+        Extracts creator name as "First L." format from relationship.
+        """
+        if hasattr(self, "creator") and self.creator:
+            first = self.creator.first_name or ""
+            last = self.creator.last_name or ""
+            # Abbreviate last name to first letter + period
+            last_initial = f"{last[0]}." if last else ""
+            full_name = f"{first} {last_initial}".strip()
+            return full_name if full_name else None
+        return None
+
 
 # --- LIGHTWEIGHT LIST ITEM (Reduces payload ~85%) ---
 class CaseListItem(BaseModel):
@@ -177,6 +192,18 @@ class CaseListItem(BaseModel):
     def creator_email(self) -> Optional[str]:
         if self.creator:
             return self.creator.email
+        return None
+
+    @computed_field
+    def creator_name(self) -> Optional[str]:
+        """Extracts creator name as 'First L.' format from relationship."""
+        if self.creator:
+            first = self.creator.first_name or ""
+            last = self.creator.last_name or ""
+            # Abbreviate last name to first letter + period
+            last_initial = f"{last[0]}." if last else ""
+            full_name = f"{first} {last_initial}".strip()
+            return full_name if full_name else None
         return None
 
 

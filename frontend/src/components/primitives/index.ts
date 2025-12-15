@@ -24,8 +24,11 @@ export { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 export { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 export { StatusBadge } from "@/components/ui/status-badge";
 export { MarkdownContent } from "@/components/ui/markdown-content";
+export { Markdown } from "@/components/ui/markdown";
+export { CodeBlock, CodeBlockCode, CodeBlockGroup } from "@/components/ui/code-block";
 export { ReportGeneratingSkeleton } from "@/components/cases/ReportGeneratingSkeleton";
 export { ExpandableScreen, ExpandableScreenTrigger, ExpandableScreenContent } from "@/components/ui/expandable-screen";
+export { Steps, StepsContent, StepsItem, StepsTrigger, StepsBar } from "@/components/ui/steps";
 export { ModeToggle } from "@/components/ui/mode-toggle";
 
 // ============================================================================

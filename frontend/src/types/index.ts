@@ -182,7 +182,8 @@ export const CaseSummarySchema = z.object({
     created_at: z.string(),
     client_name: z.string().optional().nullable(), // Helper from backend
     client_logo_url: z.string().optional().nullable(), // Helper from backend (ICE)
-    creator_email: z.string().optional().nullable(), // New field
+    creator_email: z.string().optional().nullable(),
+    creator_name: z.string().optional().nullable(),
 });
 export type CaseSummary = z.infer<typeof CaseSummarySchema>;
 

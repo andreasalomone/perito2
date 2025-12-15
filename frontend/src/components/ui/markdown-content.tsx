@@ -1,7 +1,8 @@
 "use client";
 
-import ReactMarkdown from "react-markdown";
+import { Markdown } from "@/components/ui/markdown";
 import { cn } from "@/lib/utils";
+import { Components } from "react-markdown";
 
 type MarkdownVariant = "default" | "compact" | "report";
 
@@ -12,13 +13,15 @@ interface MarkdownContentProps {
     readonly variant?: MarkdownVariant;
     /** Additional className */
     readonly className?: string;
+    /** Optional message ID for streaming performance optimization */
+    readonly id?: string;
 }
 
 /**
  * Markdown component configurations for each variant.
  * Centralizes ReactMarkdown styling for consistency.
  */
-const MARKDOWN_COMPONENTS: Record<MarkdownVariant, React.ComponentProps<typeof ReactMarkdown>["components"]> = {
+const MARKDOWN_COMPONENTS: Record<MarkdownVariant, Partial<Components>> = {
     default: {
         p: ({ children }) => <p className="my-3 text-base text-muted-foreground leading-relaxed">{children}</p>,
         strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
@@ -59,20 +62,29 @@ const MARKDOWN_COMPONENTS: Record<MarkdownVariant, React.ComponentProps<typeof R
 /**
  * MarkdownContent - Standardized markdown rendering component.
  *
+ * Uses prompt-kit's Markdown component with memoized block rendering
+ * for optimal streaming performance. Pass an `id` prop for AI chat
+ * interfaces to enable proper block caching.
+ *
  * @example
  * <MarkdownContent content={report.content} variant="report" />
  * <MarkdownContent content={summary} variant="compact" />
+ * <MarkdownContent content={message.content} id={message.id} /> // For streaming
  */
 export function MarkdownContent({
     content,
     variant = "default",
     className,
+    id,
 }: MarkdownContentProps) {
     return (
         <div className={cn("prose dark:prose-invert max-w-none", className)}>
-            <ReactMarkdown components={MARKDOWN_COMPONENTS[variant]}>
+            <Markdown
+                id={id}
+                components={MARKDOWN_COMPONENTS[variant]}
+            >
                 {content}
-            </ReactMarkdown>
+            </Markdown>
         </div>
     );
 }

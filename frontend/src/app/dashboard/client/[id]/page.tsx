@@ -5,7 +5,7 @@ import { useClient } from "@/hooks/useClients";
 import { useCases } from "@/hooks/useCases";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Globe, MapPin, Building2, Phone, Mail, User, RefreshCw, ChevronRight } from "lucide-react";
+import { ArrowLeft, Building2, RefreshCw, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { CaseCard } from "@/components/dashboard/CaseCard";
 import { Badge } from "@/components/ui/badge";
@@ -13,8 +13,9 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ClientDialog } from "@/components/dashboard/ClientDialog";
+import ClientDetailsPanel from "@/components/dashboard/ClientDetailsPanel";
 import { ClientDetail } from "@/types";
+
 
 export default function ClientDetailPage() {
     const { id } = useParams();
@@ -89,97 +90,19 @@ export default function ClientDetailPage() {
                             )}
                         </div>
                     </div>
-                    <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={handleEnrichment} disabled={isEnriching}>
-                            <RefreshCw className={`mr-2 h-4 w-4 ${isEnriching ? 'animate-spin' : ''}`} />
-                            Aggiorna Dati
-                        </Button>
-                        <ClientDialog
-                            client={client}
-                            onSuccess={handleEditSuccess}
-                            trigger={
-                                <Button size="sm" variant="outline">Modifica</Button>
-                            }
-                        />
-                    </div>
+                    <Button variant="outline" size="sm" onClick={handleEnrichment} disabled={isEnriching}>
+                        <RefreshCw className={`mr-2 h-4 w-4 ${isEnriching ? 'animate-spin' : ''}`} />
+                        Aggiorna Dati
+                    </Button>
                 </div>
             </div>
 
             {/* Bento Grid layout */}
+            {/* Client Details with Inline Editing */}
+            <ClientDetailsPanel client={client} onUpdate={handleEditSuccess} />
+
+            {/* Stats and Cases Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-
-                {/* Block 1: Company Info */}
-                <Card className="md:col-span-2">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-lg">
-                            <Building2 className="h-5 w-5 text-primary" />
-                            Dati Aziendali
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                        <div className="space-y-4">
-                            <div>
-                                <h4 className="text-sm font-medium text-muted-foreground mb-1">Indirizzo Sede Legale</h4>
-                                <div className="flex items-start gap-2">
-                                    <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                                    <span>
-                                        {client.address_street || "-"}<br />
-                                        {client.zip_code} {client.city} {client.province && `(${client.province})`}<br />
-                                        {client.country}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="space-y-4">
-                            <div>
-                                <h4 className="text-sm font-medium text-muted-foreground mb-1">Sito Web</h4>
-                                {client.website ? (
-                                    <a href={client.website.startsWith('http') ? client.website : `https://${client.website}`}
-                                        target="_blank" rel="noopener noreferrer"
-                                        className="flex items-center gap-2 text-primary hover:underline group">
-                                        <Globe className="h-4 w-4" />
-                                        {client.website}
-                                    </a>
-                                ) : (
-                                    <span className="text-muted-foreground">-</span>
-                                )}
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Block 2: Contacts */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-lg">
-                            <User className="h-5 w-5 text-primary" />
-                            Contatti
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div>
-                            <h4 className="text-sm font-medium text-muted-foreground mb-1">Referente</h4>
-                            <div className="flex items-center gap-2">
-                                <User className="h-4 w-4 text-muted-foreground" />
-                                <span>{client.referente || "-"}</span>
-                            </div>
-                        </div>
-                        <div>
-                            <h4 className="text-sm font-medium text-muted-foreground mb-1">Email</h4>
-                            <div className="flex items-center gap-2">
-                                <Mail className="h-4 w-4 text-muted-foreground" />
-                                <span>{client.email || "-"}</span>
-                            </div>
-                        </div>
-                        <div>
-                            <h4 className="text-sm font-medium text-muted-foreground mb-1">Telefono</h4>
-                            <div className="flex items-center gap-2">
-                                <Phone className="h-4 w-4 text-muted-foreground" />
-                                <span>{client.telefono || "-"}</span>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
 
                 {/* Block 3: Stats (Optional row or sidebar) */}
                 <Card>

@@ -8,9 +8,9 @@ import { FileSearch, Loader2, RefreshCw, AlertCircle, Clock, CheckCircle2 } from
 import { DocumentAnalysis } from "@/types";
 import { cn } from "@/lib/utils";
 import { MarkdownContent } from "@/components/ui/markdown-content";
-import { ReportGeneratingSkeleton } from "@/components/cases/ReportGeneratingSkeleton";
+import { Steps, StepsContent, StepsItem, StepsTrigger } from "@/components/ui/steps";
 
-import { useRef } from "react";
+import { useRef, useState, useEffect } from "react";
 import { ScrollProgress } from "@/components/motion-primitives/scroll-progress";
 
 import { ExpandableScreen, ExpandableScreenTrigger, ExpandableScreenContent } from "@/components/ui/expandable-screen";
@@ -23,6 +23,58 @@ interface DocumentAnalysisCardProps {
     isLoading: boolean;
     isGenerating: boolean;
     onGenerate: (force?: boolean) => void;
+}
+
+/** LLM thinking steps shown during analysis */
+const ANALYSIS_STEPS = [
+    { text: "Caricamento documenti...", delay: 0 },
+    { text: "Analisi delle immagini...", delay: 2000 },
+    { text: "Estrazione informazioni chiave...", delay: 4000 },
+    { text: "Identificazione documenti mancanti...", delay: 6000 },
+    { text: "Generazione summary...", delay: 8000 },
+];
+
+/** Progressive steps shown while LLM processes documents */
+function AnalysisSteps() {
+    const [visibleSteps, setVisibleSteps] = useState(1);
+
+    useEffect(() => {
+        const timers: NodeJS.Timeout[] = [];
+        ANALYSIS_STEPS.forEach((step, index) => {
+            if (index > 0) {
+                const timer = setTimeout(() => {
+                    setVisibleSteps(prev => Math.max(prev, index + 1));
+                }, step.delay);
+                timers.push(timer);
+            }
+        });
+        return () => timers.forEach(clearTimeout);
+    }, []);
+
+    return (
+        <div className="space-y-4">
+            <Steps defaultOpen>
+                <StepsTrigger leftIcon={<Loader2 className="h-4 w-4 animate-spin" />}>
+                    Analisi in corso...
+                </StepsTrigger>
+                <StepsContent>
+                    <div className="space-y-1">
+                        {ANALYSIS_STEPS.slice(0, visibleSteps).map((step, idx) => (
+                            <StepsItem
+                                key={step.text}
+                                className={cn(
+                                    "transition-opacity duration-300",
+                                    idx === visibleSteps - 1 ? "text-foreground" : "text-muted-foreground"
+                                )}
+                            >
+                                {step.text}
+                            </StepsItem>
+                        ))}
+                    </div>
+                </StepsContent>
+            </Steps>
+        </div>
+    );
 }
 
 /**
@@ -217,7 +269,7 @@ export function DocumentAnalysisCard({
                     !isLoading && !isBlocked && (
                         <div className="space-y-4">
                             {isGenerating ? (
-                                <ReportGeneratingSkeleton variant="analysis" estimatedTime="~10 sec" />
+                                <AnalysisSteps />
                             ) : (
                                 <>
                                     <div className="text-center py-6 text-muted-foreground">
