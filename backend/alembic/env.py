@@ -81,9 +81,9 @@ def run_migrations_online() -> None:
         # We construct the URL manually to handle special chars in password safely
         from sqlalchemy.engine.url import URL
 
-        # Use admin credentials if available, otherwise fall back to regular
-        db_user = settings.DB_ADMIN or settings.DB_USER
-        db_pass = settings.DB_ADMIN_PASS or settings.DB_PASS
+        # Use standard credentials (report_user owns alembic_version)
+        db_user = settings.DB_USER
+        db_pass = settings.DB_PASS
 
         url = URL.create(
             drivername="postgresql+pg8000",
@@ -112,11 +112,10 @@ def run_migrations_online() -> None:
             """
             Standalone connector function specifically for migrations.
             Uses a fresh Connector instance.
-            Uses admin credentials if available, otherwise falls back to regular credentials.
+            Uses standard credentials (report_user owns alembic_version).
             """
-            # Use admin credentials if available, otherwise fall back to regular
-            db_user = settings.DB_ADMIN or settings.DB_USER
-            db_pass = settings.DB_ADMIN_PASS or settings.DB_PASS
+            db_user = settings.DB_USER
+            db_pass = settings.DB_PASS
 
             # Note: We must access the connector instance from the outer scope's context manager
             conn = global_connector.connect(
