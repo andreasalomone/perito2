@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { LayoutDashboard, FilePlus, LogOut, User as UserIcon, ChevronLeft, ChevronRight } from "lucide-react";
+import { ModeToggle } from "@/components/primitives";
 import { User } from "firebase/auth";
 import { DBUser } from "@/types";
 import { cn } from "@/lib/utils";
@@ -99,6 +100,10 @@ export function Sidebar({
                         <ChevronRight className="h-4 w-4" />
                     </Button>
                 )}
+
+                <div className={cn("mb-4", collapsed ? "flex justify-center" : "px-2")}>
+                    <ModeToggle />
+                </div>
 
                 {!collapsed && (
                     <div className="mb-4 px-2">

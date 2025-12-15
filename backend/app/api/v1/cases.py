@@ -3,12 +3,13 @@ from pathlib import Path
 from typing import Annotated, Any, List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, selectinload
 
 from app import schemas
-from app.api.dependencies import get_current_user_token, get_db
+from app.api.dependencies import get_async_db, get_current_user_token, get_db
 from app.core.config import settings
 from app.models import Case, Client, Document, ReportVersion, User
 from app.schemas.enums import CaseStatus, ExtractionStatus
@@ -27,7 +28,7 @@ router = APIRouter()
 
 @router.get(
     "/",
-    response_model=List[schemas.CaseSummary],
+    response_model=List[schemas.CaseListItem],
     summary="List Cases",
     description="Retrieve a paginated list of cases for the authenticated organization.",
 )
@@ -63,9 +64,11 @@ def list_cases(
 
     # 1. Text Search
     if search:
+        # Escape LIKE wildcards to prevent injection
+        safe_search = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         stmt = stmt.join(Case.client, isouter=True).where(
-            (Case.reference_code.ilike(f"%{search}%"))
-            | (Client.name.ilike(f"%{search}%"))
+            (Case.reference_code.ilike(f"%{safe_search}%", escape="\\"))
+            | (Client.name.ilike(f"%{safe_search}%", escape="\\"))
         )
 
     # 2. Filter by Client ID
@@ -153,7 +156,11 @@ def create_case(
 
 
 @router.get("/{case_id}", response_model=schemas.CaseDetail)
-def get_case_detail(case_id: UUID, db: Annotated[Session, Depends(get_db)]) -> Case:
+def get_case_detail(
+    case_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+    response: Response,
+) -> Case:
     stmt = (
         select(Case)
         .options(
@@ -167,7 +174,15 @@ def get_case_detail(case_id: UUID, db: Annotated[Session, Depends(get_db)]) -> C
 
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+
+    # Add cache headers based on status
+    if case.status in (CaseStatus.CLOSED, CaseStatus.ARCHIVED):
+        response.headers["Cache-Control"] = "private, max-age=3600"  # 1 hour
+    else:
+        response.headers["Cache-Control"] = "private, no-store"
+
     return case
+
 
 
 @router.patch("/{case_id}", response_model=schemas.CaseDetail)
@@ -272,11 +287,130 @@ def get_doc_upload_url(
     )
 
 
+@router.post(
+    "/{case_id}/documents/initiate-upload",
+    response_model=schemas.InitiateUploadResponse,
+    summary="Initiate Document Upload (Optimized)",
+    description="Pre-registers document and returns signed URL in one request. "
+                "Reduces upload flow from 3 requests to 2.",
+)
+def initiate_upload(
+    case_id: UUID,
+    payload: schemas.InitiateUploadPayload,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """
+    Combined endpoint that:
+    1. Validates file extension and MIME type
+    2. Creates Document record in PENDING state
+    3. Generates signed GCS upload URL
+
+    After this, client uploads directly to GCS, then calls confirm-upload.
+    """
+    case = db.get(Case, case_id)
+    if not case or case.deleted_at:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    # 1. Sanitize Filename
+    from app.services.document_processor import sanitize_filename
+
+    original_basename = Path(payload.filename).name
+    clean_filename = sanitize_filename(original_basename)
+
+    if not clean_filename or clean_filename == ".":
+        clean_filename = "document"
+
+    ext = Path(original_basename).suffix.lower()
+    if ext and not clean_filename.endswith(ext):
+        clean_filename = Path(clean_filename).stem + ext
+
+    # 2. Validate Extension & MIME
+    if ext not in settings.ALLOWED_MIME_TYPES:
+        raise HTTPException(
+            status_code=400, detail=f"Unsupported file extension: {ext}"
+        )
+
+    if payload.content_type != settings.ALLOWED_MIME_TYPES[ext]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"MIME type mismatch. Expected {settings.ALLOWED_MIME_TYPES[ext]}.",
+        )
+
+    # 3. Generate signed URL and get expected GCS path
+    url_response = gcs_service.generate_upload_signed_url(
+        filename=clean_filename,
+        content_type=payload.content_type,
+        organization_id=str(case.organization_id),
+        case_id=str(case.id),
+    )
+
+    # 4. Pre-register document in PENDING state
+    new_doc = Document(
+        case_id=case.id,
+        organization_id=case.organization_id,
+        filename=payload.filename,  # Keep original filename for display
+        gcs_path=url_response["gcs_path"],
+        mime_type=payload.content_type,
+        ai_status=ExtractionStatus.PENDING,
+    )
+    db.add(new_doc)
+    db.commit()
+    db.refresh(new_doc)
+
+    return {
+        "document_id": new_doc.id,
+        "upload_url": url_response["upload_url"],
+        "gcs_path": url_response["gcs_path"],
+    }
+
+
+@router.post(
+    "/{case_id}/documents/{document_id}/confirm-upload",
+    response_model=schemas.DocumentRead,
+    summary="Confirm Document Upload",
+    description="Called after GCS upload succeeds. Tags blob and triggers AI extraction.",
+)
+def confirm_upload(
+    case_id: UUID,
+    document_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+    background_tasks: BackgroundTasks,
+) -> Document:
+    """
+    Confirms that GCS upload completed successfully:
+    1. Verifies document exists and belongs to case
+    2. Tags GCS blob as finalized
+    3. Triggers async AI extraction
+    """
+    # Verify document exists and belongs to case
+    doc = db.get(Document, document_id)
+    if not doc or doc.case_id != case_id:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Tag blob as finalized
+    try:
+        gcs_service.tag_blob_as_finalized(doc.gcs_path)
+    except Exception as e:
+        logger.error(f"Failed to tag blob {doc.gcs_path} as finalized: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to finalize document storage.",
+        ) from e
+
+    # Trigger async AI extraction
+    background_tasks.add_task(
+        case_service.trigger_extraction_task, doc.id, str(doc.organization_id)
+    )
+
+    return doc
+
+
 @router.post("/{case_id}/documents/register", response_model=schemas.DocumentRead)
 def register_document(
     case_id: UUID,
     payload: schemas.DocumentRegisterPayload,
     db: Annotated[Session, Depends(get_db)],
+    background_tasks: BackgroundTasks,
 ) -> Document:
     """
     Registers a GCS blob as a Document.
@@ -335,8 +469,10 @@ def register_document(
 
     db.refresh(new_doc)
 
-    # 3. Trigger Async Processing
-    case_service.trigger_extraction_task(new_doc.id, str(case.organization_id))
+    # 3. Trigger Async Processing (non-blocking for faster API response)
+    background_tasks.add_task(
+        case_service.trigger_extraction_task, new_doc.id, str(case.organization_id)
+    )
 
     return new_doc
 
@@ -580,3 +716,349 @@ def delete_document(
     db.commit()
     logger.info(f"Document {doc_id} deleted from case {case_id}.")
     return
+
+
+# -----------------------------------------------------------------------------
+# Early Analysis Feature: Documents List & Document Analysis
+# -----------------------------------------------------------------------------
+
+# MIME types that support inline preview
+PREVIEWABLE_MIME_TYPES = {
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/gif",
+}
+
+
+@router.get(
+    "/{case_id}/documents",
+    response_model=schemas.DocumentsListResponse,
+    summary="List Documents",
+    description="Get all documents for a case with signed URLs for preview/download.",
+)
+async def list_documents(
+    case_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """
+    Returns all documents for a case with:
+    - Signed URLs for preview/download
+    - Preview capability flag based on MIME type
+    - Extraction status
+    """
+    import asyncio
+
+    case = db.get(Case, case_id)
+    if not case or case.deleted_at:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    # Fetch all documents
+    docs = db.scalars(
+        select(Document)
+        .where(Document.case_id == case_id)
+        .order_by(Document.created_at.desc())
+    ).all()
+
+    # Count pending documents
+    pending_count = sum(
+        1
+        for d in docs
+        if d.ai_status in [ExtractionStatus.PENDING, ExtractionStatus.PROCESSING]
+    )
+
+    # Generate signed URLs (wrap sync call)
+    def build_document_list():
+        result = []
+        for doc in docs:
+            url = None
+            if doc.gcs_path:
+                try:
+                    url = gcs_service.generate_download_signed_url(doc.gcs_path)
+                except Exception as e:
+                    logger.warning(f"Failed to generate signed URL for {doc.id}: {e}")
+
+            can_preview = (
+                doc.mime_type in PREVIEWABLE_MIME_TYPES if doc.mime_type else False
+            )
+
+            result.append(
+                {
+                    "id": doc.id,
+                    "filename": doc.filename,
+                    "mime_type": doc.mime_type,
+                    "status": doc.ai_status,
+                    "can_preview": can_preview,
+                    "url": url,
+                }
+            )
+        return result
+
+    documents_list = await asyncio.to_thread(build_document_list)
+
+    return {
+        "documents": documents_list,
+        "total": len(docs),
+        "pending_extraction": pending_count,
+    }
+
+
+@router.get(
+    "/{case_id}/document-analysis",
+    response_model=schemas.DocumentAnalysisResponse,
+    summary="Get Document Analysis",
+    description="Retrieve the latest document analysis for a case.",
+)
+async def get_document_analysis(
+    case_id: UUID,
+    async_db: Annotated[AsyncSession, Depends(get_async_db)],
+) -> dict:
+    """
+    Returns the most recent document analysis for a case, if it exists.
+    Also indicates whether a new analysis can be triggered (no pending docs).
+
+    Note: Uses get_async_db dependency for proper RLS lifecycle management.
+    """
+    from app.services import document_analysis_service
+
+    # Verify case exists (RLS already applied by dependency)
+    result = await async_db.execute(
+        select(Case).where(Case.id == case_id, Case.deleted_at.is_(None))
+    )
+    case = result.scalar_one_or_none()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    # Get analysis and check staleness
+    _, analysis = await document_analysis_service.check_analysis_staleness(
+        case_id, async_db
+    )
+
+    # Check for pending documents
+    has_pending, pending_count = (
+        await document_analysis_service.check_has_pending_documents(
+            case_id, async_db
+        )
+    )
+
+    return {
+        "analysis": analysis,
+        "can_update": not has_pending,
+        "pending_docs": pending_count,
+    }
+
+
+@router.post(
+    "/{case_id}/document-analysis",
+    response_model=schemas.DocumentAnalysisCreateResponse,
+    summary="Run Document Analysis",
+    description="Trigger AI analysis of uploaded documents.",
+)
+async def create_document_analysis(
+    case_id: UUID,
+    async_db: Annotated[AsyncSession, Depends(get_async_db)],
+    payload: Optional[schemas.DocumentAnalysisRequest] = None,
+) -> dict:
+    """
+    Runs AI document analysis using Gemini.
+
+    Returns cached analysis if not stale (unless force=True).
+    Blocks if documents are still being processed.
+
+    Note: Uses get_async_db dependency for proper RLS lifecycle management.
+    """
+    from app.services import document_analysis_service
+
+    # Verify case exists (RLS already applied by dependency)
+    result = await async_db.execute(
+        select(Case).where(Case.id == case_id, Case.deleted_at.is_(None))
+    )
+    case = result.scalar_one_or_none()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    force = payload.force if payload else False
+
+    try:
+        # Check if we can return cached version
+        if not force:
+            is_stale, existing = (
+                await document_analysis_service.check_analysis_staleness(
+                    case_id, async_db
+                )
+            )
+            if existing and not is_stale:
+                logger.info(f"Returning cached analysis for case {case_id}")
+                return {"analysis": existing, "generated": False}
+
+        # Run the analysis
+        analysis = await document_analysis_service.run_document_analysis(
+            case_id=case_id,
+            org_id=case.organization_id,
+            db=async_db,
+            force=force,
+        )
+
+        return {"analysis": analysis, "generated": True}
+
+    except document_analysis_service.AnalysisBlockedError as e:
+        logger.warning(f"Analysis blocked for case {case_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        ) from None
+
+    except document_analysis_service.AnalysisGenerationError as e:
+        logger.error(f"Analysis generation failed for case {case_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Analysis generation failed, please retry.",
+        ) from None
+
+
+# =============================================================================
+# PRELIMINARY REPORT ENDPOINTS
+# =============================================================================
+
+
+@router.get(
+    "/{case_id}/preliminary",
+    response_model=schemas.PreliminaryReportResponse,
+    summary="Get Preliminary Report",
+    description="Retrieve the latest preliminary report for a case.",
+)
+async def get_preliminary_report(
+    case_id: UUID,
+    async_db: Annotated[AsyncSession, Depends(get_async_db)],
+) -> dict:
+    """
+    Returns the most recent preliminary report for a case, if it exists.
+    Also indicates whether a new report can be generated (no pending docs).
+
+    Note: Uses get_async_db dependency for proper RLS lifecycle management.
+    """
+    from app.services import preliminary_report_service
+
+    # Verify case exists (RLS already applied by dependency)
+    result = await async_db.execute(
+        select(Case).where(Case.id == case_id, Case.deleted_at.is_(None))
+    )
+    case = result.scalar_one_or_none()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    # Get existing report
+    report = await preliminary_report_service.get_latest_preliminary_report(
+        case_id, async_db
+    )
+
+    # Check for pending documents
+    has_pending, pending_count = (
+        await preliminary_report_service.check_has_pending_documents(
+            case_id, async_db
+        )
+    )
+
+    # Build response with mapped fields
+    report_data = None
+    if report:
+        report_data = {
+            "id": report.id,
+            "content": report.ai_raw_output or "",
+            "created_at": report.created_at,
+        }
+
+    return {
+        "report": report_data,
+        "can_generate": not has_pending,
+        "pending_docs": pending_count,
+    }
+
+
+@router.post(
+    "/{case_id}/preliminary",
+    response_model=schemas.PreliminaryReportCreateResponse,
+    summary="Generate Preliminary Report",
+    description="Generate an AI preliminary report for a case.",
+    status_code=status.HTTP_200_OK,
+)
+async def create_preliminary_report(
+    case_id: UUID,
+    async_db: Annotated[AsyncSession, Depends(get_async_db)],
+    request: schemas.PreliminaryReportRequest = schemas.PreliminaryReportRequest(),
+) -> dict:
+    """
+    Trigger AI preliminary report generation.
+
+    - Returns 409 if documents are still being processed
+    - Returns 200 with generated=False if returning cached (unless force=True)
+    - Returns 200 with generated=True if new report was generated
+
+    Note: Uses get_async_db dependency for proper RLS lifecycle management.
+    """
+    from app.services import preliminary_report_service
+
+    # Verify case exists (RLS already applied by dependency)
+    result = await async_db.execute(
+        select(Case).where(Case.id == case_id, Case.deleted_at.is_(None))
+    )
+    case = result.scalar_one_or_none()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    force = request.force if request else False
+
+    try:
+        # Check if we can return cached version
+        if not force:
+            existing = (
+                await preliminary_report_service.get_latest_preliminary_report(
+                    case_id, async_db
+                )
+            )
+            if existing:
+                logger.info(
+                    f"Returning cached preliminary report for case {case_id}"
+                )
+                return {
+                    "report": {
+                        "id": existing.id,
+                        "content": existing.ai_raw_output or "",
+                        "created_at": existing.created_at,
+                    },
+                    "generated": False,
+                }
+
+        # Run the report generation
+        report = await preliminary_report_service.run_preliminary_report(
+            case_id=case_id,
+            org_id=case.organization_id,
+            db=async_db,
+            force=force,
+        )
+
+        return {
+            "report": {
+                "id": report.id,
+                "content": report.ai_raw_output or "",
+                "created_at": report.created_at,
+            },
+            "generated": True,
+        }
+
+    except preliminary_report_service.PreliminaryBlockedError as e:
+        logger.warning(f"Preliminary report blocked for case {case_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        ) from None
+
+    except preliminary_report_service.PreliminaryReportError as e:
+        logger.error(
+            f"Preliminary report generation failed for case {case_id}: {e}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Report generation failed, please retry.",
+        ) from None

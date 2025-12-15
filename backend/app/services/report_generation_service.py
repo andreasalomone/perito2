@@ -20,6 +20,9 @@ from app.services.llm_handler import ProcessedFile, gemini_generator
 
 logger = logging.getLogger(__name__)
 
+# Module-level set to hold background task references and prevent garbage collection
+_active_background_tasks: set = set()
+
 # NOTE: Phase 3 optimization removed the download step - we now use Part.from_uri() directly
 
 
@@ -116,7 +119,7 @@ async def process_case_logic(case_id: str, organization_id: str, db: AsyncSessio
 
     # 3. Dispatch Tasks
     for doc in documents:
-        if doc.ai_status == ExtractionStatus.SUCCESS:
+        if doc.ai_status == ExtractionStatus.SUCCESS.value:
             continue
 
         # For local dev, process inline instead of dispatching tasks
@@ -292,8 +295,11 @@ async def _validate_documents_ready(
         ]
     ]:
         logger.info(
-            f"Case {case_id} has pending documents: {[d.id for d in pending_docs]}. Skipping generation."
+            f"Case {case_id} has pending documents: {[d.id for d in pending_docs]}. Resetting status and aborting generation."
         )
+        # FIX: Reset status to OPEN to prevent "Stuck Generating" state
+        case.status = CaseStatus.OPEN
+        await db.commit()
         return None
 
     # Check if we have at least one processed document
@@ -311,7 +317,7 @@ async def _validate_documents_ready(
     processed_count = sum(
         d.ai_status == ExtractionStatus.SUCCESS.value for d in all_docs
     )
-    error_count = sum(d.ai_status == ExtractionStatus.ERROR for d in all_docs)
+    error_count = sum(d.ai_status == ExtractionStatus.ERROR.value for d in all_docs)
     logger.info(
         f"Starting generation for case {case_id} with {processed_count} processed and {error_count} failed documents."
     )
@@ -365,7 +371,7 @@ def _process_document_for_llm(doc: Document) -> tuple[list[dict], dict | None]:
 
         return data, None
 
-    if doc.ai_status == ExtractionStatus.ERROR:
+    if doc.ai_status == ExtractionStatus.ERROR.value:
         logger.warning(
             f"Document {doc.id} ({doc.filename}) failed processing - skipping"
         )
@@ -503,17 +509,35 @@ async def _save_report_version(
         )
         raise
 
-    # Generate summary (non-blocking - failures don't affect main report)
-    try:
-        from app.services import summary_service
+    # Generate summary in background (fire-and-forget, ~3-5s savings)
+    async def _generate_summary_background():
+        try:
+            async with AsyncSessionLocal() as bg_db:
+                from sqlalchemy import text
+                from app.services import summary_service
 
-        summary = await summary_service.generate_summary(report_text)
-        if summary:
-            case.ai_summary = summary
-            await db.commit()
-            logger.info(f"✅ Summary generated for case {case_id}")
-    except Exception as e:
-        logger.warning(f"⚠️ Summary generation failed (non-critical): {e}")
+                # Set RLS context for background session
+                await bg_db.execute(
+                    text("SELECT set_config('app.current_org_id', :org_id, false)"),
+                    {"org_id": organization_id},
+                )
+
+                summary = await summary_service.generate_summary(report_text)
+                if summary:
+                    result = await bg_db.execute(
+                        select(Case).filter(Case.id == case_id).with_for_update()
+                    )
+                    if c := result.scalars().first():
+                        c.ai_summary = summary
+                        await bg_db.commit()
+                        logger.info(f"✅ Background summary generated for case {case_id}")
+        except Exception as e:
+            logger.warning(f"⚠️ Background summary generation failed: {e}")
+
+    # Store task in module-level set to prevent garbage collection
+    task = asyncio.create_task(_generate_summary_background())
+    _active_background_tasks.add(task)
+    task.add_done_callback(_active_background_tasks.discard)
 
 
 async def _handle_generation_error(

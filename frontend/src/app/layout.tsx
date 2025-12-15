@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist_Mono, Space_Grotesk, Manrope } from "next/font/google";
 import "./globals.css";
+import { ThemeProvider } from "@/components/theme-provider";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -82,7 +83,7 @@ export default function RootLayout({
   const apiUrl = getEnvVar("API_URL") || "";
 
   return (
-    <html lang="it">
+    <html lang="it" suppressHydrationWarning>
       <body
         className={`${manrope.variable} ${geistMono.variable} ${spaceGrotesk.variable} antialiased bg-background text-foreground`}
       >
@@ -90,13 +91,20 @@ export default function RootLayout({
           className="fixed inset-0 z-50 pointer-events-none opacity-[0.03] mix-blend-overlay"
           style={{ backgroundImage: 'url("/noise.svg")' }}
         />
-        <ConfigProvider apiUrl={apiUrl}>
-          <AuthProvider firebaseConfig={firebaseConfig}>
-            {children}
-            <CommandMenu />
-            <Toaster />
-          </AuthProvider>
-        </ConfigProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <ConfigProvider apiUrl={apiUrl}>
+            <AuthProvider firebaseConfig={firebaseConfig}>
+              {children}
+              <CommandMenu />
+              <Toaster />
+            </AuthProvider>
+          </ConfigProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

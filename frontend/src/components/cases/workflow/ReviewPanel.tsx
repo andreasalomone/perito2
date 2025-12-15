@@ -10,7 +10,7 @@ import { Eye, Download, ArrowRight, Edit, ExternalLink, Loader2 } from "lucide-r
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
-interface Step3ReviewProps {
+interface ReviewPanelProps {
     caseData: CaseDetail;
     onDownload: (version: ReportVersion, template: TemplateType) => Promise<void>;
     onOpenInDocs: (version: ReportVersion, template: TemplateType) => Promise<void>;
@@ -19,28 +19,28 @@ interface Step3ReviewProps {
 }
 
 /**
- * Step 3: Review (Revisione)
- * 
+ * ReviewPanel - Draft review and editing
+ *
  * Shows the latest non-final draft with options to:
  * - Select template (BN/Salomone)
  * - Edit in Google Docs (main CTA)
  * - Download directly (secondary)
- * - Proceed to Step 4
+ * - Proceed to closure
  */
-export function Step3_Review({
+export function ReviewPanel({
     caseData,
     onDownload,
     onOpenInDocs,
     onProceedToClosure,
     onGoBackToIngestion,
-}: Step3ReviewProps) {
+}: ReviewPanelProps) {
     const versions = caseData?.report_versions || [];
     const [selectedTemplate, setSelectedTemplate] = useState<TemplateType>("bn");
     const [isOpening, setIsOpening] = useState(false);
 
-    // Get the latest non-final version (the draft to review)
+    // Get the latest non-final, non-preliminary version (the draft to review)
     const latestDraft = versions
-        .filter(v => !v.is_final)
+        .filter(v => !v.is_final && v.source !== 'preliminary')
         .sort((a, b) => b.version_number - a.version_number)[0];
 
     const handleOpenInDocs = async () => {
@@ -193,14 +193,14 @@ export function Step3_Review({
             </div>
 
             {/* Previous Versions (collapsed) */}
-            {versions.filter(v => !v.is_final).length > 1 && (
+            {versions.filter(v => !v.is_final && v.source !== 'preliminary').length > 1 && (
                 <details className="text-sm">
                     <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                        Mostra versioni precedenti ({versions.filter(v => !v.is_final).length - 1})
+                        Mostra versioni precedenti ({versions.filter(v => !v.is_final && v.source !== 'preliminary').length - 1})
                     </summary>
                     <div className="mt-3 space-y-2 pl-4 border-l-2 border-muted">
                         {versions
-                            .filter(v => !v.is_final && v.id !== latestDraft?.id)
+                            .filter(v => !v.is_final && v.source !== 'preliminary' && v.id !== latestDraft?.id)
                             .sort((a, b) => b.version_number - a.version_number)
                             .map(v => (
                                 <VersionItem

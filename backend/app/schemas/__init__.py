@@ -50,6 +50,11 @@ class CaseBase(BaseModel):
     note: Optional[str] = None
     # ai_summary REMOVED from Base to avoid bloat in List View
 
+    # Serialize Decimal as float for frontend compatibility (Zod expects number)
+    model_config = ConfigDict(
+        json_encoders={Decimal: lambda v: float(v) if v is not None else None}
+    )
+
 
 class CaseCreate(CaseBase):
     client_name: Optional[str] = None  # Helper to find/create Client
@@ -137,6 +142,44 @@ class CaseSummary(CaseBase):
         return None
 
 
+# --- LIGHTWEIGHT LIST ITEM (Reduces payload ~85%) ---
+class CaseListItem(BaseModel):
+    """
+    Minimal schema for GET /cases/ list endpoint.
+    Only includes fields actually displayed in dashboard cards.
+    """
+    id: UUID
+    organization_id: UUID
+    client_id: Optional[UUID] = None
+    reference_code: str
+    status: CaseStatus
+    created_at: datetime
+
+    # Hold relationships during serialization but exclude from JSON
+    client: Optional[Any] = Field(default=None, exclude=True)
+    creator: Optional[Any] = Field(default=None, exclude=True)
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @computed_field
+    def client_name(self) -> Optional[str]:
+        if self.client:
+            return self.client.name
+        return None
+
+    @computed_field
+    def client_logo_url(self) -> Optional[str]:
+        if self.client and hasattr(self.client, "logo_url"):
+            return self.client.logo_url
+        return None
+
+    @computed_field
+    def creator_email(self) -> Optional[str]:
+        if self.creator:
+            return self.creator.email
+        return None
+
+
 # --- VERSIONS ---
 class VersionRead(BaseModel):
     id: UUID
@@ -147,6 +190,7 @@ class VersionRead(BaseModel):
     # Google Docs Live Draft support
     is_draft_active: bool = False
     edit_link: Optional[str] = None
+    source: Optional[str] = None  # 'preliminary' | 'final' | None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -179,6 +223,19 @@ class DocumentRegisterPayload(BaseModel):
     mime_type: str
 
 
+class InitiateUploadPayload(BaseModel):
+    """Payload for combined upload initiation (reduces 3 requests to 2)."""
+    filename: str
+    content_type: str
+
+
+class InitiateUploadResponse(BaseModel):
+    """Response from initiate-upload with document ID and signed URL."""
+    document_id: UUID
+    upload_url: str
+    gcs_path: str
+
+
 class GeneratePayload(BaseModel):
     """Payload for report generation with language and extra instructions options."""
 
@@ -187,6 +244,93 @@ class GeneratePayload(BaseModel):
 
     # Optional extra instructions from the user (max 2000 chars for safety)
     extra_instructions: Optional[str] = Field(default=None, max_length=2000)
+
+
+# --- DOCUMENT ANALYSIS ---
+class DocumentAnalysisRead(BaseModel):
+    """Response schema for document analysis results."""
+
+    id: UUID
+    summary: str
+    received_docs: List[str]
+    missing_docs: List[str]
+    document_hash: str  # SHA-256 hash of document IDs for staleness detection
+    is_stale: bool
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DocumentAnalysisResponse(BaseModel):
+    """GET response for document analysis endpoint."""
+
+    analysis: Optional[DocumentAnalysisRead] = None
+    can_update: bool = True  # False if docs are still processing
+    pending_docs: int = 0
+
+
+class DocumentAnalysisCreateResponse(BaseModel):
+    """POST response for document analysis endpoint."""
+
+    analysis: DocumentAnalysisRead
+    generated: bool = True  # False if returned cached (not stale)
+
+
+class DocumentAnalysisRequest(BaseModel):
+    """POST request for document analysis endpoint."""
+
+    force: bool = False  # If true, regenerate even if not stale
+
+
+# --- DOCUMENTS LIST ---
+class DocumentListItem(BaseModel):
+    """Schema for document list endpoint."""
+
+    id: UUID
+    filename: str
+    mime_type: Optional[str] = None
+    status: ExtractionStatus
+    can_preview: bool = False  # True for PDF, images
+    url: Optional[str] = None  # Signed URL
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DocumentsListResponse(BaseModel):
+    """Response for GET /cases/{case_id}/documents."""
+
+    documents: List[DocumentListItem]
+    total: int
+    pending_extraction: int = 0
+
+
+# --- PRELIMINARY REPORT ---
+class PreliminaryReportRead(BaseModel):
+    """Response schema for preliminary report."""
+
+    id: UUID
+    content: str  # The Markdown content (from ai_raw_output)
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PreliminaryReportResponse(BaseModel):
+    """GET response for preliminary report endpoint."""
+
+    report: Optional[PreliminaryReportRead] = None
+    can_generate: bool = True  # False if docs still processing
+    pending_docs: int = 0
+
+
+class PreliminaryReportCreateResponse(BaseModel):
+    """POST response for preliminary report endpoint."""
+
+    report: PreliminaryReportRead
+    generated: bool = True  # False if returned cached
+
+
+class PreliminaryReportRequest(BaseModel):
+    """POST request for preliminary report endpoint."""
+
+    force: bool = False  # If true, regenerate even if exists
 
 
 # --- CLIENTS ---

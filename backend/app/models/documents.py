@@ -77,6 +77,9 @@ class ReportVersion(Base):
         String(1024), nullable=True
     )
     is_final: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Source distinguishes preliminary reports from final reports
+    # Values: 'preliminary', 'final', or None (legacy)
+    source: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     # Provenance
     ai_raw_output: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

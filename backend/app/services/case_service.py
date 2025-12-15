@@ -333,7 +333,70 @@ def trigger_extraction_task(doc_id: UUID, org_id: str):
     Enqueues a task to Cloud Tasks to process the document.
     """
     if settings.RUN_LOCALLY:
-        logger.info(f"Skipping Cloud Task for doc {doc_id} (Running Locally)")
+        # Local dev: run extraction in background thread
+        # CRITICAL: We must create a NEW async connector inside the new event loop
+        # because asyncio.run() creates a fresh loop, and the global _async_connector
+        # is bound to the main loop.
+        import threading
+
+        def _run_extraction():
+            import asyncio
+
+            async def _extract():
+                # Create fresh Cloud SQL async connector inside this event loop
+                from google.cloud.sql.connector import IPTypes, create_async_connector
+                from sqlalchemy import text
+                from sqlalchemy.ext.asyncio import (
+                    AsyncSession,
+                    async_sessionmaker,
+                    create_async_engine,
+                )
+
+                # Create connector bound to THIS event loop
+                connector = await create_async_connector()
+
+                async def getconn():
+                    return await connector.connect_async(
+                        settings.CLOUD_SQL_CONNECTION_NAME,
+                        "asyncpg",
+                        user=settings.DB_USER,
+                        password=settings.DB_PASS,
+                        db=settings.DB_NAME,
+                        ip_type=IPTypes.PUBLIC,
+                    )
+
+                engine = create_async_engine(
+                    "postgresql+asyncpg://",
+                    async_creator=getconn,
+                    pool_size=1,
+                    max_overflow=0,
+                )
+                async_session = async_sessionmaker(
+                    bind=engine, class_=AsyncSession, expire_on_commit=False
+                )
+
+                try:
+                    async with async_session() as db:
+                        # Set RLS context
+                        await db.execute(
+                            text(
+                                "SELECT set_config('app.current_org_id', :org_id, false)"
+                            ),
+                            {"org_id": org_id},
+                        )
+                        await process_document_extraction(doc_id, org_id, db)
+                except Exception as e:
+                    logger.error(f"[LOCAL] Extraction failed for doc {doc_id}: {e}")
+                    raise
+                finally:
+                    await engine.dispose()
+                    await connector.close_async()
+
+            asyncio.run(_extract())
+
+        thread = threading.Thread(target=_run_extraction, daemon=True)
+        thread.start()
+        logger.info(f"[LOCAL] Started extraction thread for document {doc_id}")
         return
 
     try:
@@ -375,7 +438,70 @@ def trigger_case_processing_task(case_id: str, org_id: str):
     Enqueues a task to Cloud Tasks to process the full case (dispatch documents).
     """
     if settings.RUN_LOCALLY:
-        logger.info(f"Skipping Cloud Task for case {case_id} (Running Locally)")
+        # Local dev: run case processing in background thread
+        # CRITICAL: Create fresh async connector inside new event loop
+        import threading
+
+        def _run_processing():
+            import asyncio
+
+            async def _process():
+                # Create fresh Cloud SQL async connector inside this event loop
+                from google.cloud.sql.connector import IPTypes, create_async_connector
+                from sqlalchemy import text
+                from sqlalchemy.ext.asyncio import (
+                    AsyncSession,
+                    async_sessionmaker,
+                    create_async_engine,
+                )
+
+                from app.services import report_generation_service
+
+                connector = await create_async_connector()
+
+                async def getconn():
+                    return await connector.connect_async(
+                        settings.CLOUD_SQL_CONNECTION_NAME,
+                        "asyncpg",
+                        user=settings.DB_USER,
+                        password=settings.DB_PASS,
+                        db=settings.DB_NAME,
+                        ip_type=IPTypes.PUBLIC,
+                    )
+
+                engine = create_async_engine(
+                    "postgresql+asyncpg://",
+                    async_creator=getconn,
+                    pool_size=1,
+                    max_overflow=0,
+                )
+                async_session_factory = async_sessionmaker(
+                    bind=engine, class_=AsyncSession, expire_on_commit=False
+                )
+
+                try:
+                    async with async_session_factory() as db:
+                        await db.execute(
+                            text(
+                                "SELECT set_config('app.current_org_id', :org_id, false)"
+                            ),
+                            {"org_id": org_id},
+                        )
+                        await report_generation_service.process_case_logic(
+                            case_id, org_id, db
+                        )
+                except Exception as e:
+                    logger.error(f"[LOCAL] Case processing failed for {case_id}: {e}")
+                    raise
+                finally:
+                    await engine.dispose()
+                    await connector.close_async()
+
+            asyncio.run(_process())
+
+        thread = threading.Thread(target=_run_processing, daemon=True)
+        thread.start()
+        logger.info(f"[LOCAL] Started case processing thread for case {case_id}")
         return
 
     try:
@@ -602,17 +728,59 @@ def _perform_extraction_logic(doc: Document, tmp_dir: str):
     """
     Core extraction logic: Download -> Extract -> Upload Artifacts.
     This function is SYNCHRONOUS and blocking.
+
+    OPTIMIZATION: Vision files (PDF/images) skip download since LLM reads
+    directly from GCS at generation time.
     """
+    import time
+    start_time = time.perf_counter()
+
+    # Check if file is vision-only (PDF/images)
+    ext = os.path.splitext(doc.filename)[1].lower()
+    VISION_EXTS = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".gif"}
+
+    if ext in VISION_EXTS:
+        # FAST PATH: Vision files don't need local extraction
+        # LLM reads directly from GCS via Part.from_uri() at generation time
+        logger.info(f"⚡ Fast path: {doc.filename} (vision-only, skipping GCS download)")
+
+        mime_map = {
+            ".pdf": "application/pdf",
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".webp": "image/webp",
+            ".gif": "image/gif",
+        }
+
+        doc.ai_extracted_data = [
+            {
+                "type": "vision",
+                "path": None,  # Not used - LLM uses gcs_path
+                "gcs_path": doc.gcs_path,
+                "mime_type": mime_map.get(ext, "application/octet-stream"),
+                "filename": doc.filename,
+            }
+        ]
+
+        logger.info(f"📊 {doc.filename}: {time.perf_counter() - start_time:.3f}s (fast path)")
+        return
+
+    # STANDARD PATH: Text files (DOCX, XLSX, TXT, EML) need local processing
     # 1. Download
+    download_start = time.perf_counter()
     local_filename = f"extract_{doc.id}_{doc.filename}"
     local_path = os.path.join(tmp_dir, local_filename)
 
     logger.info(f"Downloading {doc.gcs_path} for extraction...")
     download_file_to_temp(doc.gcs_path, local_path)
+    download_duration = time.perf_counter() - download_start
 
     # 2. Extract
+    extract_start = time.perf_counter()
     logger.info(f"Extracting text from {local_filename}...")
     processed = document_processor.process_uploaded_file(local_path, tmp_dir)
+    extract_duration = time.perf_counter() - extract_start
 
     # --- Persist extracted artifacts to GCS ---
     storage_client = get_storage_client()
@@ -634,6 +802,12 @@ def _perform_extraction_logic(doc: Document, tmp_dir: str):
 
     # Update doc object (in memory, caller saves to DB)
     doc.ai_extracted_data = processed  # type: ignore[assignment]
+
+    total_duration = time.perf_counter() - start_time
+    logger.info(
+        f"📊 {doc.filename}: download={download_duration:.2f}s, "
+        f"extract={extract_duration:.2f}s, total={total_duration:.2f}s"
+    )
 
 
 async def _check_and_trigger_generation(

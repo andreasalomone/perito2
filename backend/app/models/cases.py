@@ -23,6 +23,7 @@ from app.schemas.enums import CaseStatus
 
 # Prevent circular imports for type checking only
 if TYPE_CHECKING:
+    from app.models.document_analysis import DocumentAnalysis
     from app.models.documents import Document, ReportVersion
     from app.models.email_intake import EmailProcessingLog
     from app.models.users import Organization, User
@@ -201,3 +202,6 @@ class Case(Base):
         back_populates="case", cascade="all, delete-orphan"
     )
     email_logs: Mapped[List["EmailProcessingLog"]] = relationship(back_populates="case")
+    document_analyses: Mapped[List["DocumentAnalysis"]] = relationship(
+        back_populates="case", cascade="all, delete-orphan"
+    )

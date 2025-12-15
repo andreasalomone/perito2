@@ -79,8 +79,8 @@ export function useCaseDetail(id: string | undefined) {
         return () => document.removeEventListener("visibilitychange", handleVisibility);
     }, [caseData?.status, mutateCase]);
 
-    // 5. Adaptive polling interval (faster during generation)
-    const pollInterval = caseData?.status === "GENERATING" ? 2000 : 5000;
+    // 5. Adaptive polling interval (faster during any active async work)
+    const pollInterval = (caseData?.status === "GENERATING" || caseData?.documents.some(d => ["PROCESSING", "PENDING"].includes(d.ai_status))) ? 2000 : 5000;
 
     // 6. Lightweight Polling (Status Only)
     const { data: statusData } = useSWR<CaseStatus>(
@@ -94,7 +94,14 @@ export function useCaseDetail(id: string | undefined) {
             refreshInterval: pollInterval, // Adaptive interval
             onSuccess: (newStatus) => {
                 // If status changed to a "finished" state, trigger full re-fetch
-                if (newStatus.status === "OPEN" || newStatus.status === "ERROR") {
+                const statusChanged = caseData?.status !== newStatus.status;
+
+                // Also check if document processing finished (if we were tracking that)
+                const wasProcessingDocs = caseData?.documents.some(d => ["PROCESSING", "PENDING"].includes(d.ai_status));
+                const isProcessingDocsNow = newStatus.documents.some((d: any) => ["PROCESSING", "PENDING"].includes(d.ai_status));
+                const docsFinished = wasProcessingDocs && !isProcessingDocsNow;
+
+                if ((statusChanged || docsFinished) && (newStatus.status === "OPEN" || newStatus.status === "ERROR")) {
                     setShouldPoll(false);
                     setPollingStart(null);
 
@@ -124,7 +131,7 @@ export function useCaseDetail(id: string | undefined) {
     const isProcessingDocs = caseData?.documents.some(d => ["PROCESSING", "PENDING"].includes(d.ai_status));
 
     // 7. Derive current workflow step from displayData (merged, most up-to-date)
-    // NOTE: Step 4 (Closure) is NOT derived automatically - it's reached via manualStep
+    // NOTE: Closure panel is reached via manualStep only
     // CLOSED cases are redirected to /summary page, so they never show in the workflow
     const currentStep = useMemo((): WorkflowStep => {
         if (!displayData) return 1;
@@ -138,22 +145,21 @@ export function useCaseDetail(id: string | undefined) {
         // The page.tsx handles the actual redirect
         if (displayData.status === 'CLOSED' ||
             displayData.report_versions?.some(v => v.is_final)) {
-            return 3; // Will redirect, but show Step 3 if redirect fails
+            return 3; // Will redirect, but show Review if redirect fails
         }
 
-        // Step 3: Draft exists but not finalized
-        if (displayData.report_versions && displayData.report_versions.length > 0) {
+        // Review: Draft exists but not finalized
+        // NOTE: Exclude preliminary reports (source='preliminary') - they don't count as drafts
+        const draftVersions = displayData.report_versions?.filter(
+            v => !v.is_final && v.source !== 'preliminary'
+        ) ?? [];
+        if (draftVersions.length > 0) {
             return 3;
         }
 
-        // Step 2: Report is being generated or docs are processing
-        if (['GENERATING', 'PROCESSING'].includes(displayData.status) || isProcessingDocs) {
-            return 2;
-        }
-
-        // Step 1: Ingestion (default)
+        // Default: Ingestion panel (handles both idle and processing states)
         return 1;
-    }, [displayData, isProcessingDocs]);
+    }, [displayData]);
 
     // Explicit return to avoid object literal syntax errors
     return {

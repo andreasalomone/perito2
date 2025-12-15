@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { ModeToggle } from "@/components/primitives";
 
 type Mode = "check" | "login" | "signup" | "forgot" | "denied";
 
@@ -170,6 +171,10 @@ function LandingPage() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 relative overflow-hidden">
+      <div className="absolute top-4 right-4 z-50">
+        <ModeToggle />
+      </div>
+
       {/* Abstract Background Decoration */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary/5 rounded-full blur-3xl -z-10" />
 
