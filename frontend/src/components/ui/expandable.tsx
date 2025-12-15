@@ -14,7 +14,7 @@ import {
   TargetAndTransition,
   useMotionValue,
   useSpring,
-} from "motion/react"
+} from "framer-motion"
 import useMeasure from "react-use-measure"
 
 import { cn } from "@/lib/utils"
@@ -28,11 +28,11 @@ interface ExpandableContextType {
   expandBehavior: "replace" | "push" // How the expansion affects surrounding content
   transitionDuration: number // Duration of the expansion/collapse animation
   easeType:
-    | "easeInOut"
-    | "easeIn"
-    | "easeOut"
-    | "linear"
-    | [number, number, number, number] // Easing function for the animation
+  | "easeInOut"
+  | "easeIn"
+  | "easeOut"
+  | "linear"
+  | [number, number, number, number] // Easing function for the animation
   initialDelay: number // Delay before the animation starts
   onExpandEnd?: () => void // Callback function when expansion ends
   onCollapseEnd?: () => void // Callback function when collapse ends
@@ -41,7 +41,7 @@ interface ExpandableContextType {
 // Create a context with default values
 const ExpandableContext = createContext<ExpandableContextType>({
   isExpanded: false,
-  toggleExpand: () => {},
+  toggleExpand: () => { },
   expandDirection: "vertical", // 'vertical' | 'horizontal' | 'both' // Direction of expansion
   expandBehavior: "replace", // How the expansion affects surrounding content
   transitionDuration: 0.3, // Duration of the expansion/collapse animation
@@ -60,11 +60,11 @@ interface ExpandableProps extends ExpandablePropsBase {
   onToggle?: () => void
   transitionDuration?: number
   easeType?:
-    | "easeInOut"
-    | "easeIn"
-    | "easeOut"
-    | "linear"
-    | [number, number, number, number]
+  | "easeInOut"
+  | "easeIn"
+  | "easeOut"
+  | "linear"
+  | [number, number, number, number]
   expandDirection?: "vertical" | "horizontal" | "both"
   expandBehavior?: "replace" | "push"
   initialDelay?: number
