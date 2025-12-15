@@ -140,6 +140,9 @@ def create_case_with_client(
             # If we didn't find existing, client is new → trigger enrichment
             is_new_client = existing_client is None
 
+        if not client_id:
+            client_id = None
+
         # 3. Create Case
         new_case = Case(
             reference_code=case_data.reference_code,

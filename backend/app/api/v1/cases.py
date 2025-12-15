@@ -4,6 +4,7 @@ from typing import Annotated, Any, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, selectinload
@@ -1062,3 +1063,49 @@ async def create_preliminary_report(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Report generation failed, please retry.",
         ) from None
+
+
+@router.post(
+    "/{case_id}/preliminary/stream",
+    summary="Stream Preliminary Report with Thoughts",
+    description="Stream AI preliminary report generation with visible reasoning.",
+)
+async def stream_preliminary_report_endpoint(
+    case_id: UUID,
+    async_db: Annotated[AsyncSession, Depends(get_async_db)],
+) -> StreamingResponse:
+    """
+    Stream AI preliminary report generation with visible "thinking" process.
+
+    Returns NDJSON stream with events:
+    - {"type": "thought", "text": "..."} - AI reasoning (for UI display)
+    - {"type": "content", "text": "..."} - Actual report content
+    - {"type": "done", "text": ""} - Stream complete
+    - {"type": "error", "text": "..."} - Error occurred
+
+    Note: Uses get_async_db dependency for proper RLS lifecycle management.
+    """
+    from app.services import preliminary_report_service
+
+    # Verify case exists (RLS already applied by dependency)
+    result = await async_db.execute(
+        select(Case).where(Case.id == case_id, Case.deleted_at.is_(None))
+    )
+    case = result.scalar_one_or_none()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    # Return streaming response with NDJSON content type
+    return StreamingResponse(
+        preliminary_report_service.stream_preliminary_report(
+            case_id=case_id,
+            org_id=case.organization_id,
+            db=async_db
+        ),
+        media_type="application/x-ndjson",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        }
+    )
+

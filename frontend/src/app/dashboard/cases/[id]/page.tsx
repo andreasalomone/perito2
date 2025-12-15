@@ -14,7 +14,7 @@ import { handleApiError } from "@/lib/error";
 import { TemplateType } from "@/components/cases/VersionItem";
 
 import { useCaseDetail, WorkflowStep } from "@/hooks/useCaseDetail";
-import { useDocumentAnalysis, usePreliminaryReport } from "@/hooks/useEarlyAnalysis";
+import { useDocumentAnalysis, usePreliminaryReport, usePreliminaryReportStream } from "@/hooks/useEarlyAnalysis";
 import { api } from "@/lib/api";
 import { mutate as globalMutate } from 'swr';
 
@@ -51,6 +51,9 @@ export default function CaseWorkspace() {
     // Early Analysis hooks - poll only when documents are processing
     const documentAnalysisHook = useDocumentAnalysis(caseId, isProcessingDocs ?? false);
     const preliminaryReportHook = usePreliminaryReport(caseId, isProcessingDocs ?? false);
+
+    // Streaming hook for preliminary report (chain of thought visibility)
+    const streamingHook = usePreliminaryReportStream(caseId);
 
     // Redirect CLOSED/finalized cases to summary page
     useEffect(() => {
@@ -352,8 +355,14 @@ export default function CaseWorkspace() {
                             canGenerate: preliminaryReportHook.canGenerate,
                             pendingDocs: preliminaryReportHook.pendingDocs,
                             isLoading: preliminaryReportHook.isLoading,
-                            isGenerating: preliminaryReportHook.isGenerating,
+                            isGenerating: preliminaryReportHook.isGenerating || streamingHook.isStreaming,
                             onGenerate: preliminaryReportHook.generate,
+                            // Streaming props
+                            streamingEnabled: true,
+                            streamState: streamingHook.state,
+                            streamedThoughts: streamingHook.thoughts,
+                            streamedContent: streamingHook.content,
+                            onGenerateStream: streamingHook.generateStream,
                         }}
                     />
                 ) : displayStep === 3 ? (

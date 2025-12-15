@@ -211,6 +211,8 @@ async def run_document_analysis(
 
     # 4. Build prompt content from extracted data
     document_contents = []
+    vision_parts = []  # NEW: List to hold Part objects for vision files
+
     for doc in documents:
         if doc.ai_extracted_data:
             # Handle both formats: list directly or dict with "entries" key
@@ -223,15 +225,34 @@ async def run_document_analysis(
                 entries = []
 
             for entry in entries:
-                if isinstance(entry, dict) and entry.get("type") == "text":
-                    content = entry.get("content", "")
-                    if content:
-                        document_contents.append(
-                            {
-                                "filename": doc.filename,
-                                "content": content[:10000],  # Limit per-doc content
-                            }
-                        )
+                if isinstance(entry, dict):
+                    entry_type = entry.get("type")
+                    if entry_type == "text":
+                        # Text content - add to text section
+                        content = entry.get("content", "")
+                        if content:
+                            document_contents.append(
+                                {
+                                    "filename": doc.filename,
+                                    "content": content[:10000],  # Limit per-doc content
+                                }
+                            )
+                    elif entry_type == "vision":
+                        # Vision file (PDF/image) - create Part for Gemini
+                        gcs_path = entry.get("gcs_path")
+                        mime_type = entry.get("mime_type")
+                        if gcs_path and mime_type:
+                            try:
+                                vision_part = types.Part.from_uri(
+                                    file_uri=gcs_path, mime_type=mime_type
+                                )
+                                vision_parts.append({
+                                    "part": vision_part,
+                                    "filename": doc.filename,
+                                })
+                                logger.debug(f"Added vision file to analysis: {doc.filename}")
+                            except Exception as e:
+                                logger.warning(f"Failed to create Part for {doc.filename}: {e}")
 
     # 5. Load prompt template
     from app.core.prompt_config import prompt_manager
@@ -249,7 +270,7 @@ async def run_document_analysis(
         with open(prompt_path, "r", encoding="utf-8") as f:
             system_prompt = f.read()
 
-    # 6. Build the evidence section
+    # 6. Build the evidence section (text documents)
     evidence_parts = []
     for doc_data in document_contents:
         safe_filename = html.escape(doc_data["filename"])
@@ -258,13 +279,30 @@ async def run_document_analysis(
         )
     evidence_section = "\n".join(evidence_parts)
 
+    # 6b. NEW: Add vision file names to context so LLM knows they exist
+    vision_filenames = [v["filename"] for v in vision_parts]
+    if vision_filenames:
+        vision_list = "\n".join(f"- {html.escape(fn)}" for fn in vision_filenames)
+        vision_section = f"\n\n<attached_vision_files>\nThe following files are attached as images for visual analysis:\n{vision_list}\n</attached_vision_files>"
+    else:
+        vision_section = ""
+
     full_prompt = (
-        f"{system_prompt}\n\n<case_documents>\n{evidence_section}\n</case_documents>"
+        f"{system_prompt}\n\n<case_documents>\n{evidence_section}\n</case_documents>{vision_section}"
     )
 
-    # 7. Call Gemini API with JSON output
+    # 7. Build multimodal content array
+    # Start with the text prompt
+    content_parts: List[types.Part | str] = [full_prompt]
+
+    # Add vision parts (real file references)
+    for vision_item in vision_parts:
+        content_parts.append(vision_item["part"])
+
+    # 8. Call Gemini API with JSON output (now multimodal)
     logger.info(
-        f"Running document analysis for case {case_id} with {len(documents)} documents"
+        f"Running document analysis for case {case_id} with {len(documents)} documents "
+        f"({len(document_contents)} text, {len(vision_parts)} vision)"
     )
 
     try:
@@ -272,7 +310,7 @@ async def run_document_analysis(
 
         response = await client.aio.models.generate_content(
             model=settings.GEMINI_DOC_ANALYSIS_MODEL,
-            contents=full_prompt,
+            contents=content_parts,  # CHANGED: Now multimodal
             config=types.GenerateContentConfig(
                 temperature=0.2,  # Lower for more consistent structured output
                 max_output_tokens=8000,  # Increased to prevent truncation

@@ -7,8 +7,9 @@ Follows the document_analysis_service.py pattern for lightweight LLM calls.
 
 import hashlib
 import html
+import json
 import logging
-from typing import List, Optional
+from typing import AsyncGenerator, List, Optional
 from uuid import UUID
 
 from google import genai
@@ -278,3 +279,203 @@ async def run_preliminary_report(
             f"Preliminary report failed for case {case_id}: {e}", exc_info=True
         )
         raise PreliminaryReportError(f"Report generation failed: {str(e)}") from None
+
+
+async def _build_preliminary_prompt(
+    case_id: UUID, db: AsyncSession
+) -> tuple[str, List[Document]]:
+    """
+    Build the prompt for preliminary report generation.
+
+    Returns:
+        Tuple of (full_prompt, documents)
+
+    Raises:
+        PreliminaryBlockedError: If documents are pending or none available
+    """
+    # Check for pending documents
+    has_pending, pending_count = await check_has_pending_documents(case_id, db)
+    if has_pending:
+        raise PreliminaryBlockedError(
+            f"Cannot generate report: {pending_count} documents are still being processed"
+        )
+
+    # Fetch current documents
+    docs_stmt = (
+        select(Document)
+        .where(Document.case_id == case_id)
+        .where(Document.ai_status == ExtractionStatus.SUCCESS)
+    )
+    docs_result = await db.execute(docs_stmt)
+    documents = list(docs_result.scalars().all())
+
+    if not documents:
+        raise PreliminaryBlockedError("No documents available for report generation")
+
+    # Build prompt content from extracted data
+    document_contents = []
+    for doc in documents:
+        if doc.ai_extracted_data:
+            extracted = doc.ai_extracted_data
+            if isinstance(extracted, dict):
+                entries = extracted.get("entries", [])
+            elif isinstance(extracted, list):
+                entries = extracted
+            else:
+                entries = []
+
+            for entry in entries:
+                if isinstance(entry, dict) and entry.get("type") == "text":
+                    if content := entry.get("content", ""):
+                        document_contents.append(
+                            {
+                                "filename": doc.filename,
+                                "content": content[:15000],
+                            }
+                        )
+
+    # Load prompt template
+    from app.core.prompt_config import prompt_manager
+
+    try:
+        system_prompt = prompt_manager.get_prompt_content("preliminary_report")
+    except (ValueError, FileNotFoundError) as e:
+        logger.warning(
+            f"Preliminary prompt not in PromptManager, loading directly: {e}"
+        )
+        import os
+
+        prompt_path = os.path.join(
+            os.path.dirname(__file__), "..", "core", "preliminary_report_prompt.txt"
+        )
+        with open(prompt_path, "r", encoding="utf-8") as f:
+            system_prompt = f.read()
+
+    # Build evidence section
+    evidence_parts = []
+    for doc_data in document_contents:
+        safe_filename = html.escape(doc_data["filename"])
+        evidence_parts.append(
+            f'<document filename="{safe_filename}">\n{doc_data["content"]}\n</document>'
+        )
+    evidence_section = "\n".join(evidence_parts)
+
+    full_prompt = (
+        f"{system_prompt}\n\n<case_documents>\n{evidence_section}\n</case_documents>"
+    )
+
+    return full_prompt, documents
+
+
+async def stream_preliminary_report(
+    case_id: UUID, org_id: UUID, db: AsyncSession
+) -> AsyncGenerator[str, None]:
+    """
+    Stream AI preliminary report with visible reasoning/thoughts.
+
+    Yields NDJSON events in format:
+        {"type": "thought", "text": "..."} - AI reasoning (hidden from final output)
+        {"type": "content", "text": "..."} - Actual report content
+        {"type": "done", "text": ""} - Stream complete
+        {"type": "error", "text": "..."} - Error occurred
+
+    Args:
+        case_id: The case UUID
+        org_id: The organization UUID
+        db: Async database session
+
+    Yields:
+        NDJSON string lines
+    """
+    try:
+        # Build prompt (validates documents, etc.)
+        full_prompt, documents = await _build_preliminary_prompt(case_id, db)
+        current_hash = compute_document_hash(documents)
+
+        logger.info(
+            f"Streaming preliminary report for case {case_id} with {len(documents)} documents"
+        )
+
+        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+
+        # Configure with ThinkingConfig to enable thought visibility
+        # Note: include_thoughts=True works with gemini-2.5-pro/flash models
+        config = types.GenerateContentConfig(
+            temperature=0.5,
+            max_output_tokens=8000,
+            thinking_config=types.ThinkingConfig(
+                include_thoughts=True
+            )
+        )
+
+        # Accumulate full content for storage
+        full_content = ""
+
+        # Open streaming response
+        response = await client.aio.models.generate_content_stream(
+            model=settings.GEMINI_PRELIMINARY_MODEL,
+            contents=full_prompt,
+            config=config
+        )
+
+        async for chunk in response:
+            if chunk.candidates and chunk.candidates[0].content.parts:
+                for part in chunk.candidates[0].content.parts:
+                    # Check if this part is a thought or final answer
+                    # The SDK sets part.thought=True for reasoning tokens
+                    is_thought = getattr(part, "thought", False)
+                    text = part.text or ""
+
+                    if text:
+                        event = {
+                            "type": "thought" if is_thought else "content",
+                            "text": text
+                        }
+                        yield json.dumps(event) + "\n"
+
+                        # Only accumulate non-thought content for storage
+                        if not is_thought:
+                            full_content += text
+
+        # Store the generated report
+        if full_content:
+            # Lock case row for version calculation
+            await db.execute(
+                select(Case).where(Case.id == case_id).with_for_update()
+            )
+
+            from sqlalchemy import func
+            max_version_result = await db.execute(
+                select(func.coalesce(func.max(ReportVersion.version_number), 0)).where(
+                    ReportVersion.case_id == case_id
+                )
+            )
+            next_version = max_version_result.scalar() + 1
+
+            new_version = ReportVersion(
+                case_id=case_id,
+                organization_id=org_id,
+                ai_raw_output=full_content,
+                is_final=False,
+                source="preliminary",
+                version_number=next_version,
+                template_used=current_hash,
+            )
+
+            db.add(new_version)
+            await db.commit()
+
+            logger.info(
+                f"Streamed preliminary report saved for case {case_id}, length: {len(full_content)}"
+            )
+
+        # Signal completion
+        yield json.dumps({"type": "done", "text": ""}) + "\n"
+
+    except PreliminaryBlockedError as e:
+        logger.warning(f"Streaming blocked for case {case_id}: {e}")
+        yield json.dumps({"type": "error", "text": str(e)}) + "\n"
+    except Exception as e:
+        logger.error(f"Streaming failed for case {case_id}: {e}", exc_info=True)
+        yield json.dumps({"type": "error", "text": f"Report generation failed: {str(e)}"}) + "\n"
+

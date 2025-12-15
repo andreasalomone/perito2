@@ -112,6 +112,7 @@ class PromptBuilderServiceProtocol(Protocol):
         use_cache: bool,
         language: str = "italian",
         extra_instructions: Optional[str] = None,
+        case_context: Optional[Dict[str, str]] = None,
     ) -> List[Any]: ...
 
 
@@ -362,6 +363,7 @@ class GeminiReportGenerator:
         processed_files: List[ProcessedFile],
         language: str = "italian",
         extra_instructions: Optional[str] = None,
+        case_context: Optional[Dict[str, str]] = None,
     ) -> ReportResult:
         """Main entry point for report generation.
 
@@ -369,11 +371,12 @@ class GeminiReportGenerator:
             processed_files: List of files to process.
             language: Target output language for the report (italian, english, spanish).
             extra_instructions: Optional additional instructions from expert.
+            case_context: Optional dict with 'ref_code' and 'client_name' for report header.
         """
         # Cost Safeguard: Limit concurrent executions via instance semaphore
         async with self._semaphore:
             return await self._generate_internal(
-                processed_files, language, extra_instructions
+                processed_files, language, extra_instructions, case_context
             )
 
     async def _generate_internal(
@@ -381,6 +384,7 @@ class GeminiReportGenerator:
         processed_files: List[ProcessedFile],
         language: str = "italian",
         extra_instructions: Optional[str] = None,
+        case_context: Optional[Dict[str, str]] = None,
     ) -> ReportResult:
         """Internal generation logic (protected by semaphore)."""
         vision_parts: List[Any] = (
@@ -469,6 +473,7 @@ class GeminiReportGenerator:
                 cache_name=cache_name,
                 language=language,
                 extra_instructions=extra_instructions,
+                case_context=case_context,
             )
 
             # 4. Parse & Extract
@@ -695,6 +700,7 @@ class GeminiReportGenerator:
         cache_name: Optional[str],
         language: str = "italian",
         extra_instructions: Optional[str] = None,
+        case_context: Optional[Dict[str, str]] = None,
     ) -> Any:
 
         # Helper to regenerate prompt parts based on strategy
@@ -706,6 +712,7 @@ class GeminiReportGenerator:
                 use_cache=use_cache,
                 language=language,
                 extra_instructions=extra_instructions,
+                case_context=case_context,
             )
 
         # Strategy 1: Primary Model + Cache

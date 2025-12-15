@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { CaseDetail, DocumentAnalysis, PreliminaryReport } from "@/types";
+import type { StreamState } from "@/hooks/useEarlyAnalysis";
 import { CaseFileUploader } from "@/components/cases/CaseFileUploader";
 import { DocumentItem } from "@/components/cases/DocumentItem";
 import { DocumentAnalysisCard } from "@/components/cases/DocumentAnalysisCard";
@@ -56,6 +57,12 @@ interface IngestionPanelProps {
         isLoading: boolean;
         isGenerating: boolean;
         onGenerate: (force?: boolean) => void;
+        // Streaming props
+        streamingEnabled?: boolean;
+        streamState?: StreamState;
+        streamedThoughts?: string;
+        streamedContent?: string;
+        onGenerateStream?: () => void;
     };
 }
 
@@ -216,6 +223,11 @@ export function IngestionPanel({
                             isLoading={preliminaryReport.isLoading}
                             isGenerating={preliminaryReport.isGenerating}
                             onGenerate={preliminaryReport.onGenerate}
+                            streamingEnabled={preliminaryReport.streamingEnabled}
+                            streamState={preliminaryReport.streamState}
+                            streamedThoughts={preliminaryReport.streamedThoughts}
+                            streamedContent={preliminaryReport.streamedContent}
+                            onGenerateStream={preliminaryReport.onGenerateStream}
                         />
                     )
                 ) : <Card className="h-48 animate-pulse bg-muted/30" />}

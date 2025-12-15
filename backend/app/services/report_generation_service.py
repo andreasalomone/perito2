@@ -8,7 +8,7 @@ from google.cloud import tasks_v2
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
 from app.db.database import AsyncSessionLocal
@@ -414,12 +414,21 @@ async def _collect_documents_for_generation(
     return processed_data_for_llm, failed_docs, len(documents)
 
 
+def _build_case_context(case: Case) -> dict[str, str]:
+    """Build case context dict for LLM prompt. Always returns valid dict."""
+    return {
+        "ref_code": case.reference_code or "N.D.",
+        "client_name": case.client.name if case.client else "N.D.",
+    }
+
+
 async def _generate_and_upload_report(
     processed_data_for_llm: list[dict],
     case_id: str,
     organization_id: str,
     language: str,
     extra_instructions: Optional[str] = None,
+    case_context: Optional[dict[str, str]] = None,
 ) -> tuple[str, str]:
     """
     Generate report with Gemini and upload DOCX to GCS.
@@ -432,6 +441,7 @@ async def _generate_and_upload_report(
         processed_files=processed_files_models,
         language=language,
         extra_instructions=extra_instructions,
+        case_context=case_context,
     )
     report_text = report_result.content
 
@@ -582,8 +592,13 @@ async def generate_report_logic(
         language: The target output language for the report (italian, english, spanish)
         extra_instructions: Optional additional instructions from expert
     """
-    # 1. Fetch case with lock
-    result = await db.execute(select(Case).filter(Case.id == case_id).with_for_update())
+    # 1. Fetch case with lock (eager load client for case_context)
+    result = await db.execute(
+        select(Case)
+        .options(selectinload(Case.client))
+        .filter(Case.id == case_id)
+        .with_for_update()
+    )
     case = result.scalars().first()
     if not case:
         logger.error(f"Case {case_id} not found")
@@ -625,6 +640,9 @@ async def generate_report_logic(
         if failed_docs:
             logger.warning(f"Failed documents: {[d['filename'] for d in failed_docs]}")
 
+        # Build case context BEFORE releasing lock (while case is still loaded)
+        case_context = _build_case_context(case)
+
         # 5. Generate and upload report
         report_text, final_docx_path = await _generate_and_upload_report(
             processed_data_for_llm,
@@ -632,6 +650,7 @@ async def generate_report_logic(
             organization_id,
             language,
             extra_instructions=extra_instructions,
+            case_context=case_context,
         )
 
         # 6. Save version and generate summary

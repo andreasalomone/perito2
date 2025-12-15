@@ -5,13 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FileText, Loader2, RefreshCw, Clock, CheckCircle2, Edit, Download } from "lucide-react";
+import { FileText, Loader2, RefreshCw, Clock, CheckCircle2, Edit, Download, BrainCircuit } from "lucide-react";
 import { ExpandableScreen, ExpandableScreenTrigger, ExpandableScreenContent } from "@/components/ui/expandable-screen";
 import { PreliminaryReport } from "@/types";
 import { MarkdownContent } from "@/components/ui/markdown-content";
 import { ReportGeneratingSkeleton } from "@/components/cases/ReportGeneratingSkeleton";
+import { ThinkingProcess } from "@/components/cases/ThinkingProcess";
 import { useRef, useMemo } from "react";
 import { ScrollProgress } from "@/components/motion-primitives/scroll-progress";
+import type { StreamState } from "@/hooks/useEarlyAnalysis";
 
 interface PreliminaryReportCardProps {
     report: PreliminaryReport | null;
@@ -20,6 +22,12 @@ interface PreliminaryReportCardProps {
     isLoading: boolean;
     isGenerating: boolean;
     onGenerate: (force?: boolean) => void;
+    // Streaming mode props (optional)
+    streamingEnabled?: boolean;
+    streamState?: StreamState;
+    streamedThoughts?: string;
+    streamedContent?: string;
+    onGenerateStream?: () => void;
 }
 
 /**
@@ -38,15 +46,26 @@ export function PreliminaryReportCard({
     isLoading,
     isGenerating,
     onGenerate,
+    // Streaming props
+    streamingEnabled = false,
+    streamState = "idle",
+    streamedThoughts = "",
+    streamedContent = "",
+    onGenerateStream,
 }: PreliminaryReportCardProps) {
     const hasReport = report !== null;
     const isBlocked = pendingDocs > 0;
     const scrollRef = useRef<HTMLDivElement>(null);
 
+    // Determine if we're actively streaming
+    const isStreaming = streamState === "thinking" || streamState === "streaming";
+    const hasStreamedContent = streamedContent.length > 0;
+
     // Determine status for badge
     const getStatus = () => {
+        if (isStreaming) return { label: "In generazione", variant: "secondary" as const, icon: BrainCircuit };
         if (isBlocked) return { label: "In attesa", variant: "secondary" as const, icon: Clock };
-        if (hasReport) return { label: "Disponibile", variant: "default" as const, icon: CheckCircle2 };
+        if (hasReport || hasStreamedContent) return { label: "Disponibile", variant: "default" as const, icon: CheckCircle2 };
         return { label: "Non generato", variant: "secondary" as const, icon: FileText };
     };
 
@@ -183,12 +202,35 @@ export function PreliminaryReportCard({
                         </ExpandableScreenContent>
                     </ExpandableScreen>
                 ) : (
-                    /* Empty State or Generating State */
+                    /* Empty State, Generating State, or Streaming State */
                     !isLoading && !isBlocked && (
                         <div className="space-y-4">
-                            {isGenerating ? (
+                            {/* Streaming Mode: Show ThinkingProcess + Live Content */}
+                            {isStreaming && (
+                                <>
+                                    <ThinkingProcess
+                                        thoughts={streamedThoughts}
+                                        state="thinking"
+                                        className="mb-4"
+                                    />
+                                    {hasStreamedContent && (
+                                        <div className="bg-background border rounded-lg p-6 animate-in fade-in duration-300">
+                                            <MarkdownContent
+                                                content={streamedContent}
+                                                variant="report"
+                                            />
+                                        </div>
+                                    )}
+                                </>
+                            )}
+
+                            {/* Non-streaming generating: Show skeleton */}
+                            {isGenerating && !isStreaming && (
                                 <ReportGeneratingSkeleton variant="report" estimatedTime="~15 sec" />
-                            ) : (
+                            )}
+
+                            {/* Idle state: Show generate button */}
+                            {!isGenerating && !isStreaming && (
                                 <>
                                     <div className="text-center py-6 text-muted-foreground">
                                         <FileText className="h-10 w-10 mx-auto mb-3 opacity-50" />
@@ -199,7 +241,14 @@ export function PreliminaryReportCard({
                                         variant={hasReport ? "outline" : "default"}
                                         className="w-full"
                                         disabled={!canGenerate || isGenerating || isLoading || isBlocked}
-                                        onClick={() => onGenerate(hasReport)}
+                                        onClick={() => {
+                                            // Prefer streaming if available
+                                            if (streamingEnabled && onGenerateStream) {
+                                                onGenerateStream();
+                                            } else {
+                                                onGenerate(hasReport);
+                                            }
+                                        }}
                                     >
                                         <FileText className="h-4 w-4 mr-2" />
                                         Genera Report Preliminare

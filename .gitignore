@@ -84,3 +84,4 @@ frontend/src/components/cases/workflow/IngestionPanel.test.tsx
 frontend/src/hooks/useCaseDetail.test.ts
 .gitignore
 frontend/src/components/cases/workflow/utils/getLayoutPhase.test.ts
+backend/debug_db.py
