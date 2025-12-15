@@ -9,6 +9,7 @@ Fixes:
 - Add idx_clients_name_trgm for text search (pg_trgm)
 - Add unique constraint on documents(case_id, filename) to prevent duplicates
 """
+import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -20,17 +21,20 @@ depends_on = None
 
 def upgrade():
     # 1. Status filter index (partial index for active cases only)
+    # NOTE: postgresql_where requires a SQLAlchemy expression (sa.text), not a plain string
+    # Using if_not_exists=True for idempotency - safe to re-run
     op.create_index(
         "idx_cases_org_status",
         "cases",
         ["organization_id", "status"],
-        postgresql_where="status != 'ARCHIVED' AND deleted_at IS NULL",
+        postgresql_where=sa.text("status != 'ARCHIVED' AND deleted_at IS NULL"),
+        if_not_exists=True,
     )
 
     # 2. Trigram index for client name search (requires pg_trgm extension)
     op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
     op.execute("""
-        CREATE INDEX idx_clients_name_trgm
+        CREATE INDEX IF NOT EXISTS idx_clients_name_trgm
         ON clients USING gin (name gin_trgm_ops)
     """)
 
@@ -49,11 +53,19 @@ def upgrade():
     """)
 
     # 4. Unique constraint to prevent duplicate filenames per case
-    op.create_unique_constraint(
-        "uq_documents_case_filename",
-        "documents",
-        ["case_id", "filename"],
-    )
+    # Check if constraint exists before creating (make idempotent)
+    op.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint WHERE conname = 'uq_documents_case_filename'
+            ) THEN
+                ALTER TABLE documents ADD CONSTRAINT uq_documents_case_filename
+                UNIQUE (case_id, filename);
+            END IF;
+        END
+        $$;
+    """)
 
 
 def downgrade():

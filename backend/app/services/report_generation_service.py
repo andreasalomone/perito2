@@ -289,9 +289,9 @@ async def _validate_documents_ready(
         for d in all_docs
         if d.ai_status
         not in [
-            ExtractionStatus.SUCCESS.value,
-            ExtractionStatus.ERROR.value,
-            ExtractionStatus.SKIPPED.value,
+            ExtractionStatus.SUCCESS,
+            ExtractionStatus.ERROR,
+            ExtractionStatus.SKIPPED,
         ]
     ]:
         logger.info(
@@ -304,7 +304,7 @@ async def _validate_documents_ready(
 
     # Check if we have at least one processed document
     has_completed_docs = any(
-        d.ai_status == ExtractionStatus.SUCCESS.value for d in all_docs
+        d.ai_status == ExtractionStatus.SUCCESS for d in all_docs
     )
     if not has_completed_docs:
         logger.error(
@@ -315,7 +315,7 @@ async def _validate_documents_ready(
         return None
 
     processed_count = sum(
-        d.ai_status == ExtractionStatus.SUCCESS.value for d in all_docs
+        d.ai_status == ExtractionStatus.SUCCESS for d in all_docs
     )
     error_count = sum(d.ai_status == ExtractionStatus.ERROR.value for d in all_docs)
     logger.info(
@@ -359,7 +359,7 @@ def _process_document_for_llm(doc: Document) -> tuple[list[dict], dict | None]:
     Process a single document for LLM input.
     Returns (processed_items, failed_doc_info or None).
     """
-    if doc.ai_status == ExtractionStatus.SUCCESS.value and doc.ai_extracted_data:
+    if doc.ai_status == ExtractionStatus.SUCCESS and doc.ai_extracted_data:
         data = _deep_copy_extracted_data(doc)
 
         if isinstance(data, dict):

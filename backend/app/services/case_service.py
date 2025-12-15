@@ -694,7 +694,7 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: AsyncSessio
 
     # FIX: Idempotency Check - Skip extraction if already processed
     # This prevents expensive re-downloads and re-extractions on Cloud Tasks retries
-    if doc.ai_status == ExtractionStatus.SUCCESS.value:
+    if doc.ai_status == ExtractionStatus.SUCCESS:
         logger.info(
             f"Document {doc.id} already processed. Skipping extraction, proceeding to Fan-In check."
         )
@@ -847,9 +847,9 @@ async def _check_and_trigger_generation(
                 Document.case_id == case_id,
                 Document.ai_status.notin_(
                     [
-                        ExtractionStatus.SUCCESS.value,
-                        ExtractionStatus.ERROR.value,
-                        ExtractionStatus.SKIPPED.value,
+                        ExtractionStatus.SUCCESS,
+                        ExtractionStatus.ERROR,
+                        ExtractionStatus.SKIPPED,
                     ]
                 ),
             )

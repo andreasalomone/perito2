@@ -324,17 +324,24 @@ const ExpandableContent = React.forwardRef<
                 >
                   {React.Children.map(
                     children as React.ReactNode,
-                    (child, index) => (
-                      <motion.div
-                        key={`${child?.toLocaleString}-${index}`}
-                        variants={{
-                          hidden: { opacity: 0, y: 20 },
-                          visible: { opacity: 1, y: 0 },
-                        }}
-                      >
-                        {child}
-                      </motion.div>
-                    )
+                    (child, index) => {
+                      const key =
+                        React.isValidElement(child) && child.key != null
+                          ? child.key
+                          : index;
+
+                      return (
+                        <motion.div
+                          key={key}
+                          variants={{
+                            hidden: { opacity: 0, y: 20 },
+                            visible: { opacity: 1, y: 0 },
+                          }}
+                        >
+                          {child}
+                        </motion.div>
+                      );
+                    }
                   )}
                 </motion.div>
               ) : (
