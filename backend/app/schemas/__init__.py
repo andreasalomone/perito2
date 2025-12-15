@@ -147,6 +147,7 @@ class VersionRead(BaseModel):
     # Google Docs Live Draft support
     is_draft_active: bool = False
     edit_link: Optional[str] = None
+    source: Optional[str] = None  # 'preliminary' | 'final' | None
     model_config = ConfigDict(from_attributes=True)
 
 

@@ -6,6 +6,7 @@ Follows the summary_service.py pattern for lightweight LLM calls.
 """
 
 import hashlib
+import html
 import logging
 from typing import List, Optional
 from uuid import UUID
@@ -251,8 +252,9 @@ async def run_document_analysis(
     # 6. Build the evidence section
     evidence_parts = []
     for doc_data in document_contents:
+        safe_filename = html.escape(doc_data["filename"])
         evidence_parts.append(
-            f'<document filename="{doc_data["filename"]}">\n{doc_data["content"]}\n</document>'
+            f'<document filename="{safe_filename}">\n{doc_data["content"]}\n</document>'
         )
     evidence_section = "\n".join(evidence_parts)
 

@@ -5,6 +5,7 @@ AI-powered preliminary report generation for the "Early Analysis" feature.
 Follows the document_analysis_service.py pattern for lightweight LLM calls.
 """
 
+import html
 import logging
 from typing import Optional
 from uuid import UUID
@@ -179,8 +180,9 @@ async def run_preliminary_report(
     # 6. Build the evidence section
     evidence_parts = []
     for doc_data in document_contents:
+        safe_filename = html.escape(doc_data["filename"])
         evidence_parts.append(
-            f'<document filename="{doc_data["filename"]}">\n{doc_data["content"]}\n</document>'
+            f'<document filename="{safe_filename}">\n{doc_data["content"]}\n</document>'
         )
     evidence_section = "\n".join(evidence_parts)
 

@@ -63,9 +63,11 @@ def list_cases(
 
     # 1. Text Search
     if search:
+        # Escape LIKE wildcards to prevent injection
+        safe_search = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         stmt = stmt.join(Case.client, isouter=True).where(
-            (Case.reference_code.ilike(f"%{search}%"))
-            | (Client.name.ilike(f"%{search}%"))
+            (Case.reference_code.ilike(f"%{safe_search}%", escape="\\"))
+            | (Client.name.ilike(f"%{safe_search}%", escape="\\"))
         )
 
     # 2. Filter by Client ID
