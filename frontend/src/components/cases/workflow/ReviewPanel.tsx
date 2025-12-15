@@ -35,7 +35,7 @@ export function ReviewPanel({
     onGoBackToIngestion,
 }: ReviewPanelProps) {
     const versions = caseData?.report_versions || [];
-    const [selectedTemplate, setSelectedTemplate] = useState<TemplateType>("bn");
+    const [selectedTemplate, setSelectedTemplate] = useState<TemplateType>("default");
     const [isOpening, setIsOpening] = useState(false);
 
     // Get the latest non-final, non-preliminary version (the draft to review)
@@ -88,6 +88,17 @@ export function ReviewPanel({
                         <div className="space-y-3">
                             <label className="text-sm font-medium">Scegli Template</label>
                             <div className="flex gap-2">
+                                <Button
+                                    variant={selectedTemplate === "default" ? "default" : "outline"}
+                                    size="sm"
+                                    onClick={() => setSelectedTemplate("default")}
+                                    className={cn(
+                                        "flex-1",
+                                        selectedTemplate === "default" && "ring-2 ring-primary ring-offset-2"
+                                    )}
+                                >
+                                    Default
+                                </Button>
                                 <Button
                                     variant={selectedTemplate === "bn" ? "default" : "outline"}
                                     size="sm"

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { FileText, Download } from "lucide-react";
 import { motion } from "framer-motion";
 
-export type TemplateType = "bn" | "salomone";
+export type TemplateType = "default" | "bn" | "salomone";
 
 interface VersionItemProps {
     version: ReportVersion;
@@ -17,7 +17,7 @@ export const VersionItem = memo(({
     version,
     onDownload
 }: VersionItemProps) => {
-    const [template, setTemplate] = useState<TemplateType>("bn");
+    const [template, setTemplate] = useState<TemplateType>("default");
 
     return (
         <motion.div
@@ -39,6 +39,13 @@ export const VersionItem = memo(({
                 {/* Template Selection - Local State */}
                 {!version.is_final && (
                     <div className="flex items-center gap-1 text-xs border rounded p-1 bg-background" role="group" aria-label="Seleziona modello report">
+                        <button
+                            onClick={() => setTemplate("default")}
+                            className={`px-2 py-1 rounded transition-colors ${template === "default" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}
+                            aria-pressed={template === "default"}
+                        >
+                            Default
+                        </button>
                         <button
                             onClick={() => setTemplate("bn")}
                             className={`px-2 py-1 rounded transition-colors ${template === "bn" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}

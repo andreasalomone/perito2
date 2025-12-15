@@ -687,6 +687,10 @@ async def generate_docx_variant(
         from app.services import docx_generator as generator
 
         suffix = "_BN.docx"
+    elif template_type == "default":
+        from app.services import docx_generator_default as generator
+
+        suffix = "_Default.docx"
     else:
         raise ValueError("Invalid template type")
 
