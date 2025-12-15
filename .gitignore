@@ -81,3 +81,6 @@ user-feedback.md
 feat-doc-analysis.md
 frontend/src/components/cases/workflow/utils/getLayoutPhase.test.ts
 service-account.json
+z-docs
+scripts
+requirements-dev.txt
