@@ -84,3 +84,5 @@ service-account.json
 z-docs
 scripts
 requirements-dev.txt
+frontend/src/components/cases/workflow/IngestionPanel.test.tsx
+frontend/src/hooks/useCaseDetail.test.ts
