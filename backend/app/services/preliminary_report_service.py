@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.models import Document, ReportVersion
+from app.models import Case, Document, ReportVersion
 from app.schemas.enums import ExtractionStatus
 
 logger = logging.getLogger(__name__)
@@ -234,7 +234,13 @@ async def run_preliminary_report(
 
         report_content = response.text
 
-        # 8. Get next version number
+        # 8. Lock the case row BEFORE version calculation to prevent TOCTOU race
+        # This ensures the read(max) + increment + insert is atomic
+        await db.execute(
+            select(Case).where(Case.id == case_id).with_for_update()
+        )
+
+        # 9. Get next version number (safe now, we hold the lock)
         from sqlalchemy import func
 
         max_version_result = await db.execute(
@@ -244,7 +250,7 @@ async def run_preliminary_report(
         )
         next_version = max_version_result.scalar() + 1
 
-        # 9. Create and persist the ReportVersion
+        # 10. Create and persist the ReportVersion
         new_version = ReportVersion(
             case_id=case_id,
             organization_id=org_id,

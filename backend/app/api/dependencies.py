@@ -325,7 +325,6 @@ async def get_async_db(
         async def my_endpoint(db: AsyncSession = Depends(get_async_db)):
             ...
     """
-    """
     uid = current_user_token["uid"]
     connection_dirtied = False
 
