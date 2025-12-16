@@ -47,11 +47,14 @@ def list_cases(
     Fetches cases with RLS and Soft Delete filtering.
     """
     # SECURITY: Defense-in-depth - explicitly filter by user's organization
-    # This ensures even if RLS context fails, data is scoped correctly
-    user_org_id = current_user.get("org_id")
-    if not user_org_id:
-        logger.error(f"User {current_user.get('uid')} has no organization_id in token")
+    # Get org_id from the session variable that get_db() already set
+    from sqlalchemy import text
+
+    result = db.execute(text("SELECT current_setting('app.current_org_id', true)")).scalar()
+    if not result:
+        logger.error(f"User {current_user.get('uid')} has no organization_id in session")
         raise HTTPException(status_code=403, detail="User organization not found")
+    user_org_id = result
 
     stmt = (
         select(Case)

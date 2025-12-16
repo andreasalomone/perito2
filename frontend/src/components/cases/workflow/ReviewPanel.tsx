@@ -86,7 +86,7 @@ export function ReviewPanel({
                     <CardContent className="space-y-4">
                         {/* Template Selector */}
                         <div className="space-y-3">
-                            <label className="text-sm font-medium">Scegli Template</label>
+
                             <div className="flex gap-2">
                                 <Button
                                     variant={selectedTemplate === "default" ? "default" : "outline"}
