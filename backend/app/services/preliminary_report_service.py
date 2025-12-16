@@ -218,7 +218,12 @@ async def run_preliminary_report(
     )
 
     try:
-        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        # Use Vertex AI mode for consistency with other services
+        client = genai.Client(
+            vertexai=True,
+            project=settings.GOOGLE_CLOUD_PROJECT,
+            location=settings.GEMINI_API_LOCATION,
+        )
 
         response = await client.aio.models.generate_content(
             model=settings.GEMINI_PRELIMINARY_MODEL,
@@ -396,7 +401,12 @@ async def stream_preliminary_report(
             f"Streaming preliminary report for case {case_id} with {len(documents)} documents"
         )
 
-        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        # Use Vertex AI mode for consistency with other services
+        client = genai.Client(
+            vertexai=True,
+            project=settings.GOOGLE_CLOUD_PROJECT,
+            location=settings.GEMINI_API_LOCATION,
+        )
 
         # Configure with ThinkingConfig to enable thought visibility
         # Note: include_thoughts=True works with gemini-2.5-pro/flash models

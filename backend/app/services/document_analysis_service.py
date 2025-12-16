@@ -306,7 +306,13 @@ async def run_document_analysis(
     )
 
     try:
-        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        # Use Vertex AI mode for direct GCS access via Part.from_uri()
+        # API key mode does NOT support gs:// URIs
+        client = genai.Client(
+            vertexai=True,
+            project=settings.GOOGLE_CLOUD_PROJECT,
+            location=settings.GEMINI_API_LOCATION,
+        )
 
         response = await client.aio.models.generate_content(
             model=settings.GEMINI_DOC_ANALYSIS_MODEL,

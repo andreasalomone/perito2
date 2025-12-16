@@ -230,9 +230,8 @@ def get_db(
         # 5. CRITICAL: RESET variables before returning connection to pool
         if connection_dirtied:
             try:
-                db.execute(
-                    text("RESET app.current_user_uid; RESET app.current_org_id;")
-                )
+                db.execute(text("RESET app.current_user_uid;"))
+                db.execute(text("RESET app.current_org_id;"))
             except Exception as e:
                 logger.warning(
                     f"Initial RESET RLS failed in get_db (likely aborted transaction): {e}. Attempting rollback."
@@ -240,9 +239,8 @@ def get_db(
                 try:
                     # If the transaction is aborted, we must rollback before we can run RESET
                     db.rollback()
-                    db.execute(
-                        text("RESET app.current_user_uid; RESET app.current_org_id;")
-                    )
+                    db.execute(text("RESET app.current_user_uid;"))
+                    db.execute(text("RESET app.current_org_id;"))
                     logger.info(
                         "Successfully reset RLS context in get_db after rollback."
                     )
@@ -365,16 +363,14 @@ async def get_async_db(
             # 3. CRITICAL: Reset RLS context before returning to pool
             if connection_dirtied:
                 try:
-                    await db.execute(
-                        text("RESET app.current_user_uid; RESET app.current_org_id;")
-                    )
+                    await db.execute(text("RESET app.current_user_uid;"))
+                    await db.execute(text("RESET app.current_org_id;"))
                 except Exception as e:
                     logger.warning(f"get_async_db: Initial RESET failed: {e}. Attempting rollback.")
                     try:
                         await db.rollback()
-                        await db.execute(
-                            text("RESET app.current_user_uid; RESET app.current_org_id;")
-                        )
+                        await db.execute(text("RESET app.current_user_uid;"))
+                        await db.execute(text("RESET app.current_org_id;"))
                     except Exception as e2:
                         logger.critical(f"get_async_db: FAILED TO RESET RLS after rollback: {e2}")
                         # Invalidate connection to prevent potential data leak
