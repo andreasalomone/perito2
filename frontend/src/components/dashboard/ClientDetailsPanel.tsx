@@ -81,7 +81,7 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
 
     const formatValue = (val: any) => {
         if (val === null || val === undefined || val === "") {
-            return <span className="text-gray-300 font-normal">—</span>;
+            return <span className="text-muted-foreground font-normal">—</span>;
         }
         return val;
     };
@@ -104,7 +104,7 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
                 <input
                     autoFocus
                     className={cn(
-                        "block w-full rounded-md border-2 border-blue-500 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 bg-white h-10"
+                        "block w-full rounded-md border-2 border-primary shadow-sm focus:border-primary focus:ring-primary sm:text-sm p-2 bg-background text-foreground h-10"
                     )}
                     type={field.type || "text"}
                     value={tempValue}
@@ -128,14 +128,14 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
                 }
             }}
             className={cn(
-                "group p-3 rounded-lg border border-transparent hover:border-gray-200 hover:bg-gray-50 cursor-pointer transition-all duration-200",
-                "flex flex-col justify-center min-h-[64px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                "group p-3 rounded-lg border border-transparent hover:border-border hover:bg-muted/50 cursor-pointer transition-all duration-200",
+                "flex flex-col justify-center min-h-[64px] focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
             )}
         >
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1 group-hover:text-blue-600 transition-colors">
                 {field.label}
             </span>
-            <div className="text-sm font-medium text-gray-900 truncate">
+            <div className="text-sm font-medium text-foreground truncate">
                 {formatValue(value)}
             </div>
         </div>
@@ -175,13 +175,13 @@ export default function ClientDetailsPanel({ client, onUpdate }: Props) {
     };
 
     return (
-        <Card className="border-none shadow-md overflow-hidden ring-1 ring-gray-200">
+        <Card className="border-none shadow-md overflow-hidden ring-1 ring-border">
             <CardHeader
-                className="bg-gray-50/50 border-b flex flex-row items-center justify-between py-4 px-6 cursor-pointer hover:bg-gray-50 transition-colors"
+                className="bg-muted/50 border-b flex flex-row items-center justify-between py-4 px-6 cursor-pointer hover:bg-muted transition-colors"
                 onClick={() => setIsOpen(!isOpen)}
             >
                 <div>
-                    <CardTitle className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                    <CardTitle className="text-lg font-semibold text-foreground flex items-center gap-2">
                         Dettagli Cliente
                     </CardTitle>
                     <p className="text-sm text-muted-foreground mt-1">
@@ -196,14 +196,14 @@ export default function ClientDetailsPanel({ client, onUpdate }: Props) {
 
             {isOpen && (
                 <CardContent className="p-0">
-                    <div className="divide-y divide-gray-100">
+                    <div className="divide-y divide-border">
                         {SECTIONS.map((section) => (
                             <div key={section.id} className="p-6">
                                 <div className="flex items-center gap-2 mb-4">
                                     <div className={cn("p-1.5 rounded-md bg-opacity-10", section.color.replace("text-", "bg-"))}>
                                         <section.icon className={cn("h-4 w-4", section.color)} />
                                     </div>
-                                    <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">
+                                    <h3 className="text-sm font-bold text-foreground/80 uppercase tracking-wider">
                                         {section.id}
                                     </h3>
                                 </div>
