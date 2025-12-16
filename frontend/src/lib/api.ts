@@ -29,6 +29,9 @@ import {
     PreliminaryReportCreateResponseSchema,
     PreliminaryReportResponse,
     PreliminaryReportCreateResponse,
+    // Documents List with URLs
+    DocumentsListResponseSchema,
+    DocumentsListResponse,
 } from "@/types";
 import { OrganizationSchema, AllowedEmailSchema, Organization, AllowedEmail } from "@/types/admin";
 import { GlobalStatsSchema, OrgStatsSchema, UserStatsSchema, GlobalStats, OrgStats, UserStats } from "@/types/stats";
@@ -188,6 +191,14 @@ export const api = {
                 token,
                 PreliminaryReportCreateResponseSchema,
                 { method: "POST", data: { force } }
+            ),
+
+        // Documents List with URLs for preview/download
+        listDocuments: (token: string, caseId: string) =>
+            fetchWithValidation<DocumentsListResponse>(
+                `${getBaseUrl()}/api/v1/cases/${caseId}/documents`,
+                token,
+                DocumentsListResponseSchema
             ),
     },
     clients: {

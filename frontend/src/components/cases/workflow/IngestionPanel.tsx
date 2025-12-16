@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { CaseDetail, DocumentAnalysis, PreliminaryReport } from "@/types";
+import { useState, useEffect, useMemo } from "react";
+import { CaseDetail, DocumentAnalysis, PreliminaryReport, DocumentWithUrl } from "@/types";
 import type { StreamState } from "@/hooks/useEarlyAnalysis";
 import { CaseFileUploader } from "@/components/cases/CaseFileUploader";
 import { DocumentItem } from "@/components/cases/DocumentItem";
@@ -22,6 +22,8 @@ import {
 import { Upload, UploadCloud, Play, AlertCircle, Loader2, Globe, MessageSquare } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import { StaggerList, StaggerItem, ReportGeneratingSkeleton, FadeIn } from "@/components/primitives";
+import { api } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 
 // Language options for report generation
 export type ReportLanguage = "italian" | "english" | "spanish";
@@ -84,10 +86,50 @@ export function IngestionPanel({
     documentAnalysis,
     preliminaryReport,
 }: IngestionPanelProps) {
+    const { getToken } = useAuth();
     const documents = caseData?.documents || [];
     const [selectedLanguage, setSelectedLanguage] = useState<ReportLanguage>("italian");
     const [extraInstructions, setExtraInstructions] = useState<string>("");
     const MAX_INSTRUCTIONS_LENGTH = 2000;
+
+    // Document URLs for preview/download
+    const [documentUrls, setDocumentUrls] = useState<DocumentWithUrl[]>([]);
+
+    // Create stable dependency: only refetch when SUCCESS doc IDs change
+    const successfulDocIds = useMemo(
+        () => documents.filter(d => d.ai_status === 'SUCCESS').map(d => d.id).sort().join(','),
+        [documents]
+    );
+
+    // Fetch document URLs when successful docs change
+    useEffect(() => {
+        if (!successfulDocIds) {
+            setDocumentUrls([]);
+            return;
+        }
+
+        const fetchUrls = async () => {
+            try {
+                const token = await getToken();
+                if (!token) return;
+                const response = await api.cases.listDocuments(token, caseId);
+                setDocumentUrls(response.documents);
+            } catch (error) {
+                console.error("Failed to fetch document URLs:", error);
+            }
+        };
+
+        fetchUrls();
+    }, [successfulDocIds, caseId, getToken]);
+
+    // Create a lookup map for document URLs by ID
+    const urlMap = useMemo(() => {
+        const map = new Map<string, { url: string | null; canPreview: boolean }>();
+        documentUrls.forEach(doc => {
+            map.set(doc.id, { url: doc.url ?? null, canPreview: doc.can_preview });
+        });
+        return map;
+    }, [documentUrls]);
 
     // Count documents by status
     const successDocs = documents.filter(d => d.ai_status === 'SUCCESS');
@@ -147,14 +189,19 @@ export function IngestionPanel({
                         <div className="space-y-4">
                             <StaggerList className="grid gap-2">
                                 <AnimatePresence mode="popLayout">
-                                    {documents.map((doc) => (
-                                        <StaggerItem key={doc.id}>
-                                            <DocumentItem
-                                                doc={doc}
-                                                onDelete={() => onDeleteDocument(doc.id)}
-                                            />
-                                        </StaggerItem>
-                                    ))}
+                                    {documents.map((doc) => {
+                                        const urlData = urlMap.get(doc.id);
+                                        return (
+                                            <StaggerItem key={doc.id}>
+                                                <DocumentItem
+                                                    doc={doc}
+                                                    onDelete={() => onDeleteDocument(doc.id)}
+                                                    url={urlData?.url}
+                                                    canPreview={urlData?.canPreview}
+                                                />
+                                            </StaggerItem>
+                                        );
+                                    })}
                                 </AnimatePresence>
                             </StaggerList>
                             {/* Guidance when all documents are in error state */}

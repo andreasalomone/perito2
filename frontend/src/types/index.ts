@@ -11,6 +11,24 @@ export const DocumentSchema = z.object({
 });
 export type Document = z.infer<typeof DocumentSchema>;
 
+// Document with signed URL for preview/download
+export const DocumentWithUrlSchema = z.object({
+    id: z.string().uuid(),
+    filename: z.string(),
+    mime_type: z.string().optional().nullable(),
+    status: z.enum(["PENDING", "PROCESSING", "SUCCESS", "ERROR", "SKIPPED"]),
+    can_preview: z.boolean(),
+    url: z.string().optional().nullable(),
+});
+export type DocumentWithUrl = z.infer<typeof DocumentWithUrlSchema>;
+
+export const DocumentsListResponseSchema = z.object({
+    documents: z.array(DocumentWithUrlSchema),
+    total: z.number(),
+    pending_extraction: z.number(),
+});
+export type DocumentsListResponse = z.infer<typeof DocumentsListResponseSchema>;
+
 export const ReportVersionSchema = z.object({
     id: z.string().uuid(),
     version_number: z.number(),
