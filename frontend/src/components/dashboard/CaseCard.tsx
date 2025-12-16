@@ -107,7 +107,7 @@ export const CaseCard = memo(function CaseCard({ caseItem: c, index }: CaseCardP
                         {/* Creator Badge */}
                         {(c.creator_name || c.creator_email) && (
                             <div className="flex justify-start pt-1">
-                                <BadgeWithDot type="modern" color="brand" size="sm">
+                                <BadgeWithDot type="modern" color="purple" size="sm">
                                     {c.creator_name || c.creator_email}
                                 </BadgeWithDot>
                             </div>

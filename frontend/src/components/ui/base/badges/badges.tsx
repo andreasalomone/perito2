@@ -106,8 +106,22 @@ const withBadgeTypes = {
         styles: filledColors,
     },
     [badgeTypes.badgeModern]: {
-        common: "size-max flex items-center whitespace-nowrap rounded-md ring-1 ring-inset bg-primary text-secondary ring-primary shadow-xs",
-        styles: addonOnlyColors,
+        // Modern style: transparent background with colored dot
+        common: "size-max flex items-center whitespace-nowrap rounded-md bg-transparent text-foreground",
+        styles: {
+            gray: { root: "", addon: "text-utility-gray-500" },
+            brand: { root: "", addon: "text-utility-brand-500" },
+            error: { root: "", addon: "text-utility-error-500" },
+            warning: { root: "", addon: "text-utility-warning-500" },
+            success: { root: "", addon: "text-utility-success-500" },
+            "gray-blue": { root: "", addon: "text-utility-gray-blue-500" },
+            "blue-light": { root: "", addon: "text-utility-blue-light-500" },
+            blue: { root: "", addon: "text-utility-blue-500" },
+            indigo: { root: "", addon: "text-utility-indigo-500" },
+            purple: { root: "", addon: "text-utility-purple-500" },
+            pink: { root: "", addon: "text-utility-pink-500" },
+            orange: { root: "", addon: "text-utility-orange-500" },
+        } as Record<BadgeColors, { root: string; addon: string }>,
     },
 };
 
