@@ -4,6 +4,7 @@ import useSWR from "swr";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { DocumentAnalysisResponse, PreliminaryReportResponse } from "@/types";
+import { getApiUrl } from "@/context/ConfigContext";
 import { useState, useCallback } from "react";
 import { toast } from "sonner";
 
@@ -203,7 +204,7 @@ export function usePreliminaryReportStream(caseId: string | undefined) {
             const token = await getToken();
             if (!token) throw new Error("No token available");
 
-            const baseUrl = process.env.NEXT_PUBLIC_API_URL || "";
+            const baseUrl = getApiUrl()?.replace(/\/$/, "") || "";
             const response = await fetch(
                 `${baseUrl}/api/v1/cases/${caseId}/preliminary/stream`,
                 {
