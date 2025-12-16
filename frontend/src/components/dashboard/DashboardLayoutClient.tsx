@@ -89,17 +89,20 @@ export function DashboardLayoutClient({
             )}
 
             {/* Desktop Sidebar */}
-            <aside className={cn(
-                "bg-card/50 backdrop-blur-xl border-r border-white/5 hidden md:flex flex-col h-screen sticky top-0 transition-all duration-300 noise-surface",
-                isOpen ? "w-64" : "w-20"
-            )}>
+            <aside
+                className={cn(
+                    "bg-card/50 backdrop-blur-xl border-r border-white/5 hidden md:flex flex-col h-screen sticky top-0 transition-all duration-300 noise-surface",
+                    isOpen ? "w-64" : "w-20"
+                )}
+                onMouseEnter={() => setIsOpen(true)}
+                onMouseLeave={() => setIsOpen(false)}
+            >
                 <Sidebar
                     user={user}
                     dbUser={dbUser}
                     logout={logout}
                     pathname={pathname}
                     collapsed={!isOpen}
-                    onToggle={toggle}
                 />
             </aside>
 

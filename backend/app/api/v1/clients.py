@@ -130,7 +130,9 @@ def create_client(
         db.refresh(new_client)
 
         # Trigger enrichment for the new client
-        trigger_client_enrichment_task(str(new_client.id), new_client.name)
+        trigger_client_enrichment_task(
+            str(new_client.id), new_client.name, str(user.organization_id)
+        )
 
         return new_client
 
@@ -243,7 +245,9 @@ def trigger_enrichment(
         raise HTTPException(status_code=404, detail="Client not found")
 
     # Trigger async task
-    trigger_client_enrichment_task(str(client.id), client.name)
+    trigger_client_enrichment_task(
+        str(client.id), client.name, str(user.organization_id)
+    )
 
     return {"message": "Enrichment task started"}
 

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, FilePlus, LogOut, User as UserIcon, ChevronLeft, ChevronRight } from "lucide-react";
+import { LayoutDashboard, FilePlus, LogOut, User as UserIcon, Users, ChevronLeft, ChevronRight } from "lucide-react";
 import { ModeToggle } from "@/components/primitives";
 import { User } from "firebase/auth";
 import { DBUser } from "@/types";
@@ -31,7 +31,7 @@ export function Sidebar({
 }: SidebarProps) {
     const navItems = [
         { href: "/dashboard", label: "I Miei Report", icon: LayoutDashboard },
-        { href: "/dashboard/clienti", label: "Clienti", icon: UserIcon }, // Using UserIcon (Users alias) as placeholder, better import Users
+        { href: "/dashboard/clienti", label: "Clienti", icon: Users },
         { href: "/dashboard/create", label: "Nuova Perizia", icon: FilePlus },
         { href: "/dashboard/profile", label: "Profilo", icon: UserIcon },
     ];

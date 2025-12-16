@@ -46,6 +46,13 @@ def list_cases(
     """
     Fetches cases with RLS and Soft Delete filtering.
     """
+    # SECURITY: Defense-in-depth - explicitly filter by user's organization
+    # This ensures even if RLS context fails, data is scoped correctly
+    user_org_id = current_user.get("org_id")
+    if not user_org_id:
+        logger.error(f"User {current_user.get('uid')} has no organization_id in token")
+        raise HTTPException(status_code=403, detail="User organization not found")
+
     stmt = (
         select(Case)
         .options(
@@ -55,6 +62,9 @@ def list_cases(
         )
         .order_by(Case.created_at.desc())
     )
+
+    # SECURITY: Explicit organization filter (defense-in-depth, supplements RLS)
+    stmt = stmt.where(Case.organization_id == UUID(user_org_id))
 
     # Soft Delete Filter
     stmt = stmt.where(Case.deleted_at.is_(None))
@@ -81,6 +91,7 @@ def list_cases(
         stmt = stmt.where(Case.status == status)
 
     return list(db.scalars(stmt.offset(skip).limit(limit)).all())
+
 
 
 @router.get(

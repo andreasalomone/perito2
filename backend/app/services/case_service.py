@@ -183,7 +183,9 @@ def create_case_with_client(
 
         # 5. ICE: Trigger background enrichment for NEW clients only
         if is_new_client and client and case_data.client_name:
-            trigger_client_enrichment_task(str(client.id), case_data.client_name)
+            trigger_client_enrichment_task(
+                str(client.id), case_data.client_name, str(user_org_id)
+            )
 
         return new_case
 
@@ -535,17 +537,24 @@ def trigger_case_processing_task(case_id: str, org_id: str):
         raise
 
 
-def trigger_client_enrichment_task(client_id: str, original_name: str):
+def trigger_client_enrichment_task(client_id: str, original_name: str, organization_id: str):
     """
     Enqueue async enrichment task via Cloud Tasks (or run locally for dev).
 
     ICE (Intelligent Client Enrichment) feature.
     Called when a NEW client is created during case creation.
+
+    Args:
+        client_id: UUID of the client to enrich
+        original_name: Original name used for Gemini search
+        organization_id: UUID of the organization (required for RLS context)
     """
     if settings.RUN_LOCALLY:
         # Local dev: run in background thread to avoid blocking
         import asyncio
         import threading
+
+        from sqlalchemy import text
 
         from app.db.database import SessionLocal
         from app.services.enrichment_service import EnrichmentService
@@ -554,6 +563,11 @@ def trigger_client_enrichment_task(client_id: str, original_name: str):
             async def _enrich():
                 service = EnrichmentService()
                 with SessionLocal() as db:
+                    # Set RLS context for local execution
+                    db.execute(
+                        text("SELECT set_config('app.current_org_id', :oid, false)"),
+                        {"oid": organization_id},
+                    )
                     await service.enrich_and_update_client(client_id, original_name, db)
 
             asyncio.run(_enrich())
@@ -580,7 +594,11 @@ def trigger_client_enrichment_task(client_id: str, original_name: str):
                     "audience": settings.CLOUD_RUN_AUDIENCE_URL,
                 },
                 "body": json.dumps(
-                    {"client_id": client_id, "original_name": original_name}
+                    {
+                        "client_id": client_id,
+                        "original_name": original_name,
+                        "organization_id": organization_id,
+                    }
                 ).encode(),
             }
         }

@@ -178,6 +178,7 @@ class EnrichClientPayload(BaseModel):
 
     client_id: str = Field(..., description="Client UUID to enrich")
     original_name: str = Field(..., description="Original client name for search query")
+    organization_id: str = Field(..., description="Organization UUID for RLS context")
 
 
 class ExtractCaseDetailsPayload(BaseModel):
@@ -211,9 +212,19 @@ async def enrich_client(
     - Official website
     - Company logo (via Google Favicon API)
     """
+    from sqlalchemy import text
+
     logger.info(
         f"🧠 ICE: Enriching client {payload.client_id} ('{payload.original_name}')"
     )
+
+    # SECURITY FIX: Set RLS context BEFORE any ORM queries
+    # This is required because Cloud Tasks don't have user tokens
+    db.execute(
+        text("SELECT set_config('app.current_org_id', :oid, false)"),
+        {"oid": payload.organization_id},
+    )
+
     try:
         from app.services.enrichment_service import EnrichmentService
 
