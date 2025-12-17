@@ -120,7 +120,7 @@ export const api = {
                 CaseDetailSchema
             ),
 
-        create: (token: string, data: { reference_code: string; client_name?: string }) =>
+        create: (token: string, data: { reference_code: string; client_name?: string; assicurato_name?: string }) =>
             fetchWithValidation<CaseDetail>(
                 `${getBaseUrl()}/api/v1/cases/`,
                 token,
@@ -247,6 +247,15 @@ export const api = {
                 token,
                 EnrichedClientDataSchema.nullable(),
                 { method: "POST", data: { query_name: name } }
+            ),
+    },
+    assicurati: {
+        list: (token: string, params: { q?: string; limit?: number; skip?: number } = {}) =>
+            fetchWithValidation<{ id: string; name: string }[]>(
+                `${getBaseUrl()}/api/v1/assicurati/`,
+                token,
+                z.array(z.object({ id: z.string().uuid(), name: z.string() })),
+                { params }
             ),
     },
     users: {

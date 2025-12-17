@@ -1,6 +1,6 @@
 from app.models.audit import AuditLog
 from app.models.base import Base
-from app.models.cases import Case, Client
+from app.models.cases import Assicurato, Case, Client
 from app.models.document_analysis import DocumentAnalysis
 from app.models.documents import Document, ReportVersion
 from app.models.email_intake import BrevoWebhookLog, EmailAttachment, EmailProcessingLog
@@ -16,6 +16,7 @@ __all__ = [
     "AllowedEmail",
     "Case",
     "Client",
+    "Assicurato",
     "Document",
     "DocumentAnalysis",
     "ReportVersion",

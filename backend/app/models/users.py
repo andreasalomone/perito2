@@ -10,8 +10,7 @@ from app.schemas.enums import UserRole
 
 # Prevent circular imports for type checking
 if TYPE_CHECKING:
-    from app.models.cases import Case
-    from app.models.client import Client
+    from app.models.cases import Assicurato, Case, Client
     from app.models.email_intake import EmailProcessingLog
 
 
@@ -40,6 +39,9 @@ class Organization(Base):
         back_populates="organization", cascade="all, delete-orphan"
     )
     clients: Mapped[List["Client"]] = relationship(
+        back_populates="organization", cascade="all, delete-orphan"
+    )
+    assicurati: Mapped[List["Assicurato"]] = relationship(
         back_populates="organization", cascade="all, delete-orphan"
     )
     # Added missing relationship to support 'GET /admin/organizations/{id}/invites'

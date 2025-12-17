@@ -11,12 +11,14 @@ import { toast } from "sonner";
 import { handleApiError } from "@/lib/error";
 import { api } from "@/lib/api";
 import { ClientCombobox } from "@/components/ui/combobox-client";
+import { AssicuratoCombobox } from "@/components/ui/combobox-assicurato";
 
 export default function CreateCasePage() {
     const { getToken } = useAuth();
     const router = useRouter();
     const [refCode, setRefCode] = useState("");
     const [clientName, setClientName] = useState("");
+    const [assicuratoName, setAssicuratoName] = useState("");
     const [loading, setLoading] = useState(false);
 
     const handleCreate = async (e: React.FormEvent) => {
@@ -24,6 +26,7 @@ export default function CreateCasePage() {
 
         const cleanRefCode = refCode.trim();
         const cleanClientName = clientName.trim();
+        const cleanAssicuratoName = assicuratoName.trim();
 
         // Basic Validation
         if (!cleanRefCode) {
@@ -41,7 +44,8 @@ export default function CreateCasePage() {
 
             const newCase = await api.cases.create(token, {
                 reference_code: cleanRefCode,
-                client_name: cleanClientName
+                client_name: cleanClientName,
+                assicurato_name: cleanAssicuratoName
             });
 
             toast.success("Sinistro aperto con successo");
@@ -90,6 +94,19 @@ export default function CreateCasePage() {
                             />
                             <p className="text-[0.8rem] text-muted-foreground">
                                 Cerca un cliente esistente o digitane uno nuovo per crearlo.
+                            </p>
+                        </div>
+                        <div className="space-y-2">
+                            <label htmlFor="assicuratoName" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                Assicurato (Opzionale)
+                            </label>
+                            <AssicuratoCombobox
+                                value={assicuratoName}
+                                onChange={setAssicuratoName}
+                                disabled={loading}
+                            />
+                            <p className="text-[0.8rem] text-muted-foreground">
+                                Cerca un assicurato esistente o digitane uno nuovo per crearlo.
                             </p>
                         </div>
                         <Button type="submit" className="w-full" disabled={loading}>

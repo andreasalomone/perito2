@@ -77,6 +77,36 @@ class Client(Base):
     cases: Mapped[List["Case"]] = relationship(back_populates="client")
 
 
+class Assicurato(Base):
+    """
+    Entity representing the insured party (assicurato).
+    Similar to Client but simpler - no LLM enrichment.
+    """
+
+    __tablename__ = "assicurati"
+    __table_args__ = (
+        # Prevent duplicate assicurato names within the same organization
+        UniqueConstraint("organization_id", "name", name="uq_assicurati_org_name"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    # Use timezone-aware UTC for all timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+    )
+
+    # Relationships
+    organization: Mapped["Organization"] = relationship(back_populates="assicurati")
+    cases: Mapped[List["Case"]] = relationship(back_populates="assicurato_rel")
+
+
 class Case(Base):
     """
     The Core Container for a Claim (Sinistro).
@@ -89,6 +119,7 @@ class Case(Base):
         # Search Optimization
         Index("idx_cases_reference", "organization_id", "reference_code"),
         Index("idx_cases_client", "organization_id", "client_id"),
+        Index("idx_cases_assicurato", "organization_id", "assicurato_id"),
         Index("idx_cases_creator", "organization_id", "creator_id"),
         # LOGIC FIX: Prevent duplicate reference codes in the same Org
         UniqueConstraint("organization_id", "reference_code", name="uq_cases_org_ref"),
@@ -100,6 +131,9 @@ class Case(Base):
     )
     client_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("clients.id"), nullable=True
+    )
+    assicurato_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("assicurati.id"), nullable=True
     )
     # Firebase UIDs are strings, usually 28-36 chars. 128 is a safe upper bound.
     creator_id: Mapped[Optional[str]] = mapped_column(
@@ -190,6 +224,7 @@ class Case(Base):
     # -------------------------------------------------------------------------
     organization: Mapped["Organization"] = relationship(back_populates="cases")
     client: Mapped[Optional["Client"]] = relationship(back_populates="cases")
+    assicurato_rel: Mapped[Optional["Assicurato"]] = relationship(back_populates="cases")
 
     # Changed 'backref' to explicit relationship.
     # Requires 'cases = relationship("Case", back_populates="creator")' on User model.

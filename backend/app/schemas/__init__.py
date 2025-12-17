@@ -58,6 +58,7 @@ class CaseBase(BaseModel):
 
 class CaseCreate(CaseBase):
     client_name: Optional[str] = None  # Helper to find/create Client
+    assicurato_name: Optional[str] = None  # Helper to find/create Assicurato
 
 
 # --- CASE UPDATE (for PATCH endpoint) ---
@@ -367,4 +368,12 @@ from app.schemas.client import (
     ClientDetail,
     ClientListItem,
     ClientUpdate,
+)
+
+# --- ASSICURATI ---
+from app.schemas.assicurato import (
+    AssicuratoBase,
+    AssicuratoCreate,
+    AssicuratoDetail,
+    AssicuratoListItem,
 )

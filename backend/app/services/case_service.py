@@ -61,6 +61,37 @@ def get_or_create_client(db: Session, name: str, organization_id: UUID) -> Clien
         )
 
 
+def get_or_create_assicurato(db: Session, name: str, organization_id: UUID):
+    """
+    Get or create an Assicurato (insured party) by name within an organization.
+    Similar to get_or_create_client but NO LLM enrichment trigger.
+    """
+    from app.models import Assicurato
+
+    if assicurato := (
+        db.query(Assicurato)
+        .filter(Assicurato.name == name, Assicurato.organization_id == organization_id)
+        .first()
+    ):
+        return assicurato
+
+    # Try to create (Handle Race Condition with SAVEPOINT)
+    try:
+        with db.begin_nested():
+            assicurato = Assicurato(name=name, organization_id=organization_id)
+            db.add(assicurato)
+            db.flush()
+        return assicurato
+
+    except IntegrityError:
+        # Another process created the assicurato, so fetch it
+        return (
+            db.query(Assicurato)
+            .filter(Assicurato.name == name, Assicurato.organization_id == organization_id)
+            .one()
+        )
+
+
 # --- THE CRITICAL WORKFLOWS ---
 
 
@@ -143,11 +174,22 @@ def create_case_with_client(
         if not client_id:
             client_id = None
 
+        # 2b. Assicurato Logic (Get or Create) - NO LLM enrichment
+        assicurato_id = None
+        assicurato = None
+
+        if case_data.assicurato_name:
+            assicurato = get_or_create_assicurato(
+                db, case_data.assicurato_name, user_org_id
+            )
+            assicurato_id = assicurato.id
+
         # 3. Create Case
         new_case = Case(
             reference_code=case_data.reference_code,
             organization_id=user_org_id,
             client_id=client_id,
+            assicurato_id=assicurato_id,
             creator_id=user_uid,
             status=CaseStatus.OPEN,
         )
@@ -177,6 +219,7 @@ def create_case_with_client(
         # 4. Reload relationships for Pydantic
         # Manually assign to avoid lazy load issues after commit if session is closed/expired
         new_case.client = client
+        new_case.assicurato_rel = assicurato
         new_case.creator = user
         new_case.documents = []
         new_case.report_versions = []
