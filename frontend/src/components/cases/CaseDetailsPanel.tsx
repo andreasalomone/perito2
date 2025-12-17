@@ -30,6 +30,7 @@ type FieldDef = {
     type?: "text" | "number" | "date" | "textarea" | "markdown";
     step?: string;
     fullWidth?: boolean;
+    readOnly?: boolean; // Computed fields that cannot be edited directly
 };
 
 // Section Config with Icons
@@ -62,7 +63,7 @@ const SECTIONS = [
         fields: [
             { key: "client_name", label: "Cliente", type: "text" },
             { key: "rif_cliente", label: "Rif. Cliente", type: "text" },
-            { key: "assicurato", label: "Assicurato", type: "text" },
+            { key: "assicurato_display", label: "Assicurato", type: "text", readOnly: true },
             { key: "riferimento_assicurato", label: "Rif. Assicurato", type: "text" },
             { key: "broker", label: "Broker", type: "text" },
             { key: "riferimento_broker", label: "Rif. Broker", type: "text" },
@@ -166,6 +167,20 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
                     onBlur={() => onSave(tempValue === "" ? null : tempValue)}
                     onKeyDown={handleKeyDown}
                 />
+            </div>
+        );
+    }
+
+    // Read-only fields: show without edit capability
+    if (field.readOnly) {
+        return (
+            <div className="p-3 rounded-lg flex flex-col justify-center min-h-[64px]">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                    {field.label}
+                </span>
+                <div className="text-sm font-medium text-gray-900 truncate">
+                    {formatValue(value)}
+                </div>
             </div>
         );
     }

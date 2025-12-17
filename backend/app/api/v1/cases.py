@@ -334,7 +334,10 @@ def initiate_upload(
     3. Generates signed GCS upload URL
 
     After this, client uploads directly to GCS, then calls confirm-upload.
+    Handles duplicate filenames by auto-renaming with (1), (2), etc.
     """
+    from sqlalchemy.exc import IntegrityError
+
     case = db.get(Case, case_id)
     if not case or case.deleted_at:
         raise HTTPException(status_code=404, detail="Case not found")
@@ -364,32 +367,73 @@ def initiate_upload(
             detail=f"MIME type mismatch. Expected {settings.ALLOWED_MIME_TYPES[ext]}.",
         )
 
-    # 3. Generate signed URL and get expected GCS path
-    url_response = gcs_service.generate_upload_signed_url(
-        filename=clean_filename,
-        content_type=payload.content_type,
-        organization_id=str(case.organization_id),
-        case_id=str(case.id),
-    )
+    # Helper to generate unique filename with (1), (2), etc. suffix
+    def get_unique_filename(base_filename: str, attempt: int = 0) -> str:
+        if attempt == 0:
+            return base_filename
+        stem = Path(base_filename).stem
+        suffix = Path(base_filename).suffix
+        return f"{stem}({attempt}){suffix}"
 
-    # 4. Pre-register document in PENDING state
-    new_doc = Document(
-        case_id=case.id,
-        organization_id=case.organization_id,
-        filename=payload.filename,  # Keep original filename for display
-        gcs_path=url_response["gcs_path"],
-        mime_type=payload.content_type,
-        ai_status=ExtractionStatus.PENDING,
-    )
-    db.add(new_doc)
-    db.commit()
+    # Try to create document with auto-rename on duplicate
+    max_attempts = 10
+    final_filename = payload.filename
+    renamed = False
+
+    for attempt in range(max_attempts):
+        try_filename = get_unique_filename(payload.filename, attempt)
+
+        # 3. Generate signed URL and get expected GCS path
+        gcs_clean_filename = get_unique_filename(clean_filename, attempt)
+        url_response = gcs_service.generate_upload_signed_url(
+            filename=gcs_clean_filename,
+            content_type=payload.content_type,
+            organization_id=str(case.organization_id),
+            case_id=str(case.id),
+        )
+
+        # 4. Pre-register document in PENDING state
+        new_doc = Document(
+            case_id=case.id,
+            organization_id=case.organization_id,
+            filename=try_filename,  # Keep original filename for display
+            gcs_path=url_response["gcs_path"],
+            mime_type=payload.content_type,
+            ai_status=ExtractionStatus.PENDING,
+        )
+        db.add(new_doc)
+
+        try:
+            db.commit()
+            final_filename = try_filename
+            renamed = attempt > 0
+            break
+        except IntegrityError:
+            db.rollback()
+            if attempt == max_attempts - 1:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Impossibile caricare '{payload.filename}': troppi duplicati.",
+                )
+            # Continue to next attempt with incremented suffix
+            continue
+
     db.refresh(new_doc)
 
-    return {
+    response_data = {
         "document_id": new_doc.id,
         "upload_url": url_response["upload_url"],
         "gcs_path": url_response["gcs_path"],
     }
+
+    # Include renamed filename info if applicable
+    if renamed:
+        response_data["renamed_to"] = final_filename
+        logger.info(
+            f"Document renamed from '{payload.filename}' to '{final_filename}' due to duplicate"
+        )
+
+    return response_data
 
 
 @router.post(

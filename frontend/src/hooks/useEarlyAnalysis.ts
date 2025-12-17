@@ -202,6 +202,9 @@ export function usePreliminaryReportStream(caseId: string | undefined) {
     const generateStream = useCallback(async () => {
         if (!caseId) return;
 
+        // Track if any error events were received during streaming
+        let hasErrored = false;
+
         // Reset state
         setResult({
             thoughts: "",
@@ -285,6 +288,7 @@ export function usePreliminaryReportStream(caseId: string | undefined) {
                                 error: event.text,
                             }));
                             toast.error(event.text);
+                            hasErrored = true;
                         }
                     } catch {
                         // Skip malformed JSON lines
@@ -293,19 +297,26 @@ export function usePreliminaryReportStream(caseId: string | undefined) {
                 }
             }
 
-            // Process any remaining buffer
+            // Process any remaining buffer - check for both done AND error events
             if (buffer.trim()) {
                 try {
                     const event = JSON.parse(buffer);
                     if (event.type === "done") {
                         setResult(prev => ({ ...prev, state: "done" }));
+                    } else if (event.type === "error") {
+                        setResult(prev => ({ ...prev, state: "error", error: event.text }));
+                        toast.error(event.text);
+                        hasErrored = true;
                     }
                 } catch {
                     // Ignore
                 }
             }
 
-            toast.success("Report preliminare generato");
+            // Only show success toast if no errors occurred during streaming
+            if (!hasErrored) {
+                toast.success("Report preliminare generato");
+            }
 
         } catch (err: any) {
             // Ignore abort errors (user navigated away)
@@ -364,6 +375,9 @@ export function useFinalReportStream(caseId: string | undefined) {
 
     const generateStream = useCallback(async (language: string, extraInstructions?: string) => {
         if (!caseId) return;
+
+        // Track if any error events were received during streaming
+        let hasErrored = false;
 
         // Reset state
         setResult({
@@ -450,6 +464,7 @@ export function useFinalReportStream(caseId: string | undefined) {
                                 error: event.text,
                             }));
                             toast.error(event.text);
+                            hasErrored = true;
                         }
                     } catch {
                         // Skip
@@ -457,17 +472,24 @@ export function useFinalReportStream(caseId: string | undefined) {
                 }
             }
 
-            // Flush buffer
+            // Flush buffer - check for both done AND error events
             if (buffer.trim()) {
                 try {
                     const event = JSON.parse(buffer);
                     if (event.type === "done") {
                         setResult(prev => ({ ...prev, state: "done" }));
+                    } else if (event.type === "error") {
+                        setResult(prev => ({ ...prev, state: "error", error: event.text }));
+                        toast.error(event.text);
+                        hasErrored = true;
                     }
                 } catch { }
             }
 
-            toast.success("Report finale generato");
+            // Only show success toast if no errors occurred during streaming
+            if (!hasErrored) {
+                toast.success("Report finale generato");
+            }
 
         } catch (err: any) {
             // Ignore abort errors (user navigated away)

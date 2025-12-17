@@ -173,6 +173,7 @@ export const CaseBaseSchema = z.object({
     rif_cliente: z.string().optional().nullable(),
     gestore: z.string().optional().nullable(),
     assicurato: z.string().optional().nullable(),
+    assicurato_display: z.string().optional().nullable(), // Computed from assicurato_rel.name
     riferimento_assicurato: z.string().optional().nullable(),
     mittenti: z.string().optional().nullable(),
     broker: z.string().optional().nullable(),

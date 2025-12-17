@@ -293,6 +293,7 @@ class InitiateUploadResponse(BaseModel):
     document_id: UUID
     upload_url: str
     gcs_path: str
+    renamed_to: Optional[str] = None  # Set when duplicate filename is auto-renamed
 
 
 class GeneratePayload(BaseModel):

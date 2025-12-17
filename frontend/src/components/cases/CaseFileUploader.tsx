@@ -56,7 +56,16 @@ export function CaseFileUploader({ caseId, onUploadComplete, trigger }: CaseFile
                 { headers: { Authorization: `Bearer ${token}` } }
             );
 
-            const { document_id, upload_url } = initRes.data;
+            const { document_id, upload_url, renamed_to } = initRes.data;
+
+            // Notify user if file was auto-renamed due to duplicate
+            if (renamed_to) {
+                // Import toast at runtime to avoid circular deps
+                const { toast } = await import("sonner");
+                toast.info(`"${fileItem.file.name}" rinominato in "${renamed_to}"`, {
+                    duration: 4000,
+                });
+            }
 
             // Update progress: document registered, starting upload
             setFiles(prev => prev.map(f =>
