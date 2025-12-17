@@ -15,7 +15,7 @@ ISTRUZIONI OPERATIVE:
    Produci ESCLUSIVAMENTE un oggetto JSON valido con la seguente struttura:
 
    {
-     "summary": "Riassunto conciso, con bullet points, del caso in formato Markdown (max 500 parole). Includi: tutti i soggetti con titolo (es. assicuratore, assicurato, mittenti, destinatari, vettori, etc.), tipo di sinistro, merce coinvolta, dinamica apparente, punti di attenzione per il perito.",
+     "summary": "Sintesi ULTRA-BREVE del caso (MAX 150 parole, 3-4 frasi). Formato: una frase per identificare il sinistro (merce, cliente, tipo danno), una frase sulla dinamica apparente, una frase sui punti critici. NON usare bullet points. NON elencare tutti i soggetti - menziona solo i principali.",
      "received_docs": [
        "Tipo documento 1 (es. 'Lettera di incarico del Cliente X')",
        "Tipo documento 2 (es. 'CMR n. 12345 del 01/01/2025')",

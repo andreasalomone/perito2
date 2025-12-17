@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 class DocumentAnalysisSchema(BaseModel):
     """Schema for document analysis LLM response."""
 
-    summary: str = Field(description="Brief Italian summary of the case documents")
+    summary: str = Field(description="Ultra-brief Italian case summary in 3-4 sentences (max 150 words). NO bullet points. Identify: claim type, goods, client, apparent cause, critical points.")
     received_docs: List[str] = Field(
         description="List of document types received (Italian)"
     )
@@ -364,7 +364,7 @@ async def run_document_analysis(
             contents=content_parts,  # type: ignore
             config=types.GenerateContentConfig(
                 temperature=0.2,  # Lower for more consistent structured output
-                max_output_tokens=8000,  # Increased to prevent truncation
+                max_output_tokens=16000,  # Increased to prevent truncation
                 response_mime_type="application/json",
                 response_schema=DocumentAnalysisSchema,  # Force valid JSON structure
             ),
@@ -372,6 +372,23 @@ async def run_document_analysis(
 
         if not response or not response.text:
             raise AnalysisGenerationError("Empty response from analysis model")
+
+        # Check for truncated response (finish_reason != STOP means incomplete)
+        # This catches cases where the model hit token limits
+        if response.candidates and response.candidates[0].finish_reason:
+            finish_reason = response.candidates[0].finish_reason
+            # STOP (1) is normal completion, MAX_TOKENS (2) means truncated
+            if hasattr(finish_reason, "name"):
+                reason_name = finish_reason.name
+            else:
+                reason_name = str(finish_reason)
+            if reason_name not in ("STOP", "1"):
+                logger.warning(
+                    f"Response truncated for case {case_id}: finish_reason={reason_name}"
+                )
+                raise AnalysisGenerationError(
+                    f"Response truncated (finish_reason={reason_name}). Please retry."
+                )
 
         # 8. Parse JSON response
         import json
