@@ -521,6 +521,25 @@ async def stream_preliminary_report(
                         if not is_thought:
                             full_content += text
 
+            # Track finish_reason from the last chunk
+            if chunk.candidates and chunk.candidates[0].finish_reason:
+                last_finish_reason = chunk.candidates[0].finish_reason
+
+        # Check for truncated response after streaming completes
+        if "last_finish_reason" in dir():
+            if hasattr(last_finish_reason, "name"):
+                reason_name = last_finish_reason.name
+            else:
+                reason_name = str(last_finish_reason)
+            if reason_name not in ("STOP", "1"):
+                logger.warning(
+                    f"Preliminary report truncated for case {case_id}: finish_reason={reason_name}"
+                )
+                yield json.dumps(
+                    {"type": "error", "text": f"Risposta troncata (finish_reason={reason_name}). Riprova."}
+                ) + "\n"
+                return  # Don't store truncated content
+
         # Store the generated report
         if full_content:
             # Lock case row for version calculation
