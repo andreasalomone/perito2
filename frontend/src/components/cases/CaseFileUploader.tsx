@@ -127,13 +127,14 @@ export function CaseFileUploader({ caseId, onUploadComplete, trigger }: CaseFile
         fileItems.forEach(item => uploadSingleFile(item));
 
         // Notify parent to refetch after a delay (let uploads complete)
-        // We use a completion check instead of fixed timeout
+        // Use Map for O(1) status lookups instead of O(n) find() calls
         const checkCompletion = setInterval(() => {
             setFiles(current => {
-                const allDone = fileItems.every(item =>
-                    current.find(f => f.id === item.id)?.status === "complete" ||
-                    current.find(f => f.id === item.id)?.status === "error"
-                );
+                const statusMap = new Map(current.map(f => [f.id, f.status]));
+                const allDone = fileItems.every(item => {
+                    const status = statusMap.get(item.id);
+                    return status === "complete" || status === "error";
+                });
                 if (allDone) {
                     clearInterval(checkCompletion);
                     onUploadComplete();
@@ -200,9 +201,12 @@ export function CaseFileUploader({ caseId, onUploadComplete, trigger }: CaseFile
         <div className="w-full space-y-4">
             {/* Magnetic Dropzone */}
             <motion.div
+                role="button"
+                tabIndex={0}
+                aria-label="Trascina documenti qui o premi Invio per selezionare file"
                 layout
                 className={cn(
-                    "relative group cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed p-8 transition-colors duration-300 ease-out",
+                    "relative group cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed p-8 transition-colors duration-300 ease-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
                     dragActive
                         ? "border-primary bg-primary/5 scale-[1.02]"
                         : "border-muted-foreground/20 hover:border-primary/50 hover:bg-muted/30"
@@ -212,6 +216,12 @@ export function CaseFileUploader({ caseId, onUploadComplete, trigger }: CaseFile
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={handleDrop}
                 onClick={() => inputRef.current?.click()}
+                onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        inputRef.current?.click();
+                    }
+                }}
                 whileTap={{ scale: 0.98 }}
             >
                 <input

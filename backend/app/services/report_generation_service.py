@@ -119,7 +119,7 @@ async def process_case_logic(case_id: str, organization_id: str, db: AsyncSessio
 
     # 3. Dispatch Tasks
     for doc in documents:
-        if doc.ai_status == ExtractionStatus.SUCCESS.value:
+        if doc.ai_status == ExtractionStatus.SUCCESS:
             continue
 
         # For local dev, process inline instead of dispatching tasks
@@ -313,7 +313,7 @@ async def _validate_documents_ready(
         return None
 
     processed_count = sum(d.ai_status == ExtractionStatus.SUCCESS for d in all_docs)
-    error_count = sum(d.ai_status == ExtractionStatus.ERROR.value for d in all_docs)
+    error_count = sum(d.ai_status == ExtractionStatus.ERROR for d in all_docs)
     logger.info(
         f"Starting generation for case {case_id} with {processed_count} processed and {error_count} failed documents."
     )
@@ -367,7 +367,7 @@ def _process_document_for_llm(doc: Document) -> tuple[list[dict], dict | None]:
 
         return data, None
 
-    if doc.ai_status == ExtractionStatus.ERROR.value:
+    if doc.ai_status == ExtractionStatus.ERROR:
         logger.warning(
             f"Document {doc.id} ({doc.filename}) failed processing - skipping"
         )

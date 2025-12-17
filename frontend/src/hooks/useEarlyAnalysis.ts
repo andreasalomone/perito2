@@ -5,7 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { DocumentAnalysisResponse, PreliminaryReportResponse } from "@/types";
 import { getApiUrl } from "@/context/ConfigContext";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { toast } from "sonner";
 
 /**
@@ -180,6 +180,16 @@ export function usePreliminaryReportStream(caseId: string | undefined) {
         error: null,
     });
 
+    // AbortController ref for cancelling on unmount
+    const abortControllerRef = useRef<AbortController | null>(null);
+
+    // Cleanup on unmount to prevent memory leaks
+    useEffect(() => {
+        return () => {
+            abortControllerRef.current?.abort();
+        };
+    }, []);
+
     const reset = useCallback(() => {
         setResult({
             thoughts: "",
@@ -204,6 +214,10 @@ export function usePreliminaryReportStream(caseId: string | undefined) {
             const token = await getToken();
             if (!token) throw new Error("No token available");
 
+            // Cancel any existing stream
+            abortControllerRef.current?.abort();
+            abortControllerRef.current = new AbortController();
+
             const baseUrl = getApiUrl()?.replace(/\/$/, "") || "";
             const response = await fetch(
                 `${baseUrl}/api/v1/cases/${caseId}/preliminary/stream`,
@@ -213,6 +227,7 @@ export function usePreliminaryReportStream(caseId: string | undefined) {
                         "Authorization": `Bearer ${token}`,
                         "Content-Type": "application/json",
                     },
+                    signal: abortControllerRef.current.signal,
                 }
             );
 
@@ -293,6 +308,10 @@ export function usePreliminaryReportStream(caseId: string | undefined) {
             toast.success("Report preliminare generato");
 
         } catch (err: any) {
+            // Ignore abort errors (user navigated away)
+            if (err?.name === "AbortError") {
+                return;
+            }
             const message = err?.message || "Errore durante lo streaming";
             setResult(prev => ({
                 ...prev,
@@ -324,6 +343,16 @@ export function useFinalReportStream(caseId: string | undefined) {
         error: null,
     });
 
+    // AbortController ref for cancelling on unmount
+    const abortControllerRef = useRef<AbortController | null>(null);
+
+    // Cleanup on unmount to prevent memory leaks
+    useEffect(() => {
+        return () => {
+            abortControllerRef.current?.abort();
+        };
+    }, []);
+
     const reset = useCallback(() => {
         setResult({
             thoughts: "",
@@ -348,6 +377,10 @@ export function useFinalReportStream(caseId: string | undefined) {
             const token = await getToken();
             if (!token) throw new Error("No token available");
 
+            // Cancel any existing stream
+            abortControllerRef.current?.abort();
+            abortControllerRef.current = new AbortController();
+
             const baseUrl = getApiUrl()?.replace(/\/$/, "") || "";
             const response = await fetch(
                 `${baseUrl}/api/v1/cases/${caseId}/final-report/stream`,
@@ -360,7 +393,8 @@ export function useFinalReportStream(caseId: string | undefined) {
                     body: JSON.stringify({
                         language,
                         extra_instructions: extraInstructions
-                    })
+                    }),
+                    signal: abortControllerRef.current.signal,
                 }
             );
 
@@ -436,6 +470,10 @@ export function useFinalReportStream(caseId: string | undefined) {
             toast.success("Report finale generato");
 
         } catch (err: any) {
+            // Ignore abort errors (user navigated away)
+            if (err?.name === "AbortError") {
+                return;
+            }
             const message = err?.message || "Errore durante lo streaming";
             setResult(prev => ({
                 ...prev,

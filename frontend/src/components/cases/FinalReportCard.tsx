@@ -8,7 +8,7 @@ import { CaseDetail, ReportVersion } from "@/types";
 import { MarkdownContent } from "@/components/ui/markdown-content";
 import { ReportGeneratingSkeleton } from "@/components/cases/ReportGeneratingSkeleton";
 import { ThinkingProcess } from "@/components/cases/ThinkingProcess";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { NotesDialog } from "@/components/cases/dialogs/NotesDialog";
 import { TemplateSelectionDialog } from "@/components/cases/dialogs/DownloadDialog";
@@ -60,7 +60,10 @@ export function FinalReportCard({
 
     // Derived Data
     const versions = caseData?.report_versions || [];
-    const latestVersion = [...versions].sort((a, b) => b.version_number - a.version_number)[0];
+    const latestVersion = useMemo(() => {
+        if (!versions.length) return undefined;
+        return [...versions].sort((a, b) => b.version_number - a.version_number)[0];
+    }, [versions]);
     const hasReport = !!latestVersion;
     const isFinal = caseData.status === "CLOSED" || latestVersion?.is_final;
     const activeDraft = versions.find(v => v.is_draft_active && !v.is_final);
