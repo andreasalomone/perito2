@@ -145,7 +145,7 @@ export function FinalReportCard({
 
                                 {/* Visible only when report exists */}
                                 {hasReport && (
-                                    <ExpandableScreenTrigger asChild>
+                                    <ExpandableScreenTrigger>
                                         <Button variant="ghost" size="sm">
                                             Anteprima/Azioni
                                         </Button>
@@ -173,7 +173,7 @@ export function FinalReportCard({
 
                                 <ThinkingProcess
                                     thoughts={streamedThoughts}
-                                    isThinking={streamState === "thinking"}
+                                    state={streamState === "thinking" ? "thinking" : "done"}
                                 />
 
                                 <div className="mt-4">

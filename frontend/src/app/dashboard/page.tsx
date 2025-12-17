@@ -14,6 +14,7 @@ import { KanbanBoard } from "@/components/dashboard/views/KanbanBoard";
 import { ClientGroupedList } from "@/components/dashboard/views/ClientGroupedList";
 import { AssicuratoGroupedList } from "@/components/dashboard/views/AssicuratoGroupedList";
 import { Toggle } from "@/components/ui/toggle";
+import { CaseTableView } from "@/components/dashboard/views/CaseTableView";
 
 export default function DashboardPage() {
     const [viewMode, setViewMode] = useState<ViewMode>("grid");
@@ -111,6 +112,8 @@ export default function DashboardPage() {
             );
         }
 
+
+
         switch (viewMode) {
             case "kanban":
                 return <KanbanBoard cases={safeCases} />;
@@ -118,6 +121,8 @@ export default function DashboardPage() {
                 return <ClientGroupedList cases={safeCases} />;
             case "assicurato":
                 return <AssicuratoGroupedList cases={safeCases} />;
+            case "table":
+                return <CaseTableView cases={safeCases} />;
             case "grid":
             default:
                 return (

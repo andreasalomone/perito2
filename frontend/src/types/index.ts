@@ -39,6 +39,7 @@ export const ReportVersionSchema = z.object({
     // Google Docs Live Draft support
     is_draft_active: z.boolean().default(false),
     edit_link: z.string().optional().nullable(),
+    ai_raw_output: z.string().optional().nullable(),
 });
 export type ReportVersion = z.infer<typeof ReportVersionSchema>;
 

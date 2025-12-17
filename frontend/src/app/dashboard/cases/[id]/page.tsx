@@ -296,8 +296,9 @@ export default function CaseWorkspace() {
                                 await mutate();
                             }}
                             onRemoveDocument={handleDeleteDocument}
-                            onAnalyzeDocuments={(force) => documentAnalysisHook.generate(force)}
-                            onGeneratePreliminary={preliminaryReportHook.generate}
+                            documentAnalysis={documentAnalysisHook}
+                            preliminaryReport={preliminaryReportHook}
+                            isProcessingDocs={isProcessingDocs ?? false}
 
                             // Streaming Props (Preliminary)
                             preliminaryStreamState={preliminaryStreamHook.state}

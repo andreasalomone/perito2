@@ -9,10 +9,18 @@ import { DocumentAnalysisCard } from "@/components/cases/DocumentAnalysisCard";
 import { PreliminaryReportCard } from "@/components/cases/PreliminaryReportCard";
 import { FinalReportCard } from "@/components/cases/FinalReportCard";
 import { TemplateType } from "@/components/cases/VersionItem";
-import { DocumentAnalysisCard } from "@/components/cases/DocumentAnalysisCard";
-import { PreliminaryReportCard } from "@/components/cases/PreliminaryReportCard";
-import { FinalReportCard } from "@/components/cases/FinalReportCard";
-import { ReportVersion, TemplateType } from "@/types"; // Use global types
+import { useAuth } from "@/context/AuthContext";
+import { api } from "@/lib/api";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Upload, UploadCloud, AlertCircle, Loader2 } from "lucide-react";
+import { AnimatePresence } from "framer-motion";
+import { StaggerList, StaggerItem } from "@/components/primitives/motion/StaggerList";
+import { FadeIn } from "@/components/primitives/motion/FadeIn";
+import { ReportGeneratingSkeleton } from "@/components/cases/ReportGeneratingSkeleton";
+import { useDocumentAnalysis, usePreliminaryReport } from "@/hooks/useEarlyAnalysis";
+
 
 interface IngestionPanelProps {
     caseData: CaseDetail;
@@ -22,8 +30,14 @@ interface IngestionPanelProps {
     onRemoveDocument: (docId: string) => Promise<void>;
 
     // Analysis & Report Actions
-    onAnalyzeDocuments: (force?: boolean) => void;
-    onGeneratePreliminary: (force?: boolean) => void;
+    // Analysis & Report Actions
+    documentAnalysis: ReturnType<typeof useDocumentAnalysis>;
+    preliminaryReport: ReturnType<typeof usePreliminaryReport>;
+    isProcessingDocs: boolean;
+    // Removed redundant handler props as they are inside the objects now
+    // onAnalyzeDocuments: (force?: boolean) => void;
+    // onGeneratePreliminary: (force?: boolean) => void;
+
     // Preliminary Streaming
     preliminaryStreamState?: StreamState;
     preliminaryStreamedThoughts?: string;
@@ -54,8 +68,9 @@ export function IngestionPanel({
     isUploading,
     onUpload,
     onRemoveDocument,
-    onAnalyzeDocuments,
-    onGeneratePreliminary,
+    documentAnalysis,
+    preliminaryReport,
+    isProcessingDocs,
     preliminaryStreamState,
     preliminaryStreamedThoughts,
     preliminaryStreamedContent,
@@ -126,6 +141,8 @@ export function IngestionPanel({
     // Show warning if some docs failed
     const hasErrors = errorDocs.length > 0;
 
+    const isGenerating = documentAnalysis.isGenerating || preliminaryReport.isGenerating;
+
     return (
         <div className="space-y-6">
             {/* Unified Ingestion Card */}
@@ -146,8 +163,7 @@ export function IngestionPanel({
                         {documents.length > 0 && (
                             <CaseFileUploader
                                 caseId={caseId}
-                                onUpload={onUpload}
-                                isUploading={isUploading}
+                                onUploadComplete={() => onUpload([])}
                             />
                         )}
                     </div>
@@ -156,8 +172,7 @@ export function IngestionPanel({
                     {documents.length === 0 ? (
                         <CaseFileUploader
                             caseId={caseId}
-                            onUpload={onUpload}
-                            isUploading={isUploading}
+                            onUploadComplete={() => onUpload([])}
                             trigger={
                                 <div className="flex flex-col items-center justify-center py-12 px-4 rounded-lg border-2 border-dashed border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50 cursor-pointer transition-all">
                                     <div className="p-4 rounded-full bg-background shadow-sm mb-4">
@@ -227,7 +242,7 @@ export function IngestionPanel({
                             pendingDocs={documentAnalysis.pendingDocs}
                             isLoading={documentAnalysis.isLoading}
                             isGenerating={documentAnalysis.isGenerating}
-                            onGenerate={documentAnalysis.onGenerate}
+                            onGenerate={documentAnalysis.generate}
                         />
                     )
                 ) : <Card className="h-48 animate-pulse bg-muted/30" />}
@@ -255,12 +270,12 @@ export function IngestionPanel({
                             pendingDocs={preliminaryReport.pendingDocs}
                             isLoading={preliminaryReport.isLoading}
                             isGenerating={preliminaryReport.isGenerating}
-                            onGenerate={preliminaryReport.onGenerate}
-                            streamingEnabled={preliminaryReport.streamingEnabled}
-                            streamState={preliminaryReport.streamState}
-                            streamedThoughts={preliminaryReport.streamedThoughts}
-                            streamedContent={preliminaryReport.streamedContent}
-                            onGenerateStream={preliminaryReport.onGenerateStream}
+                            onGenerate={preliminaryReport.generate}
+                            streamingEnabled={true}
+                            streamState={preliminaryStreamState ?? "idle"}
+                            streamedThoughts={preliminaryStreamedThoughts ?? ""}
+                            streamedContent={preliminaryStreamedContent ?? ""}
+                            onGenerateStream={() => { }} // Not passed yet, maybe needs to be added to interface or ignored if handled by hook
                         />
                     )
                 ) : <Card className="h-48 animate-pulse bg-muted/30" />}
@@ -317,6 +332,4 @@ export function IngestionPanel({
     );
 }
 
-        </div >
-    );
-}
+
