@@ -5,6 +5,7 @@ AI-powered preliminary report generation for the "Early Analysis" feature.
 Follows the document_analysis_service.py pattern for lightweight LLM calls.
 """
 
+import asyncio
 import hashlib
 import html
 import json
@@ -15,8 +16,8 @@ from uuid import UUID
 from google import genai
 from google.genai import types
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.models import Case, Document, ReportVersion
@@ -154,7 +155,9 @@ async def run_preliminary_report(
                 logger.info(f"Returning existing preliminary report for case {case_id}")
                 return existing
             else:
-                logger.info(f"Documents changed, regenerating preliminary report for case {case_id}")
+                logger.info(
+                    f"Documents changed, regenerating preliminary report for case {case_id}"
+                )
 
     if not documents:
         raise PreliminaryBlockedError("No documents available for report generation")
@@ -205,8 +208,12 @@ async def run_preliminary_report(
         prompt_path = os.path.join(
             os.path.dirname(__file__), "..", "core", "preliminary_report_prompt.txt"
         )
-        with open(prompt_path, "r", encoding="utf-8") as f:
-            system_prompt = f.read()
+
+        def read_prompt_file():
+            with open(prompt_path, "r", encoding="utf-8") as f:
+                return f.read()
+
+        system_prompt = await asyncio.to_thread(read_prompt_file)
 
     # 6. Build the evidence section
     evidence_parts = []
@@ -221,6 +228,7 @@ async def run_preliminary_report(
     context_block = ""
     if case:
         from app.services.report_generation_service import _build_case_context
+
         case_context = _build_case_context(case)
         safe_ref = html.escape(case_context.get("ref_code", "N.D."))
         safe_client = html.escape(case_context.get("client_name", "N.D."))
@@ -242,9 +250,7 @@ async def run_preliminary_report(
             f"</confirmed_data>\n\n"
         )
 
-    full_prompt = (
-        f"{system_prompt}\n\n{context_block}<case_documents>\n{evidence_section}\n</case_documents>"
-    )
+    full_prompt = f"{system_prompt}\n\n{context_block}<case_documents>\n{evidence_section}\n</case_documents>"
 
     # 7. Call Gemini API (Markdown output, not JSON)
     logger.info(
@@ -276,9 +282,7 @@ async def run_preliminary_report(
 
         # 8. Lock the case row BEFORE version calculation to prevent TOCTOU race
         # This ensures the read(max) + increment + insert is atomic
-        await db.execute(
-            select(Case).where(Case.id == case_id).with_for_update()
-        )
+        await db.execute(select(Case).where(Case.id == case_id).with_for_update())
 
         # 9. Get next version number (safe now, we hold the lock)
         from sqlalchemy import func
@@ -288,7 +292,7 @@ async def run_preliminary_report(
                 ReportVersion.case_id == case_id
             )
         )
-        next_version = max_version_result.scalar() + 1
+        next_version = (max_version_result.scalar() or 0) + 1
 
         # 10. Create and persist the ReportVersion
         new_version = ReportVersion(
@@ -395,8 +399,12 @@ async def _build_preliminary_prompt(
         prompt_path = os.path.join(
             os.path.dirname(__file__), "..", "core", "preliminary_report_prompt.txt"
         )
-        with open(prompt_path, "r", encoding="utf-8") as f:
-            system_prompt = f.read()
+
+        def read_prompt_file():
+            with open(prompt_path, "r", encoding="utf-8") as f:
+                return f.read()
+
+        system_prompt = await asyncio.to_thread(read_prompt_file)
 
     # Build evidence section
     evidence_parts = []
@@ -411,6 +419,7 @@ async def _build_preliminary_prompt(
     context_block = ""
     if case:
         from app.services.report_generation_service import _build_case_context
+
         case_context = _build_case_context(case)
         safe_ref = html.escape(case_context.get("ref_code", "N.D."))
         safe_client = html.escape(case_context.get("client_name", "N.D."))
@@ -432,9 +441,7 @@ async def _build_preliminary_prompt(
             f"</confirmed_data>\n\n"
         )
 
-    full_prompt = (
-        f"{system_prompt}\n\n{context_block}<case_documents>\n{evidence_section}\n</case_documents>"
-    )
+    full_prompt = f"{system_prompt}\n\n{context_block}<case_documents>\n{evidence_section}\n</case_documents>"
 
     return full_prompt, documents
 
@@ -480,9 +487,7 @@ async def stream_preliminary_report(
         config = types.GenerateContentConfig(
             temperature=0.5,
             max_output_tokens=8000,
-            thinking_config=types.ThinkingConfig(
-                include_thoughts=True
-            )
+            thinking_config=types.ThinkingConfig(include_thoughts=True),
         )
 
         # Accumulate full content for storage
@@ -490,13 +495,15 @@ async def stream_preliminary_report(
 
         # Open streaming response
         response = await client.aio.models.generate_content_stream(
-            model=settings.GEMINI_PRELIMINARY_MODEL,
-            contents=full_prompt,
-            config=config
+            model=settings.GEMINI_PRELIMINARY_MODEL, contents=full_prompt, config=config
         )
 
         async for chunk in response:
-            if chunk.candidates and chunk.candidates[0].content.parts:
+            if (
+                chunk.candidates
+                and chunk.candidates[0].content
+                and chunk.candidates[0].content.parts
+            ):
                 for part in chunk.candidates[0].content.parts:
                     # Check if this part is a thought or final answer
                     # The SDK sets part.thought=True for reasoning tokens
@@ -506,7 +513,7 @@ async def stream_preliminary_report(
                     if text:
                         event = {
                             "type": "thought" if is_thought else "content",
-                            "text": text
+                            "text": text,
                         }
                         yield json.dumps(event) + "\n"
 
@@ -517,17 +524,16 @@ async def stream_preliminary_report(
         # Store the generated report
         if full_content:
             # Lock case row for version calculation
-            await db.execute(
-                select(Case).where(Case.id == case_id).with_for_update()
-            )
+            await db.execute(select(Case).where(Case.id == case_id).with_for_update())
 
             from sqlalchemy import func
+
             max_version_result = await db.execute(
                 select(func.coalesce(func.max(ReportVersion.version_number), 0)).where(
                     ReportVersion.case_id == case_id
                 )
             )
-            next_version = max_version_result.scalar() + 1
+            next_version = int(max_version_result.scalar() or 0) + 1
 
             new_version = ReportVersion(
                 case_id=case_id,
@@ -554,5 +560,6 @@ async def stream_preliminary_report(
         yield json.dumps({"type": "error", "text": str(e)}) + "\n"
     except Exception as e:
         logger.error(f"Streaming failed for case {case_id}: {e}", exc_info=True)
-        yield json.dumps({"type": "error", "text": f"Report generation failed: {str(e)}"}) + "\n"
-
+        yield json.dumps(
+            {"type": "error", "text": f"Report generation failed: {str(e)}"}
+        ) + "\n"

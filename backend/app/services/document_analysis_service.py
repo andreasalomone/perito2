@@ -5,18 +5,19 @@ AI-powered document analysis for the "Early Analysis" feature.
 Follows the summary_service.py pattern for lightweight LLM calls.
 """
 
+import asyncio
 import hashlib
 import html
 import logging
-from typing import List, Optional
+from typing import Any, List, Optional, Sequence, cast
 from uuid import UUID
 
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.models import Case, Document, DocumentAnalysis
@@ -38,7 +39,6 @@ class DocumentAnalysisSchema(BaseModel):
     )
 
 
-
 # Custom exceptions for better error handling
 class AnalysisBlockedError(Exception):
     """Raised when documents are still being processed."""
@@ -52,7 +52,7 @@ class AnalysisGenerationError(Exception):
     pass
 
 
-def compute_document_hash(documents: list) -> str:
+def compute_document_hash(documents: Sequence[Document]) -> str:
     """
     Compute a SHA-256 hash of sorted document IDs.
 
@@ -219,8 +219,10 @@ async def run_document_analysis(
     case = case_result.scalar_one_or_none()
 
     # 4. Build prompt content from extracted data
-    document_contents = []
-    vision_parts = []  # NEW: List to hold Part objects for vision files
+    document_contents: List[dict[str, str]] = []
+    vision_parts: List[dict[str, Any]] = (
+        []
+    )  # NEW: List to hold Part objects for vision files
 
     for doc in documents:
         if doc.ai_extracted_data:
@@ -255,13 +257,19 @@ async def run_document_analysis(
                                 vision_part = types.Part.from_uri(
                                     file_uri=gcs_path, mime_type=mime_type
                                 )
-                                vision_parts.append({
-                                    "part": vision_part,
-                                    "filename": doc.filename,
-                                })
-                                logger.debug(f"Added vision file to analysis: {doc.filename}")
+                                vision_parts.append(
+                                    {
+                                        "part": vision_part,
+                                        "filename": doc.filename,
+                                    }
+                                )
+                                logger.debug(
+                                    f"Added vision file to analysis: {doc.filename}"
+                                )
                             except Exception as e:
-                                logger.warning(f"Failed to create Part for {doc.filename}: {e}")
+                                logger.warning(
+                                    f"Failed to create Part for {doc.filename}: {e}"
+                                )
 
     # 5. Load prompt template
     from app.core.prompt_config import prompt_manager
@@ -276,13 +284,17 @@ async def run_document_analysis(
         prompt_path = os.path.join(
             os.path.dirname(__file__), "..", "core", "document_analysis_prompt.txt"
         )
-        with open(prompt_path, "r", encoding="utf-8") as f:
-            system_prompt = f.read()
+
+        def read_prompt_file():
+            with open(prompt_path, "r", encoding="utf-8") as f:
+                return f.read()
+
+        system_prompt = await asyncio.to_thread(read_prompt_file)
 
     # 6. Build the evidence section (text documents)
     evidence_parts = []
     for doc_data in document_contents:
-        safe_filename = html.escape(doc_data["filename"])
+        safe_filename = html.escape(str(doc_data["filename"]))
         evidence_parts.append(
             f'<document filename="{safe_filename}">\n{doc_data["content"]}\n</document>'
         )
@@ -300,6 +312,7 @@ async def run_document_analysis(
     context_block = ""
     if case:
         from app.services.report_generation_service import _build_case_context
+
         case_context = _build_case_context(case)
         safe_ref = html.escape(case_context.get("ref_code", "N.D."))
         safe_client = html.escape(case_context.get("client_name", "N.D."))
@@ -321,9 +334,7 @@ async def run_document_analysis(
             f"</confirmed_data>\n\n"
         )
 
-    full_prompt = (
-        f"{system_prompt}\n\n{context_block}<case_documents>\n{evidence_section}\n</case_documents>{vision_section}"
-    )
+    full_prompt = f"{system_prompt}\n\n{context_block}<case_documents>\n{evidence_section}\n</case_documents>{vision_section}"
 
     # 7. Build multimodal content array
     # Start with the text prompt
@@ -331,7 +342,7 @@ async def run_document_analysis(
 
     # Add vision parts (real file references)
     for vision_item in vision_parts:
-        content_parts.append(vision_item["part"])
+        content_parts.append(cast(types.Part, vision_item["part"]))
 
     # 8. Call Gemini API with JSON output (now multimodal)
     logger.info(
@@ -350,7 +361,7 @@ async def run_document_analysis(
 
         response = await client.aio.models.generate_content(
             model=settings.GEMINI_DOC_ANALYSIS_MODEL,
-            contents=content_parts,  # CHANGED: Now multimodal
+            contents=content_parts,  # type: ignore
             config=types.GenerateContentConfig(
                 temperature=0.2,  # Lower for more consistent structured output
                 max_output_tokens=8000,  # Increased to prevent truncation

@@ -34,6 +34,7 @@ RETRIABLE_GEMINI_EXCEPTIONS = (
 
 # In-memory cache to avoid expensive client.caches.list() on every generation (~1s savings)
 from cachetools import TTLCache
+
 _memory_cache: TTLCache = TTLCache(maxsize=1, ttl=300)  # 5 minute TTL
 
 

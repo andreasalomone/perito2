@@ -170,7 +170,7 @@ async def open_in_docs(
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Failed to create Google Doc: {str(e)}",
-        )
+        ) from e
 
 
 @router.post(
@@ -272,4 +272,4 @@ async def confirm_docs(
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Failed to sync from Google Docs: {str(e)}",
-        )
+        ) from e

@@ -272,7 +272,6 @@ MAX_REPORT_CHARS = 100_000  # ~25k tokens
 MIN_CONTENT_CHARS = 100
 
 
-
 async def extract_case_details_from_text(
     combined_text: str,
 ) -> CaseDetailsExtractionResult:
@@ -284,8 +283,7 @@ async def extract_case_details_from_text(
     """
     if not combined_text or len(combined_text.strip()) < MIN_CONTENT_CHARS:
         return CaseDetailsExtractionResult(
-            extraction_success=False,
-            error_message="Insufficient text for extraction"
+            extraction_success=False, error_message="Insufficient text for extraction"
         )
 
     # Use existing LLM extraction logic
@@ -365,6 +363,11 @@ async def extract_case_details_from_docx(
             )
 
     # 3. Call Gemini with structured output
+    return await _call_extraction_llm(report_text)
+
+
+async def _call_extraction_llm(report_text: str) -> CaseDetailsExtractionResult:
+    """Shared helper to call Gemini with extraction prompt."""
     try:
         client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
@@ -482,16 +485,17 @@ async def extract_case_details_from_docx(
     )
 
 
-
 # Fields that should NEVER be overwritten by AI extraction
 # These are user-confirmed values from case creation
-PROTECTED_FIELDS = frozenset({
-    "reference_code",      # User enters on case creation (= Ns. Rif)
-    "ns_rif",              # Should only be set if user entered reference_code
-    "client_id",           # User selects from dropdown
-    "assicurato_id",       # User selects from dropdown
-    "assicurato",          # String field - prefer assicurato_rel from dropdown
-})
+PROTECTED_FIELDS = frozenset(
+    {
+        "reference_code",  # User enters on case creation (= Ns. Rif)
+        "ns_rif",  # Should only be set if user entered reference_code
+        "client_id",  # User selects from dropdown
+        "assicurato_id",  # User selects from dropdown
+        "assicurato",  # String field - prefer assicurato_rel from dropdown
+    }
+)
 
 
 async def update_case_from_extraction(

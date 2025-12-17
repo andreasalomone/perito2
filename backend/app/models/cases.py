@@ -224,7 +224,9 @@ class Case(Base):
     # -------------------------------------------------------------------------
     organization: Mapped["Organization"] = relationship(back_populates="cases")
     client: Mapped[Optional["Client"]] = relationship(back_populates="cases")
-    assicurato_rel: Mapped[Optional["Assicurato"]] = relationship(back_populates="cases")
+    assicurato_rel: Mapped[Optional["Assicurato"]] = relationship(
+        back_populates="cases"
+    )
 
     # Changed 'backref' to explicit relationship.
     # Requires 'cases = relationship("Case", back_populates="creator")' on User model.

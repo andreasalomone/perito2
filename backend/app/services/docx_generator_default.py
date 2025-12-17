@@ -1,11 +1,11 @@
 import datetime
 import io
 import logging
-
 import re
 from typing import List
 
 from docx import Document
+from docx.document import Document as DocumentType
 from docx.enum.table import (  # Per l'allineamento verticale nelle celle
     WD_CELL_VERTICAL_ALIGNMENT,
 )
@@ -30,8 +30,6 @@ ITALIAN_MONTHS = {
 }
 
 from app.core.config import settings
-
-
 
 
 def set_cell_margins(cell, top=0, start=0, bottom=0, end=0):
@@ -68,9 +66,6 @@ def remove_table_borders(table):
 logger = logging.getLogger(__name__)
 
 
-
-
-
 def create_styled_docx(plain_text_report_content: str) -> io.BytesIO:
     if not isinstance(plain_text_report_content, str):
         raise TypeError(
@@ -78,7 +73,7 @@ def create_styled_docx(plain_text_report_content: str) -> io.BytesIO:
             f"but got {type(plain_text_report_content)}. "
             f"Please check the caller in app.py to ensure 'report_content' is a string instance."
         )
-    document: Document = Document()
+    document: DocumentType = Document()
 
     # --- Impostazioni di Sezione (Margini, Header/Footer distance) ---
     section = document.sections[0]
@@ -127,8 +122,8 @@ def create_styled_docx(plain_text_report_content: str) -> io.BytesIO:
 
     # --- State for table processing ---
     is_in_table_block = False
-    table_lines = []
-    dati_generali_lines = []
+    table_lines: List[str] = []
+    dati_generali_lines: List[str] = []
     is_in_dati_generali_block = False
 
     for line_num, line in enumerate(lines):
@@ -260,9 +255,9 @@ def create_styled_docx(plain_text_report_content: str) -> io.BytesIO:
 
             # Calcola la larghezza totale disponibile per la tabella
             content_width = (
-                document.sections[0].page_width
-                - document.sections[0].left_margin
-                - document.sections[0].right_margin
+                (document.sections[0].page_width or 0)
+                - (document.sections[0].left_margin or 0)
+                - (document.sections[0].right_margin or 0)
             )
 
             table = document.add_table(rows=1, cols=2)

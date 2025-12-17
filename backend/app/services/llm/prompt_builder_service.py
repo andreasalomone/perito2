@@ -101,9 +101,7 @@ class PromptBuilderService:
                 case_context.get("client_province"),
                 case_context.get("client_country"),
             ]
-            location_str = ", ".join(
-                html.escape(p) for p in location_parts if p
-            )
+            location_str = ", ".join(html.escape(p) for p in location_parts if p)
 
             client_info = safe_client
             if location_str:

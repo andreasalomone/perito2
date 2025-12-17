@@ -91,7 +91,7 @@ async def brevo_inbound_webhook(
         payload = BrevoInboundWebhook.model_validate(payload_dict)
     except Exception as e:
         logger.error(f"Failed to parse Brevo payload: {e}")
-        raise HTTPException(status_code=400, detail="Invalid payload format")
+        raise HTTPException(status_code=400, detail="Invalid payload format") from e
 
     # Get first email from items array
     email_item = payload.first_email

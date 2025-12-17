@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Generator, Optional
+from typing import Any, AsyncGenerator, Generator, Optional
 
 import firebase_admin
 from fastapi import Depends, HTTPException, Security, status
@@ -109,19 +109,19 @@ def get_current_user_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token expired",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from None
     except auth.RevokedIdTokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token revoked",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from None
     except auth.InvalidIdTokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from None
     except (auth.AuthError, ValueError) as e:
         # AuthError: base class for Firebase auth exceptions not caught above
         # ValueError: malformed token structure
@@ -130,7 +130,7 @@ def get_current_user_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from e
 
 
 # -----------------------------------------------------------------------------
@@ -179,7 +179,7 @@ def get_db(
             )
             raise HTTPException(
                 status_code=500, detail="Database session initialization failed"
-            )
+            ) from e
 
         # 2. Now we can safely query the User table
         try:
@@ -191,7 +191,9 @@ def get_db(
             logger.debug(f"get_db: User query result for {uid}: {user_msg is not None}")
         except Exception as e:
             logger.error(f"get_db: Failed to query user {uid}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to query user record")
+            raise HTTPException(
+                status_code=500, detail="Failed to query user record"
+            ) from e
 
         if not user_msg:
             # Phantom User Race Condition
@@ -217,7 +219,7 @@ def get_db(
             )
             raise HTTPException(
                 status_code=500, detail="Database session initialization failed"
-            )
+            ) from e
 
         logger.info(
             f"get_db: Successfully initialized session for user {uid} in org {org_id}"
@@ -278,7 +280,7 @@ def get_registration_db(
         logger.error(f"Failed to set app.current_user_uid for registration: {e}")
         raise HTTPException(
             status_code=500, detail="Database context initialization failed"
-        )
+        ) from e
     finally:
         if connection_dirtied:
             try:
@@ -308,7 +310,7 @@ from app.db.database import AsyncSessionLocal
 
 async def get_async_db(
     current_user_token: dict[str, Any] = Depends(get_current_user_token),
-) -> AsyncSession:
+) -> AsyncGenerator[AsyncSession, None]:
     """
     Async Database Session Dependency with proper RLS context.
 
@@ -330,8 +332,7 @@ async def get_async_db(
         try:
             # 1. Get user's organization (one query to set context)
             result = await db.execute(
-                text("SELECT organization_id FROM users WHERE id = :uid"),
-                {"uid": uid}
+                text("SELECT organization_id FROM users WHERE id = :uid"), {"uid": uid}
             )
             user_row = result.fetchone()
 
@@ -347,15 +348,17 @@ async def get_async_db(
             # 2. Set RLS variables (is_local=false to persist across statements)
             await db.execute(
                 text("SELECT set_config('app.current_user_uid', :uid, false)"),
-                {"uid": uid}
+                {"uid": uid},
             )
             await db.execute(
                 text("SELECT set_config('app.current_org_id', :oid, false)"),
-                {"oid": org_id}
+                {"oid": org_id},
             )
             connection_dirtied = True
 
-            logger.debug(f"get_async_db: Set RLS context for user {uid} in org {org_id}")
+            logger.debug(
+                f"get_async_db: Set RLS context for user {uid} in org {org_id}"
+            )
 
             yield db
 
@@ -366,13 +369,17 @@ async def get_async_db(
                     await db.execute(text("RESET app.current_user_uid;"))
                     await db.execute(text("RESET app.current_org_id;"))
                 except Exception as e:
-                    logger.warning(f"get_async_db: Initial RESET failed: {e}. Attempting rollback.")
+                    logger.warning(
+                        f"get_async_db: Initial RESET failed: {e}. Attempting rollback."
+                    )
                     try:
                         await db.rollback()
                         await db.execute(text("RESET app.current_user_uid;"))
                         await db.execute(text("RESET app.current_org_id;"))
                     except Exception as e2:
-                        logger.critical(f"get_async_db: FAILED TO RESET RLS after rollback: {e2}")
+                        logger.critical(
+                            f"get_async_db: FAILED TO RESET RLS after rollback: {e2}"
+                        )
                         # Invalidate connection to prevent potential data leak
                         await db.invalidate()
 

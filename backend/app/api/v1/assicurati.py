@@ -48,9 +48,8 @@ def list_assicurati(
 
     org_id = user.organization_id
 
-    stmt = (
-        select(Assicurato.id, Assicurato.name)
-        .where(Assicurato.organization_id == org_id)
+    stmt = select(Assicurato.id, Assicurato.name).where(
+        Assicurato.organization_id == org_id
     )
 
     if q:
@@ -63,7 +62,4 @@ def list_assicurati(
 
     results = db.execute(stmt).all()
 
-    return [
-        AssicuratoListItem(id=row.id, name=row.name)
-        for row in results
-    ]
+    return [AssicuratoListItem(id=row.id, name=row.name) for row in results]

@@ -13,7 +13,17 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, AsyncGenerator, Deque, Dict, List, Optional, Protocol, Set, Tuple
+from typing import (
+    Any,
+    AsyncGenerator,
+    Deque,
+    Dict,
+    List,
+    Optional,
+    Protocol,
+    Set,
+    Tuple,
+)
 
 # Google GenAI imports (Assumed installed)
 from google import genai
@@ -537,7 +547,8 @@ class GeminiReportGenerator:
                 from app.services.llm.file_upload_service import create_gcs_direct_part
 
                 check_tasks = [
-                    asyncio.to_thread(gcs_blob_exists, c.gcs_uri) for c in gcs_candidates
+                    asyncio.to_thread(gcs_blob_exists, c.gcs_uri)
+                    for c in gcs_candidates
                 ]
                 check_results = await asyncio.gather(*check_tasks)
 
@@ -572,7 +583,11 @@ class GeminiReportGenerator:
                     ]
                     vision_parts.extend(uploaded_files_objs)
                     upload_errors.extend(
-                        [res.error_message for res in upload_results if not res.success and res.error_message]
+                        [
+                            res.error_message
+                            for res in upload_results
+                            if not res.success and res.error_message
+                        ]
                     )
 
                 # 3. Build Prompt (using existing service)
@@ -595,10 +610,12 @@ class GeminiReportGenerator:
                 async for attempt in self.retry_policy:
                     with attempt:
                         # Use generate_content_stream
-                        stream_response = await self.client.aio.models.generate_content_stream(
-                            model=self.model_name,
-                            contents=contents,
-                            config=config,
+                        stream_response = (
+                            await self.client.aio.models.generate_content_stream(
+                                model=self.model_name,
+                                contents=contents,
+                                config=config,
+                            )
                         )
 
                         async for chunk in stream_response:
@@ -608,8 +625,10 @@ class GeminiReportGenerator:
                                     text = part.text or ""
                                     if text:
                                         yield {
-                                            "type": "thought" if is_thought else "content",
-                                            "text": text
+                                            "type": (
+                                                "thought" if is_thought else "content"
+                                            ),
+                                            "text": text,
                                         }
 
             except Exception as e:

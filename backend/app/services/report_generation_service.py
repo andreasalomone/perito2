@@ -2,7 +2,7 @@ import asyncio
 import copy
 import json
 import logging
-from typing import Optional
+from typing import AsyncGenerator, Optional
 
 from google.cloud import tasks_v2
 from sqlalchemy import select, text
@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
-from typing import AsyncGenerator, Optional
 from app.db.database import AsyncSessionLocal
 from app.models import Case, Document, ReportVersion
 from app.schemas.enums import CaseStatus, ExtractionStatus
@@ -304,9 +303,7 @@ async def _validate_documents_ready(
         return None
 
     # Check if we have at least one processed document
-    has_completed_docs = any(
-        d.ai_status == ExtractionStatus.SUCCESS for d in all_docs
-    )
+    has_completed_docs = any(d.ai_status == ExtractionStatus.SUCCESS for d in all_docs)
     if not has_completed_docs:
         logger.error(
             f"Cannot generate report for case {case_id}: No successfully processed documents found."
@@ -315,9 +312,7 @@ async def _validate_documents_ready(
         await db.commit()
         return None
 
-    processed_count = sum(
-        d.ai_status == ExtractionStatus.SUCCESS for d in all_docs
-    )
+    processed_count = sum(d.ai_status == ExtractionStatus.SUCCESS for d in all_docs)
     error_count = sum(d.ai_status == ExtractionStatus.ERROR.value for d in all_docs)
     logger.info(
         f"Starting generation for case {case_id} with {processed_count} processed and {error_count} failed documents."
@@ -431,14 +426,39 @@ def _build_case_context(case: Case) -> dict[str, str]:
     # Client enriched data - ensure strings
     if case.client:
         ctx["client_name"] = str(case.client.name) if case.client.name else "N.D."
-        ctx["client_address_street"] = str(case.client.address_street) if isinstance(case.client.address_street, str) and case.client.address_street else ""
-        ctx["client_zip_code"] = str(case.client.zip_code) if isinstance(case.client.zip_code, str) and case.client.zip_code else ""
-        ctx["client_city"] = str(case.client.city) if isinstance(case.client.city, str) and case.client.city else ""
-        ctx["client_province"] = str(case.client.province) if isinstance(case.client.province, str) and case.client.province else ""
-        ctx["client_country"] = str(case.client.country) if isinstance(case.client.country, str) and case.client.country else ""
+        ctx["client_address_street"] = (
+            str(case.client.address_street)
+            if isinstance(case.client.address_street, str)
+            and case.client.address_street
+            else ""
+        )
+        ctx["client_zip_code"] = (
+            str(case.client.zip_code)
+            if isinstance(case.client.zip_code, str) and case.client.zip_code
+            else ""
+        )
+        ctx["client_city"] = (
+            str(case.client.city)
+            if isinstance(case.client.city, str) and case.client.city
+            else ""
+        )
+        ctx["client_province"] = (
+            str(case.client.province)
+            if isinstance(case.client.province, str) and case.client.province
+            else ""
+        )
+        ctx["client_country"] = (
+            str(case.client.country)
+            if isinstance(case.client.country, str) and case.client.country
+            else ""
+        )
 
     # Assicurato: prefer relationship (user-selected), fallback to string (AI-extracted)
-    if case.assicurato_rel and hasattr(case.assicurato_rel, 'name') and isinstance(case.assicurato_rel.name, str):
+    if (
+        case.assicurato_rel
+        and hasattr(case.assicurato_rel, "name")
+        and isinstance(case.assicurato_rel.name, str)
+    ):
         ctx["assicurato_name"] = case.assicurato_rel.name
     elif case.assicurato and isinstance(case.assicurato, str):
         ctx["assicurato_name"] = case.assicurato
@@ -548,6 +568,7 @@ async def _save_report_version(
         try:
             async with AsyncSessionLocal() as bg_db:
                 from sqlalchemy import text
+
                 from app.services import summary_service
 
                 # Set RLS context for background session
@@ -564,7 +585,9 @@ async def _save_report_version(
                     if c := result.scalars().first():
                         c.ai_summary = summary
                         await bg_db.commit()
-                        logger.info(f"✅ Background summary generated for case {case_id}")
+                        logger.info(
+                            f"✅ Background summary generated for case {case_id}"
+                        )
         except Exception as e:
             logger.warning(f"⚠️ Background summary generation failed: {e}")
 
@@ -685,6 +708,7 @@ async def generate_report_logic(
     except Exception as e:
         await _handle_generation_error(case_id, e, db)
 
+
 async def stream_final_report(
     case_id: str,
     organization_id: str,
@@ -720,31 +744,44 @@ async def stream_final_report(
     # Check if already finalized
     existing_final = await db.execute(
         select(ReportVersion).filter(
-            ReportVersion.case_id == case_id,
-            ReportVersion.is_final == True
+            ReportVersion.case_id == case_id, ReportVersion.is_final.is_(True)
         )
     )
     if existing_final.scalars().first():
-        yield json.dumps({"type": "error", "text": "The case is already finalized (ReportFinalizedError)."}) + "\n"
+        yield json.dumps(
+            {
+                "type": "error",
+                "text": "The case is already finalized (ReportFinalizedError).",
+            }
+        ) + "\n"
         return
 
     # Check if active draft exists (Google Docs)
     active_draft_res = await db.execute(
         select(ReportVersion).filter(
             ReportVersion.case_id == case_id,
-            ReportVersion.is_draft_active == True,
-            ReportVersion.is_final == False
+            ReportVersion.is_draft_active.is_(True),
+            ReportVersion.is_final.is_(False),
         )
     )
     if active_draft_res.scalars().first():
-        yield json.dumps({"type": "error", "text": "A live draft is currently active in Google Docs. Please sync or close usage before regenerating."}) + "\n"
+        yield json.dumps(
+            {
+                "type": "error",
+                "text": "A live draft is currently active in Google Docs. Please sync or close usage before regenerating.",
+            }
+        ) + "\n"
         return
 
     try:
         # 3. Collect Data
-        processed_data, failed_docs, _ = await _collect_documents_for_generation(case_id, db)
+        processed_data, failed_docs, _ = await _collect_documents_for_generation(
+            case_id, db
+        )
         if not processed_data:
-            yield json.dumps({"type": "error", "text": "No processed data found"}) + "\n"
+            yield json.dumps(
+                {"type": "error", "text": "No processed data found"}
+            ) + "\n"
             return
 
         # 4. Build Context & Models
@@ -796,7 +833,6 @@ async def stream_final_report(
     except Exception as e:
         logger.error(f"Streaming failed: {e}", exc_info=True)
         yield json.dumps({"type": "error", "text": str(e)}) + "\n"
-
 
 
 async def generate_docx_variant(

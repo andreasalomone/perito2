@@ -3,7 +3,15 @@ from pathlib import Path
 from typing import Annotated, Any, List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Response, status, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    Response,
+    status,
+)
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,9 +58,13 @@ def list_cases(
     # Get org_id from the session variable that get_db() already set
     from sqlalchemy import text
 
-    result = db.execute(text("SELECT current_setting('app.current_org_id', true)")).scalar()
+    result = db.execute(
+        text("SELECT current_setting('app.current_org_id', true)")
+    ).scalar()
     if not result:
-        logger.error(f"User {current_user.get('uid')} has no organization_id in session")
+        logger.error(
+            f"User {current_user.get('uid')} has no organization_id in session"
+        )
         raise HTTPException(status_code=403, detail="User organization not found")
     user_org_id = result
 
@@ -79,7 +91,9 @@ def list_cases(
     # 1. Text Search
     if search:
         # Escape LIKE wildcards to prevent injection
-        safe_search = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        safe_search = (
+            search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        )
         stmt = stmt.join(Case.client, isouter=True).where(
             (Case.reference_code.ilike(f"%{safe_search}%", escape="\\"))
             | (Client.name.ilike(f"%{safe_search}%", escape="\\"))
@@ -94,7 +108,6 @@ def list_cases(
         stmt = stmt.where(Case.status == status)
 
     return list(db.scalars(stmt.offset(skip).limit(limit)).all())
-
 
 
 @router.get(
@@ -197,7 +210,6 @@ def get_case_detail(
         response.headers["Cache-Control"] = "private, no-store"
 
     return case
-
 
 
 @router.patch("/{case_id}", response_model=schemas.CaseDetail)
@@ -307,7 +319,7 @@ def get_doc_upload_url(
     response_model=schemas.InitiateUploadResponse,
     summary="Initiate Document Upload (Optimized)",
     description="Pre-registers document and returns signed URL in one request. "
-                "Reduces upload flow from 3 requests to 2.",
+    "Reduces upload flow from 3 requests to 2.",
 )
 def initiate_upload(
     case_id: UUID,
@@ -544,8 +556,8 @@ async def trigger_generation(
 async def stream_final_report_endpoint(
     case_id: str,
     payload: schemas.GeneratePayload,
+    current_user: Annotated[dict[str, Any], Depends(get_current_user_token)],
     db: AsyncSession = Depends(get_async_db),
-    current_user: Annotated[dict[str, Any], Depends(get_current_user_token)] = None,
 ):
     """
     Generate Final Report (Streaming).
@@ -560,9 +572,9 @@ async def stream_final_report_endpoint(
             organization_id=str(current_user["oid"]),
             db=db,
             language=payload.language,
-            extra_instructions=payload.extra_instructions
+            extra_instructions=payload.extra_instructions,
         ),
-        media_type="application/x-ndjson"
+        media_type="application/x-ndjson",
     )
 
 
@@ -878,9 +890,7 @@ async def get_document_analysis(
 
     # Check for pending documents
     has_pending, pending_count = (
-        await document_analysis_service.check_has_pending_documents(
-            case_id, async_db
-        )
+        await document_analysis_service.check_has_pending_documents(case_id, async_db)
     )
 
     return {
@@ -954,7 +964,6 @@ async def create_document_analysis(
             docs_stmt = select(Document).where(
                 Document.case_id == case_id,
                 Document.ai_status == ExtractionStatus.SUCCESS,
-                Document.deleted_at.is_(None)
             )
             docs_result = await async_db.execute(docs_stmt)
             docs = docs_result.scalars().all()
@@ -962,7 +971,11 @@ async def create_document_analysis(
             all_text = []
             for doc in docs:
                 if doc.ai_extracted_data:
-                    entries = doc.ai_extracted_data.get("entries", []) if isinstance(doc.ai_extracted_data, dict) else []
+                    entries = (
+                        doc.ai_extracted_data.get("entries", [])
+                        if isinstance(doc.ai_extracted_data, dict)
+                        else []
+                    )
                     for entry in entries:
                         if isinstance(entry, dict) and entry.get("type") == "text":
                             content = entry.get("content", "")
@@ -1041,9 +1054,7 @@ async def get_preliminary_report(
 
     # Check for pending documents
     has_pending, pending_count = (
-        await preliminary_report_service.check_has_pending_documents(
-            case_id, async_db
-        )
+        await preliminary_report_service.check_has_pending_documents(case_id, async_db)
     )
 
     # Build response with mapped fields
@@ -1098,15 +1109,11 @@ async def create_preliminary_report(
     try:
         # Check if we can return cached version
         if not force:
-            existing = (
-                await preliminary_report_service.get_latest_preliminary_report(
-                    case_id, async_db
-                )
+            existing = await preliminary_report_service.get_latest_preliminary_report(
+                case_id, async_db
             )
             if existing:
-                logger.info(
-                    f"Returning cached preliminary report for case {case_id}"
-                )
+                logger.info(f"Returning cached preliminary report for case {case_id}")
                 return {
                     "report": {
                         "id": existing.id,
@@ -1141,9 +1148,7 @@ async def create_preliminary_report(
         ) from None
 
     except preliminary_report_service.PreliminaryReportError as e:
-        logger.error(
-            f"Preliminary report generation failed for case {case_id}: {e}"
-        )
+        logger.error(f"Preliminary report generation failed for case {case_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Report generation failed, please retry.",
@@ -1183,14 +1188,11 @@ async def stream_preliminary_report_endpoint(
     # Return streaming response with NDJSON content type
     return StreamingResponse(
         preliminary_report_service.stream_preliminary_report(
-            case_id=case_id,
-            org_id=case.organization_id,
-            db=async_db
+            case_id=case_id, org_id=case.organization_id, db=async_db
         ),
         media_type="application/x-ndjson",
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",  # Disable nginx buffering
-        }
+        },
     )
-

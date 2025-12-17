@@ -173,14 +173,14 @@ def create_organization(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="An organization with this name likely already exists.",
-        )
+        ) from None
     except Exception as e:
         db.rollback()
         logger.error(f"Failed to create organization: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal Server Error",
-        )
+        ) from e
 
 
 @router.get(
@@ -263,7 +263,7 @@ def invite_user_to_org(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to process invite.",
-        )
+        ) from e
 
 
 @router.delete(
@@ -294,7 +294,7 @@ def delete_invite(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete invite.",
-        )
+        ) from e
 
 
 @router.post(
@@ -401,7 +401,7 @@ def cleanup_orphaned_storage(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Cleanup operation failed: {str(e)}",
-        )
+        ) from e
 
 
 @router.post("/rescue-zombies", response_model=dict, summary="Rescue Stuck Cases")
@@ -450,7 +450,7 @@ def rescue_stuck_cases(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Rescue operation failed: {str(e)}",
-        )
+        ) from e
 
 
 @router.post(
@@ -509,7 +509,7 @@ def reprocess_pending_documents(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Reprocess operation failed: {str(e)}",
-        )
+        ) from e
 
 
 # ============= Stats Helper Functions =============
@@ -618,7 +618,7 @@ def get_global_stats(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve global statistics.",
-        )
+        ) from e
 
 
 @router.get(
@@ -692,7 +692,7 @@ def get_org_stats(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve organization statistics.",
-        )
+        ) from e
 
 
 @router.get(
@@ -786,4 +786,4 @@ def get_user_stats(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve user statistics.",
-        )
+        ) from e

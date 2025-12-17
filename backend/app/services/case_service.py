@@ -87,7 +87,9 @@ def get_or_create_assicurato(db: Session, name: str, organization_id: UUID):
         # Another process created the assicurato, so fetch it
         return (
             db.query(Assicurato)
-            .filter(Assicurato.name == name, Assicurato.organization_id == organization_id)
+            .filter(
+                Assicurato.name == name, Assicurato.organization_id == organization_id
+            )
             .one()
         )
 
@@ -360,7 +362,6 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
 
     db.commit()
 
-
     # 5. Trigger async extraction of case details
     # REMOVED: Now handled during "Document Analysis" phase (cases.py)
     # trigger_case_details_extraction_task(...)
@@ -374,7 +375,6 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
     # except Exception as e:
     #     # Don't fail finalization if extraction trigger fails
     #     logger.error(f"Failed to trigger case details extraction: {e}")
-
 
     return final_version
 
@@ -583,7 +583,9 @@ def trigger_case_processing_task(case_id: str, org_id: str):
         raise
 
 
-def trigger_client_enrichment_task(client_id: str, original_name: str, organization_id: str):
+def trigger_client_enrichment_task(
+    client_id: str, original_name: str, organization_id: str
+):
     """
     Enqueue async enrichment task via Cloud Tasks (or run locally for dev).
 
@@ -800,6 +802,7 @@ def _perform_extraction_logic(doc: Document, tmp_dir: str):
     directly from GCS at generation time.
     """
     import time
+
     start_time = time.perf_counter()
 
     # Check if file is vision-only (PDF/images)
@@ -809,7 +812,9 @@ def _perform_extraction_logic(doc: Document, tmp_dir: str):
     if ext in VISION_EXTS:
         # FAST PATH: Vision files don't need local extraction
         # LLM reads directly from GCS via Part.from_uri() at generation time
-        logger.info(f"⚡ Fast path: {doc.filename} (vision-only, skipping GCS download)")
+        logger.info(
+            f"⚡ Fast path: {doc.filename} (vision-only, skipping GCS download)"
+        )
 
         mime_map = {
             ".pdf": "application/pdf",
@@ -828,9 +833,11 @@ def _perform_extraction_logic(doc: Document, tmp_dir: str):
                 "mime_type": mime_map.get(ext, "application/octet-stream"),
                 "filename": doc.filename,
             }
-        ]
+        ]  # type: ignore[assignment]
 
-        logger.info(f"📊 {doc.filename}: {time.perf_counter() - start_time:.3f}s (fast path)")
+        logger.info(
+            f"📊 {doc.filename}: {time.perf_counter() - start_time:.3f}s (fast path)"
+        )
         return
 
     # STANDARD PATH: Text files (DOCX, XLSX, TXT, EML) need local processing

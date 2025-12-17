@@ -117,7 +117,7 @@ class CaseSummary(CaseBase):
         without manual dict construction.
         """
         if self.client:
-            name: Optional[str] = self.client.name
+            name: Optional[str] = str(self.client.name) if self.client.name else None
             return name
         return None
 
@@ -128,7 +128,9 @@ class CaseSummary(CaseBase):
         Returns Google Favicon URL derived from client's website.
         """
         if self.client and hasattr(self.client, "logo_url"):
-            logo: Optional[str] = self.client.logo_url
+            logo: Optional[str] = (
+                str(self.client.logo_url) if self.client.logo_url else None
+            )
             return logo
         return None
 
@@ -140,7 +142,9 @@ class CaseSummary(CaseBase):
         # Note: We access the ORM relationship 'creator' defined on the model
         # We need to ensure eager loading in the query options to avoid N+1
         if hasattr(self, "creator") and self.creator:
-            email: Optional[str] = self.creator.email
+            email: Optional[str] = (
+                str(self.creator.email) if self.creator.email else None
+            )
             return email
         return None
 
@@ -165,7 +169,7 @@ class CaseSummary(CaseBase):
         Priority: assicurato_rel.name (user-selected) > assicurato (AI-extracted string)
         """
         if self.assicurato_rel and hasattr(self.assicurato_rel, "name"):
-            return self.assicurato_rel.name
+            return str(self.assicurato_rel.name)
         return None
 
 
@@ -175,6 +179,7 @@ class CaseListItem(BaseModel):
     Minimal schema for GET /cases/ list endpoint.
     Only includes fields actually displayed in dashboard cards.
     """
+
     id: UUID
     organization_id: UUID
     client_id: Optional[UUID] = None
@@ -191,19 +196,19 @@ class CaseListItem(BaseModel):
     @computed_field
     def client_name(self) -> Optional[str]:
         if self.client:
-            return self.client.name
+            return str(self.client.name) if self.client.name else None
         return None
 
     @computed_field
     def client_logo_url(self) -> Optional[str]:
         if self.client and hasattr(self.client, "logo_url"):
-            return self.client.logo_url
+            return str(self.client.logo_url) if self.client.logo_url else None
         return None
 
     @computed_field
     def creator_email(self) -> Optional[str]:
         if self.creator:
-            return self.creator.email
+            return str(self.creator.email) if self.creator.email else None
         return None
 
     @computed_field
@@ -264,12 +269,14 @@ class DocumentRegisterPayload(BaseModel):
 
 class InitiateUploadPayload(BaseModel):
     """Payload for combined upload initiation (reduces 3 requests to 2)."""
+
     filename: str
     content_type: str
 
 
 class InitiateUploadResponse(BaseModel):
     """Response from initiate-upload with document ID and signed URL."""
+
     document_id: UUID
     upload_url: str
     gcs_path: str
@@ -372,6 +379,14 @@ class PreliminaryReportRequest(BaseModel):
     force: bool = False  # If true, regenerate even if exists
 
 
+# --- ASSICURATI ---
+from app.schemas.assicurato import (
+    AssicuratoBase,
+    AssicuratoCreate,
+    AssicuratoDetail,
+    AssicuratoListItem,
+)
+
 # --- CLIENTS ---
 from app.schemas.client import (
     ClientBase,
@@ -379,12 +394,4 @@ from app.schemas.client import (
     ClientDetail,
     ClientListItem,
     ClientUpdate,
-)
-
-# --- ASSICURATI ---
-from app.schemas.assicurato import (
-    AssicuratoBase,
-    AssicuratoCreate,
-    AssicuratoDetail,
-    AssicuratoListItem,
 )
