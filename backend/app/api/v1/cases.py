@@ -72,6 +72,7 @@ def list_cases(
         select(Case)
         .options(
             selectinload(Case.client),
+            selectinload(Case.assicurato_rel),  # REQUIRED for Assicurato View
             # Optimize: Load only creator email
             selectinload(Case.creator).load_only(User.email),
         )

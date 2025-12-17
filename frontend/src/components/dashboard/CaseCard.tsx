@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { BadgeWithDot } from "@/components/ui/base/badges/badges";
-import { Calendar, Building2 } from "lucide-react";
+import { Calendar, Building2, Pen } from "lucide-react";
 import { CaseSummary } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -96,6 +96,13 @@ export const CaseCard = memo(function CaseCard({ caseItem: c, index }: CaseCardP
                                 <Building2 className="h-3.5 w-3.5" />
                             )}
                             <span className="font-medium text-foreground">{c.client_name || "Cliente non specificato"}</span>
+                        </div>
+                        {/* Assicurato Badge */}
+                        <div className="flex items-center gap-2">
+                            <Pen className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="font-medium text-muted-foreground">
+                                {c.assicurato_display || c.assicurato || "Assicurato non specificato"}
+                            </span>
                         </div>
                         <div className="flex items-center gap-2">
                             <Calendar className="h-3.5 w-3.5" />

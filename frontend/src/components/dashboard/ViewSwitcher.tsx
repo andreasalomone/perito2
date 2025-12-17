@@ -1,10 +1,9 @@
 "use client";
 
-import { LayoutGrid, Kanban, Users } from "lucide-react";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"; // I might need to create ToggleGroup too if missing
+import { LayoutGrid, Kanban, Users, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export type ViewMode = "grid" | "kanban" | "client";
+export type ViewMode = "grid" | "kanban" | "client" | "assicurato";
 
 interface ViewSwitcherProps {
     mode: ViewMode;
@@ -44,6 +43,16 @@ export function ViewSwitcher({ mode, onModeChange }: ViewSwitcherProps) {
             >
                 <Users className="h-4 w-4" />
                 <span className="hidden lg:inline text-xs">Clienti</span>
+            </Button>
+            <Button
+                variant={mode === "assicurato" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => onModeChange("assicurato")}
+                className="h-8 px-2 lg:px-3 gap-2"
+                title="Raggruppa per Assicurato"
+            >
+                <User className="h-4 w-4" />
+                <span className="hidden lg:inline text-xs">Assicurati</span>
             </Button>
         </div>
     );

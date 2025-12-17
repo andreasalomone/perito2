@@ -191,6 +191,9 @@ class CaseListItem(BaseModel):
     client: Optional[Any] = Field(default=None, exclude=True)
     creator: Optional[Any] = Field(default=None, exclude=True)
 
+    assicurato: Optional[str] = None  # Raw string from CaseBase
+    assicurato_rel: Optional[Any] = Field(default=None, exclude=True)
+
     model_config = ConfigDict(from_attributes=True)
 
     @computed_field
@@ -221,6 +224,16 @@ class CaseListItem(BaseModel):
             last_initial = f"{last[0]}." if last else ""
             full_name = f"{first} {last_initial}".strip()
             return full_name if full_name else None
+        return None
+
+    @computed_field
+    def assicurato_display(self) -> Optional[str]:
+        """
+        Returns assicurato name for display.
+        Priority: assicurato_rel.name (user-selected) > assicurato (AI-extracted string)
+        """
+        if self.assicurato_rel and hasattr(self.assicurato_rel, "name"):
+            return str(self.assicurato_rel.name)
         return None
 
 
