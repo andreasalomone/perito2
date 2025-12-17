@@ -415,11 +415,34 @@ async def _collect_documents_for_generation(
 
 
 def _build_case_context(case: Case) -> dict[str, str]:
-    """Build case context dict for LLM prompt. Always returns valid dict."""
-    return {
+    """Build case context dict for LLM prompt. Uses actual DB field names."""
+    ctx = {
         "ref_code": case.reference_code or "N.D.",
-        "client_name": case.client.name if case.client else "N.D.",
+        "client_name": "N.D.",
+        "client_address_street": "",
+        "client_zip_code": "",
+        "client_city": "",
+        "client_province": "",
+        "client_country": "",
+        "assicurato_name": "N.D.",
     }
+
+    # Client enriched data - ensure strings
+    if case.client:
+        ctx["client_name"] = str(case.client.name) if case.client.name else "N.D."
+        ctx["client_address_street"] = str(case.client.address_street) if isinstance(case.client.address_street, str) and case.client.address_street else ""
+        ctx["client_zip_code"] = str(case.client.zip_code) if isinstance(case.client.zip_code, str) and case.client.zip_code else ""
+        ctx["client_city"] = str(case.client.city) if isinstance(case.client.city, str) and case.client.city else ""
+        ctx["client_province"] = str(case.client.province) if isinstance(case.client.province, str) and case.client.province else ""
+        ctx["client_country"] = str(case.client.country) if isinstance(case.client.country, str) and case.client.country else ""
+
+    # Assicurato: prefer relationship (user-selected), fallback to string (AI-extracted)
+    if case.assicurato_rel and hasattr(case.assicurato_rel, 'name') and isinstance(case.assicurato_rel.name, str):
+        ctx["assicurato_name"] = case.assicurato_rel.name
+    elif case.assicurato and isinstance(case.assicurato, str):
+        ctx["assicurato_name"] = case.assicurato
+
+    return ctx
 
 
 async def _generate_and_upload_report(
@@ -592,10 +615,10 @@ async def generate_report_logic(
         language: The target output language for the report (italian, english, spanish)
         extra_instructions: Optional additional instructions from expert
     """
-    # 1. Fetch case with lock (eager load client for case_context)
+    # 1. Fetch case with lock (eager load client + assicurato for case_context)
     result = await db.execute(
         select(Case)
-        .options(selectinload(Case.client))
+        .options(selectinload(Case.client), selectinload(Case.assicurato_rel))
         .filter(Case.id == case_id)
         .with_for_update()
     )

@@ -15,10 +15,11 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.models import Document, DocumentAnalysis
+from app.models import Case, Document, DocumentAnalysis
 from app.schemas.enums import ExtractionStatus
 
 logger = logging.getLogger(__name__)
@@ -209,6 +210,14 @@ async def run_document_analysis(
     if not documents:
         raise AnalysisBlockedError("No documents available for analysis")
 
+    # 3b. Fetch case with relationships for context
+    case_result = await db.execute(
+        select(Case)
+        .options(selectinload(Case.client), selectinload(Case.assicurato_rel))
+        .where(Case.id == case_id)
+    )
+    case = case_result.scalar_one_or_none()
+
     # 4. Build prompt content from extracted data
     document_contents = []
     vision_parts = []  # NEW: List to hold Part objects for vision files
@@ -287,8 +296,33 @@ async def run_document_analysis(
     else:
         vision_section = ""
 
+    # 6c. Build confirmed data context
+    context_block = ""
+    if case:
+        from app.services.report_generation_service import _build_case_context
+        case_context = _build_case_context(case)
+        safe_ref = html.escape(case_context.get("ref_code", "N.D."))
+        safe_client = html.escape(case_context.get("client_name", "N.D."))
+        safe_assicurato = html.escape(case_context.get("assicurato_name", "N.D."))
+        location_parts = [
+            case_context.get("client_address_street"),
+            case_context.get("client_zip_code"),
+            case_context.get("client_city"),
+            case_context.get("client_province"),
+            case_context.get("client_country"),
+        ]
+        location_str = ", ".join(html.escape(p) for p in location_parts if p)
+        client_info = f"{safe_client}, {location_str}" if location_str else safe_client
+        context_block = (
+            f"<confirmed_data>\n"
+            f"Il nostro cliente per questo sinistro è: {client_info}.\n"
+            f"Il Ns. Rif (nostro riferimento interno) è: {safe_ref}.\n"
+            f"L'assicurato di questo caso è: {safe_assicurato}.\n"
+            f"</confirmed_data>\n\n"
+        )
+
     full_prompt = (
-        f"{system_prompt}\n\n<case_documents>\n{evidence_section}\n</case_documents>{vision_section}"
+        f"{system_prompt}\n\n{context_block}<case_documents>\n{evidence_section}\n</case_documents>{vision_section}"
     )
 
     # 7. Build multimodal content array
