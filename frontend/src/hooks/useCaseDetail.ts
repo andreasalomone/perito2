@@ -119,6 +119,9 @@ export function useCaseDetail(id: string | undefined) {
         // Clear polling cache before full re-fetch (prevents race condition)
         globalMutate(['case-status', id], undefined, { revalidate: false });
         setPollingStart(null);
+        // FIX: Immediately start polling after refresh to capture processing states
+        // This fixes the first-batch upload bug where polling wasn't active yet
+        setShouldPoll(true);
         return mutateCase(data, opts);
     }, [id, mutateCase]);
 
