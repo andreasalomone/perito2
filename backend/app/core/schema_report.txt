@@ -13,10 +13,10 @@
 
 **BLOCCO INTESTAZIONE INIZIALE (DA GENERARE PRIMA DI TUTTO):**
 
-[Riga 1: Metti solo: Spett.le] 
-[Riga 2: Nome completo della società cliente, come da documenti. ES: Spett.le UNIPOL SAI S.p.A.]
-[Riga 3: Indirizzo completo della società cliente, come da documenti. ES: Via V Dicembre, 3]
-[Riga 4: CAP Città (Provincia) della società cliente, come da documenti. ES: 16121 Genova]
+[Riga 1: Metti solo: Spett.le]
+[Riga 2: Nome completo della società cliente, come indicato dal perito. ES: Spett.le UNIPOL SAI S.p.A.]
+[Riga 3: Indirizzo completo della società cliente, come indicato dal perito. ES: Via V Dicembre, 3]
+[Riga 4: CAP Città (Provincia) della società cliente, come indicato dal perito. ES: 16121 Genova]
 [Riga 5: Metti solo ed esattamente "-------------------------------------"]
 (NOTA LLM: Genera queste 5 righe esattamente in questo formato, una per riga. Non una riga di più, non una di meno.)
 (IMPORTANTE: nella Riga 4, aggiungi la Nazione solo per indirizzi non Italiani, ES: 17345 Berlin (Germany), se la città è italiana non mettere "Italia".)
@@ -34,7 +34,7 @@ Genova, [Inserisci data di oggi completa nel formato "GG mese AAAA". ES: Genova,
 (NOTA LLM: Genera ogni riferimento su una nuova riga. Allinea i due punti ":" usando esattamente 10 spazi prima e 10 dopo, per un aspetto pulito.)
 Vs. Rif.          :          [Riferimento fornito dal cliente. Se non reperibile, usa: N.D.]
 Polizza           :          [Numero polizza merci. Se non reperibile, usa: N.D.]
-Ns. Rif.          :          [Riferimento interno nostro, reperibile da documenti interni. Formato tipico XXX/YY. Se non reperibile, usa: N.D.]
+Ns. Rif.          :          [Riferimento interno nostro, reperibile dalle informazioni del perito. Formato tipico XXX/YY. Se non reperibile, usa: N.D.]
 
 \n\n
 (NOTA LLM: Lascia una riga vuota qui sopra, ottenuta con `\n\n`, prima dell'Oggetto)
@@ -283,6 +283,8 @@ Esempio: "Pertanto, l'ammontare del danno complessivamente accertato e documenta
 
 Segui gli esempi di contenuto e stile forniti nella `GUIDA_STILE_TERMINOLOGIA_ED_ESEMPI` e le indicazioni precedenti per questa sezione.]
 
+(NOTA PER LLM: Nel caso di un incidente durante il trasporto, i costi di soccorso, recupero e smaltimento della merce in sé (non del mezzo di trasporto) non vanno contati nei danni totali, ma devono essere calcolati e indicati scrivendo che sono lasciati a giudizio del liquidatore. Questo per i costi relativi alla merce, ma MAI per il mezzo di trasporto che ha subito l'incidente: i costi di soccorso, recupero e smaltimento del mezzo non sono mai coperti dall’assicurazione: vanno indicati per completezza, ma mai conteggiati nel computo del danno totale.)
+
 \n\n
 
 4 – CAUSE DEL DANNO
@@ -310,7 +312,8 @@ Segui gli esempi di contenuto e stile forniti nella `GUIDA_STILE_TERMINOLOGIA_ED
 
 [Testo narrativo conclusivo. Separa i paragrafi con `\n\n`.
 
-Questa è la sezione conclusiva. Fornisci una sintesi delle principali risultanze della perizia.
+Questa è la sezione conclusiva. Non farla sembrare una ripetizione di CAUSE DEL DANNO, bensì un riassunto conciso. di tutto quello che è importante (immagina un liquidatore prigro che legge solo questa sezione, scrivi per lui), fornisci una sintesi delle principali risultanze della perizia.
+
 Ribadisci brevemente la natura del danno, le cause più probabili e l'entità economica del danno (se quantificato).
 Esempio: "In sintesi, gli accertamenti peritali hanno confermato un danno da bagnamento e deterioramento a carico di una parte della spedizione di [tipo merce], imputabile a [causa principale]. Il danno economico derivante da tale evento è stato quantificato in Euro [Valore Totale Finale], tenuto conto [breve menzione della base di calcolo, es. del valore di acquisto della merce e dei costi di smaltimento]."
 Oppure se non quantificato: "In sintesi, gli accertamenti peritali hanno confermato un danno da [tipo danno] a carico di [tipo merce]. Tuttavia, a causa della mancata presentazione di idonea documentazione contabile, non è stato possibile procedere ad una quantificazione economica del pregiudizio."
@@ -345,7 +348,7 @@ Restando comunque a disposizione per ulteriori chiarimenti che potessero necessi
   - [Elencare eventuali altri documenti specifici forniti e significativi, seguendo la stessa formattazione]
 
 Concludi sempre con le seguenti frasi, separate da una riga vuota:
-Il presente certificato di perizia viene emesso senza pregiudizio alcuno dei diritti dei nostri mandanti. 
-Gli scriventi si riservano il diritto di ampliare e/o modificare il presente certificato qualora nuove e/o diverse informazioni si rendessero disponibili. 
+Il presente certificato di perizia viene emesso senza pregiudizio alcuno dei diritti dei nostri mandanti.
+Gli scriventi si riservano il diritto di ampliare e/o modificare il presente certificato qualora nuove e/o diverse informazioni si rendessero disponibili.
 
 (NOTA LLM FINALE: L'elenco degli allegati deve riflettere i documenti che l'utente ha FORNITO e che sono stati usati per la perizia. Non includere "Denuncia sinistro" o "Incarico peritale" come allegati destinati al cliente finale. Non includere mai il report di un perito corrispondente esterno come allegato in questa lista. Non chiamare gli allegati con il nome esatto dei file, dai un titolo appropriato (es. Fattura n°...): pensa, gli allegati servono al cliente i titoli per capire, non gli interessano eventuali email o corrispondenze.)

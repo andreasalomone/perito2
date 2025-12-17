@@ -661,6 +661,8 @@ def _create_dati_generali_table(document, lines: List[str]):
 
         # Column 3: Value (potentially multi-line)
         row_cells[2].text = item["value"]
+        # Add an empty paragraph after the value for visual spacing
+        row_cells[2].add_paragraph()
 
     # Apply formatting to all cells
     for row in table.rows:
