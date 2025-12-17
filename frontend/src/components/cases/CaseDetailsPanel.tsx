@@ -15,6 +15,9 @@ import {
     FileSpreadsheet
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -33,12 +36,13 @@ type FieldDef = {
     readOnly?: boolean; // Computed fields that cannot be edited directly
 };
 
-// Section Config with Icons
+// Section Config with Icons - using design system color classes
 const SECTIONS = [
     {
         id: "Dati Generali",
         icon: FileSpreadsheet,
-        color: "text-blue-500",
+        colorClass: "text-primary",
+        bgClass: "bg-primary/10",
         fields: [
             { key: "reference_code", label: "Ns. Rif", type: "text" },
             { key: "polizza", label: "Polizza", type: "text" },
@@ -50,7 +54,8 @@ const SECTIONS = [
     {
         id: "Economici",
         icon: Euro,
-        color: "text-green-600",
+        colorClass: "text-chart-2",
+        bgClass: "bg-chart-2/10",
         fields: [
             { key: "riserva", label: "Riserva", type: "number", step: "0.01" },
             { key: "importo_liquidato", label: "Importo Liquidato", type: "number", step: "0.01" },
@@ -59,11 +64,12 @@ const SECTIONS = [
     {
         id: "Parti Coinvolte",
         icon: Users,
-        color: "text-indigo-500",
+        colorClass: "text-chart-1",
+        bgClass: "bg-chart-1/10",
         fields: [
             { key: "client_name", label: "Cliente", type: "text" },
             { key: "rif_cliente", label: "Rif. Cliente", type: "text" },
-            { key: "assicurato_display", label: "Assicurato", type: "text", readOnly: true },
+            { key: "assicurato_display", label: "Assicurato", type: "text" },
             { key: "riferimento_assicurato", label: "Rif. Assicurato", type: "text" },
             { key: "broker", label: "Broker", type: "text" },
             { key: "riferimento_broker", label: "Rif. Broker", type: "text" },
@@ -76,7 +82,8 @@ const SECTIONS = [
     {
         id: "Merci e Trasporti",
         icon: Truck,
-        color: "text-orange-500",
+        colorClass: "text-chart-4",
+        bgClass: "bg-chart-4/10",
         fields: [
             { key: "merce", label: "Merce (Short)", type: "text" },
             { key: "mezzo_di_trasporto", label: "Mezzo", type: "text" },
@@ -87,7 +94,8 @@ const SECTIONS = [
     {
         id: "Luogo e Lavorazione",
         icon: MapPin,
-        color: "text-red-500",
+        colorClass: "text-destructive",
+        bgClass: "bg-destructive/10",
         fields: [
             { key: "luogo_intervento", label: "Luogo Intervento", type: "text" },
             { key: "genere_lavorazione", label: "Genere Lavorazione", type: "text" },
@@ -96,7 +104,8 @@ const SECTIONS = [
     {
         id: "Note",
         icon: ClipboardList,
-        color: "text-gray-500",
+        colorClass: "text-muted-foreground",
+        bgClass: "bg-muted",
         fields: [
             { key: "note", label: "Note Interne", type: "textarea", fullWidth: true },
         ] as FieldDef[]
@@ -118,7 +127,9 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
     const [tempValue, setTempValue] = useState(value === null ? "" : value);
 
     const formatValue = (val: any) => {
-        if (val === null || val === undefined || val === "") return <span className="text-gray-300 font-normal">—</span>;
+        if (val === null || val === undefined || val === "") {
+            return <span className="text-muted-foreground/50 font-normal">—</span>;
+        }
 
         // Currency Formatting
         if (field.type === "number" && (field.key === "riserva" || field.key === "importo_liquidato")) {
@@ -129,7 +140,7 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
         if (field.type === "date") {
             try {
                 return new Intl.DateTimeFormat('it-IT').format(new Date(val));
-            } catch (e) {
+            } catch {
                 return val;
             }
         }
@@ -147,26 +158,33 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
     };
 
     if (isEditing) {
-        const InputComponent = field.type === "textarea" ? "textarea" : "input";
         return (
-            <div className="relative">
-                <label className="block text-xs font-semibold text-blue-600 mb-1 uppercase tracking-wide">
+            <div className="relative space-y-1.5">
+                <Label className="text-xs font-semibold text-primary uppercase tracking-wide">
                     {field.label}
-                </label>
-                <InputComponent
-                    autoFocus
-                    className={cn(
-                        "block w-full rounded-md border-2 border-blue-500 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 bg-white",
-                        field.type === "textarea" ? "min-h-[100px]" : "h-10"
-                    )}
-                    type={field.type === "textarea" ? undefined : field.type || "text"}
-                    step={field.step}
-                    rows={field.type === "textarea" ? 4 : undefined}
-                    value={tempValue}
-                    onChange={(e: any) => setTempValue(e.target.value)}
-                    onBlur={() => onSave(tempValue === "" ? null : tempValue)}
-                    onKeyDown={handleKeyDown}
-                />
+                </Label>
+                {field.type === "textarea" ? (
+                    <Textarea
+                        autoFocus
+                        className="min-h-[100px] ring-2 ring-ring"
+                        rows={4}
+                        value={tempValue}
+                        onChange={(e) => setTempValue(e.target.value)}
+                        onBlur={() => onSave(tempValue === "" ? null : tempValue)}
+                        onKeyDown={handleKeyDown}
+                    />
+                ) : (
+                    <Input
+                        autoFocus
+                        className="ring-2 ring-ring"
+                        type={field.type || "text"}
+                        step={field.step}
+                        value={tempValue}
+                        onChange={(e) => setTempValue(e.target.value)}
+                        onBlur={() => onSave(tempValue === "" ? null : tempValue)}
+                        onKeyDown={handleKeyDown}
+                    />
+                )}
             </div>
         );
     }
@@ -178,7 +196,7 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
                     {field.label}
                 </span>
-                <div className="text-sm font-medium text-gray-900 truncate">
+                <div className="text-sm font-medium text-foreground truncate">
                     {formatValue(value)}
                 </div>
             </div>
@@ -189,15 +207,15 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
         <div
             onClick={onStartEdit}
             className={cn(
-                "group p-3 rounded-lg border border-transparent hover:border-gray-200 hover:bg-gray-50 cursor-pointer transition-all duration-200",
+                "group p-3 rounded-lg border border-transparent hover:border-border hover:bg-muted/50 cursor-pointer transition-all duration-200",
                 "flex flex-col justify-center min-h-[64px]"
             )}
         >
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1 group-hover:text-blue-600 transition-colors">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1 group-hover:text-primary transition-colors">
                 {field.label}
             </span>
             <div className={cn(
-                "text-sm font-medium text-gray-900 truncate",
+                "text-sm font-medium text-foreground truncate",
                 field.type === "textarea" ? "whitespace-pre-wrap truncate-none line-clamp-4" : ""
             )}>
                 {field.type === "markdown" ? (
@@ -249,13 +267,13 @@ export default function CaseDetailsPanel({ caseDetail, onUpdate }: Props) {
     };
 
     return (
-        <Card className="mb-8 border-none shadow-md overflow-hidden ring-1 ring-gray-200">
+        <Card className="border shadow-sm overflow-hidden">
             <CardHeader
-                className="bg-gray-50/50 border-b flex flex-row items-center justify-between py-4 px-6 cursor-pointer hover:bg-gray-50 transition-colors"
+                className="bg-muted/30 border-b flex flex-row items-center justify-between py-4 px-6 cursor-pointer hover:bg-muted/50 transition-colors"
                 onClick={() => setIsOpen(!isOpen)}
             >
                 <div>
-                    <CardTitle className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                    <CardTitle className="text-lg font-semibold text-foreground flex items-center gap-2">
                         Dettagli Pratica
                     </CardTitle>
                     <p className="text-sm text-muted-foreground mt-1">
@@ -270,14 +288,14 @@ export default function CaseDetailsPanel({ caseDetail, onUpdate }: Props) {
 
             {isOpen && (
                 <CardContent className="p-0">
-                    <div className="divide-y divide-gray-100">
+                    <div className="divide-y divide-border">
                         {SECTIONS.map((section) => (
                             <div key={section.id} className="p-6">
                                 <div className="flex items-center gap-2 mb-4">
-                                    <div className={cn("p-1.5 rounded-md bg-opacity-10", section.color.replace("text-", "bg-"))}>
-                                        <section.icon className={cn("h-4 w-4", section.color)} />
+                                    <div className={cn("p-1.5 rounded-md", section.bgClass)}>
+                                        <section.icon className={cn("h-4 w-4", section.colorClass)} />
                                     </div>
-                                    <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">
+                                    <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">
                                         {section.id}
                                     </h3>
                                 </div>

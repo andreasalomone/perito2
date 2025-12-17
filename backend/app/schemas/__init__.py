@@ -93,6 +93,7 @@ class CaseUpdate(BaseModel):
     note: Optional[str] = None
     ai_summary: Optional[str] = None
     status: Optional[CaseStatus] = None
+    assicurato_display: Optional[str] = None  # To update assicurato relationship
 
 
 class CaseSummary(CaseBase):

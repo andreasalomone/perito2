@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { FileText, Loader2, Edit, Download, BrainCircuit, CheckCircle, AlertCircle } from "lucide-react";
 import { ExpandableScreen, ExpandableScreenTrigger, ExpandableScreenContent } from "@/components/ui/expandable-screen";
 import { CaseDetail, ReportVersion } from "@/types";
@@ -82,19 +83,19 @@ export function FinalReportCard({
     return (
         <>
             <ExpandableScreen>
-                <div className="bg-white dark:bg-zinc-900 rounded-xl border shadow-sm overflow-hidden">
+                <Card className="overflow-hidden">
                     {/* TRIGGER / COLLAPSED STATE */}
-                    <div className="p-6">
+                    <div className="p-8">
                         <div className="flex items-start justify-between">
                             {/* Left: Title & Status */}
-                            <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                    <div className="p-2 bg-primary/10 rounded-lg">
-                                        <FileText className="h-5 w-5 text-primary" />
+                            <div className="space-y-1.5">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2.5 bg-emerald-500/10 rounded-lg">
+                                        <FileText className="h-5 w-5 text-emerald-600" />
                                     </div>
-                                    <h3 className="text-lg font-semibold">Report Finale</h3>
-                                    {isFinal && <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Finalizzato</Badge>}
-                                    {activeDraft && !isFinal && <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">In Modifica su Docs</Badge>}
+                                    <h3 className="text-xl font-semibold">Report Finale</h3>
+                                    {isFinal && <Badge variant="success">Finalizzato</Badge>}
+                                    {activeDraft && !isFinal && <Badge variant="secondary">In Modifica su Docs</Badge>}
                                 </div>
                                 <p className="text-sm text-muted-foreground max-w-xl">
                                     Genera, revisiona e finalizza la perizia completa.
@@ -103,7 +104,7 @@ export function FinalReportCard({
                             </div>
 
                             {/* Right: Actions (Collapsed) */}
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-4">
                                 <Button
                                     variant="outline"
                                     size="sm"
@@ -113,9 +114,9 @@ export function FinalReportCard({
                                     {caseData.note ? "Modifica Info" : "Aggiungi Info"}
                                 </Button>
 
-                                <div className="w-[140px]">
+                                <div className="min-w-[150px]">
                                     <Select value={language} onValueChange={setLanguage} disabled={showGeneratingState}>
-                                        <SelectTrigger className="h-9">
+                                        <SelectTrigger className="h-10">
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -131,7 +132,8 @@ export function FinalReportCard({
                                 <Button
                                     onClick={handleGenerateClick}
                                     disabled={showGeneratingState}
-                                    className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm"
+                                    variant="brand"
+                                    size="default"
                                 >
                                     {showGeneratingState ? (
                                         <>
@@ -168,7 +170,7 @@ export function FinalReportCard({
 
                         {/* GENERATING STATE (Visible in collapsed view too if generating) */}
                         {showGeneratingState && (
-                            <div className="mt-6 border-t pt-6 animate-in fade-in zoom-in-95 duration-300">
+                            <div className="mt-8 border-t pt-8 animate-in fade-in zoom-in-95 duration-300">
                                 <div className="flex items-center gap-2 mb-4 text-primary font-medium">
                                     <Loader2 className="h-4 w-4 animate-spin" />
                                     Generazione in corso...
@@ -222,10 +224,9 @@ export function FinalReportCard({
 
                                     {/* Close Case */}
                                     <Button
-                                        variant="default" // Primary action
+                                        variant="success"
                                         size="sm"
                                         onClick={() => setShowCloseDialog(true)}
-                                        className="bg-green-600 hover:bg-green-700 text-white"
                                     >
                                         <CheckCircle className="h-4 w-4 mr-2" />
                                         Chiudi Sinistro
@@ -248,7 +249,7 @@ export function FinalReportCard({
                             </div>
                         </div>
                     </ExpandableScreenContent>
-                </div>
+                </Card>
             </ExpandableScreen>
 
             {/* DIALOGS */}

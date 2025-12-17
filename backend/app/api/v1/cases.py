@@ -242,6 +242,18 @@ def update_case(
             if client:
                 case.client_id = client.id
 
+    # Handle assicurato_display - find or create Assicurato entity
+    if "assicurato_display" in update_dict:
+        from app.services.case_service import get_or_create_assicurato
+
+        assicurato_name = update_dict.pop("assicurato_display")
+        if assicurato_name:
+            assicurato = get_or_create_assicurato(
+                db, assicurato_name, case.organization_id
+            )
+            if assicurato:
+                case.assicurato_id = assicurato.id
+
     # Apply all other updates
     for field, value in update_dict.items():
         if hasattr(case, field):
@@ -414,7 +426,7 @@ def initiate_upload(
                 raise HTTPException(
                     status_code=409,
                     detail=f"Impossibile caricare '{payload.filename}': troppi duplicati.",
-                )
+                ) from None
             # Continue to next attempt with incremented suffix
             continue
 
@@ -610,9 +622,7 @@ async def stream_final_report_endpoint(
     """
     # RLS in get_async_db ensures user can only see their own cases.
     # Query user's organization_id from the database (token only has uid/email)
-    result = await db.execute(
-        select(User).where(User.id == current_user["uid"])
-    )
+    result = await db.execute(select(User).where(User.id == current_user["uid"]))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=403, detail="User account not found.")
