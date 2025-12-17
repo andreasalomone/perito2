@@ -1,6 +1,6 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -52,7 +52,7 @@ export function PreliminaryReportCard({
     streamedThoughts = "",
     streamedContent = "",
     onGenerateStream,
-}: PreliminaryReportCardProps) {
+}: Readonly<PreliminaryReportCardProps>) {
     const hasReport = report !== null;
     const isBlocked = pendingDocs > 0;
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -238,7 +238,7 @@ export function PreliminaryReportCard({
                                         <p className="text-sm">Genera un documento di lavoro per il caso.</p>
                                     </div>
                                     <Button
-                                        variant={hasReport ? "outline" : "default"}
+                                        variant="default"
                                         className="w-full"
                                         disabled={!canGenerate || isGenerating || isLoading || isBlocked}
                                         onClick={() => {

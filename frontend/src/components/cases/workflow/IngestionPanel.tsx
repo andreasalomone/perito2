@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { CaseDetail, DocumentAnalysis, PreliminaryReport, DocumentWithUrl, ReportVersion } from "@/types";
+import { CaseDetail, DocumentWithUrl, ReportVersion } from "@/types";
 import type { StreamState } from "@/hooks/useEarlyAnalysis";
 import { CaseFileUploader } from "@/components/cases/CaseFileUploader";
 import { DocumentItem } from "@/components/cases/DocumentItem";
@@ -25,11 +25,9 @@ import { useDocumentAnalysis, usePreliminaryReport } from "@/hooks/useEarlyAnaly
 interface IngestionPanelProps {
     caseData: CaseDetail;
     caseId: string;
-    isUploading: boolean;
-    onUpload: (files: File[]) => Promise<void>;
+    onUpload: () => Promise<void>;
     onRemoveDocument: (docId: string) => Promise<void>;
 
-    // Analysis & Report Actions
     // Analysis & Report Actions
     documentAnalysis: ReturnType<typeof useDocumentAnalysis>;
     preliminaryReport: ReturnType<typeof usePreliminaryReport>;
@@ -53,6 +51,7 @@ interface IngestionPanelProps {
     onFinalizeCase: (file: File) => Promise<void>;
     onConfirmDocs: (versionId: string) => Promise<void>;
     onOpenInDocs: (version: ReportVersion, template: TemplateType) => Promise<void>;
+    onPreliminaryGenerateStream?: () => void;
 }
 
 /**
@@ -65,7 +64,6 @@ interface IngestionPanelProps {
 export function IngestionPanel({
     caseData,
     caseId,
-    isUploading,
     onUpload,
     onRemoveDocument,
     documentAnalysis,
@@ -85,7 +83,8 @@ export function IngestionPanel({
     onFinalizeCase,
     onConfirmDocs,
     onOpenInDocs,
-}: IngestionPanelProps) {
+    onPreliminaryGenerateStream,
+}: Readonly<IngestionPanelProps>) {
     const { getToken } = useAuth();
     const documents = caseData?.documents || [];
     // Determine if generating final report
@@ -107,18 +106,20 @@ export function IngestionPanel({
             return;
         }
 
+        let cancelled = false;
         const fetchUrls = async () => {
             try {
                 const token = await getToken();
-                if (!token) return;
+                if (!token || cancelled) return;
                 const response = await api.cases.listDocuments(token, caseId);
-                setDocumentUrls(response.documents);
+                if (!cancelled) setDocumentUrls(response.documents);
             } catch (error) {
-                console.error("Failed to fetch document URLs:", error);
+                if (!cancelled) console.error("Failed to fetch document URLs:", error);
             }
         };
 
         fetchUrls();
+        return () => { cancelled = true; };
     }, [successfulDocIds, caseId, getToken]);
 
     // Create a lookup map for document URLs by ID
@@ -131,12 +132,8 @@ export function IngestionPanel({
     }, [documentUrls]);
 
     // Count documents by status
-    const successDocs = documents.filter(d => d.ai_status === 'SUCCESS');
     const pendingDocs = documents.filter(d => ['PENDING', 'PROCESSING'].includes(d.ai_status));
     const errorDocs = documents.filter(d => d.ai_status === 'ERROR');
-
-    // Can generate if we have at least one successfully processed document
-    const canGenerate = successDocs.length > 0 && !isGeneratingFinal && pendingDocs.length === 0;
 
     // Show warning if some docs failed
     const hasErrors = errorDocs.length > 0;
@@ -163,7 +160,7 @@ export function IngestionPanel({
                         {documents.length > 0 && (
                             <CaseFileUploader
                                 caseId={caseId}
-                                onUploadComplete={() => onUpload([])}
+                                onUploadComplete={() => onUpload()}
                             />
                         )}
                     </div>
@@ -172,7 +169,7 @@ export function IngestionPanel({
                     {documents.length === 0 ? (
                         <CaseFileUploader
                             caseId={caseId}
-                            onUploadComplete={() => onUpload([])}
+                            onUploadComplete={() => onUpload()}
                             trigger={
                                 <div className="flex flex-col items-center justify-center py-12 px-4 rounded-lg border-2 border-dashed border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50 cursor-pointer transition-all">
                                     <div className="p-4 rounded-full bg-background shadow-sm mb-4">
@@ -275,7 +272,7 @@ export function IngestionPanel({
                             streamState={preliminaryStreamState ?? "idle"}
                             streamedThoughts={preliminaryStreamedThoughts ?? ""}
                             streamedContent={preliminaryStreamedContent ?? ""}
-                            onGenerateStream={() => { }} // Not passed yet, maybe needs to be added to interface or ignored if handled by hook
+                            onGenerateStream={onPreliminaryGenerateStream}
                         />
                     )
                 ) : <Card className="h-48 animate-pulse bg-muted/30" />}

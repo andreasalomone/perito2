@@ -95,7 +95,7 @@ export function DocumentAnalysisCard({
     isLoading,
     isGenerating,
     onGenerate,
-}: DocumentAnalysisCardProps) {
+}: Readonly<DocumentAnalysisCardProps>) {
     const hasAnalysis = analysis !== null;
     const isBlocked = pendingDocs > 0;
     const scrollRef = useRef<HTMLDivElement>(null);

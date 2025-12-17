@@ -47,7 +47,6 @@ export default function CaseWorkspace() {
     const preliminaryReportHook = usePreliminaryReport(caseId, isProcessingDocs ?? false);
 
     // Streaming hook for preliminary report (chain of thought visibility)
-    // Streaming hook for preliminary report (chain of thought visibility)
     const preliminaryStreamHook = usePreliminaryReportStream(caseId);
     // Streaming hook for final report
     const finalReportStreamHook = useFinalReportStream(caseId);
@@ -291,8 +290,7 @@ export default function CaseWorkspace() {
                         <IngestionPanel
                             caseData={caseData}
                             caseId={caseId as string}
-                            isUploading={false}
-                            onUpload={async (files) => {
+                            onUpload={async () => {
                                 await mutate();
                             }}
                             onRemoveDocument={handleDeleteDocument}
@@ -304,6 +302,7 @@ export default function CaseWorkspace() {
                             preliminaryStreamState={preliminaryStreamHook.state}
                             preliminaryStreamedThoughts={preliminaryStreamHook.thoughts}
                             preliminaryStreamedContent={preliminaryStreamHook.content}
+                            onPreliminaryGenerateStream={preliminaryStreamHook.generateStream}
 
                             // Streaming Props (Final Report)
                             onGenerateFinalReport={finalReportStreamHook.generateStream}

@@ -55,7 +55,7 @@ export function FinalReportCard({
     // Dialog States
     const [showNotesDialog, setShowNotesDialog] = useState(false);
     const [showDownloadDialog, setShowDownloadDialog] = useState(false);
-    const [showEditDialog, setShowEditDialog] = useState(false); // NEW
+    const [showEditDialog, setShowEditDialog] = useState(false);
     const [showCloseDialog, setShowCloseDialog] = useState(false);
 
     // Derived Data
