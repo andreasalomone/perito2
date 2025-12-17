@@ -272,6 +272,28 @@ MAX_REPORT_CHARS = 100_000  # ~25k tokens
 MIN_CONTENT_CHARS = 100
 
 
+
+async def extract_case_details_from_text(
+    combined_text: str,
+) -> CaseDetailsExtractionResult:
+    """
+    Extract structured case details from concatenated document text.
+
+    Used by Document Analysis flow to populate CaseDetailsPanel
+    with extracted fields (excluding user-confirmed ones).
+    """
+    if not combined_text or len(combined_text.strip()) < MIN_CONTENT_CHARS:
+        return CaseDetailsExtractionResult(
+            extraction_success=False,
+            error_message="Insufficient text for extraction"
+        )
+
+    # Use existing LLM extraction logic
+    # Reuse the same helper that extract_case_details_from_docx uses internally
+    # Note: _call_extraction_llm is what we'll extract out or reuse
+    return await _call_extraction_llm(combined_text)
+
+
 async def extract_case_details_from_docx(
     gcs_path: str,
 ) -> CaseDetailsExtractionResult:
@@ -460,6 +482,18 @@ async def extract_case_details_from_docx(
     )
 
 
+
+# Fields that should NEVER be overwritten by AI extraction
+# These are user-confirmed values from case creation
+PROTECTED_FIELDS = frozenset({
+    "reference_code",      # User enters on case creation (= Ns. Rif)
+    "ns_rif",              # Should only be set if user entered reference_code
+    "client_id",           # User selects from dropdown
+    "assicurato_id",       # User selects from dropdown
+    "assicurato",          # String field - prefer assicurato_rel from dropdown
+})
+
+
 async def update_case_from_extraction(
     case_id: str,
     org_id: str,
@@ -531,6 +565,11 @@ async def update_case_from_extraction(
         if new_value is None:
             continue  # Skip null extracted values
 
+        # CRITICAL: Never overwrite user-confirmed fields
+        if field_name in PROTECTED_FIELDS:
+            logger.debug(f"Skipping protected field: {field_name}")
+            continue
+
         current_value = getattr(case, field_name, None)
 
         # Skip if field already has value and we're not overwriting
@@ -544,7 +583,8 @@ async def update_case_from_extraction(
         logger.debug(f"Updated {field_name}")
 
     # SPECIAL HANDLING: cliente -> client_id via fuzzy matching
-    if extraction_result.cliente and (case.client_id is None or overwrite_existing):
+    # ONLY if user did NOT already select a client (client_id is null)
+    if extraction_result.cliente and case.client_id is None:
         try:
             from app.db.database import SessionLocal
             from app.services.client_matcher import find_or_create_client

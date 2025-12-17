@@ -915,6 +915,51 @@ async def create_document_analysis(
             force=force,
         )
 
+        # NEW: Extract case details from same documents (non-blocking)
+        try:
+            from app.models.documents import Document
+            from app.schemas.enums import ExtractionStatus
+            from app.services.case_details_extractor import (
+                extract_case_details_from_text,
+                update_case_from_extraction,
+            )
+
+            # Build combined text from document extractions
+            docs_stmt = select(Document).where(
+                Document.case_id == case_id,
+                Document.ai_status == ExtractionStatus.SUCCESS,
+                Document.deleted_at.is_(None)
+            )
+            docs_result = await async_db.execute(docs_stmt)
+            docs = docs_result.scalars().all()
+
+            all_text = []
+            for doc in docs:
+                if doc.ai_extracted_data:
+                    entries = doc.ai_extracted_data.get("entries", []) if isinstance(doc.ai_extracted_data, dict) else []
+                    for entry in entries:
+                        if isinstance(entry, dict) and entry.get("type") == "text":
+                            content = entry.get("content", "")
+                            if content:
+                                all_text.append(content)
+
+            combined = "\n\n---\n\n".join(all_text)
+
+            if combined and len(combined) > 100:
+                extraction_result = await extract_case_details_from_text(combined)
+                if extraction_result.extraction_success:
+                    await update_case_from_extraction(
+                        case_id=str(case_id),
+                        org_id=str(case.organization_id),
+                        extraction_result=extraction_result,
+                        db=async_db,
+                        overwrite_existing=False,  # NEVER overwrite user data
+                    )
+                    logger.info(f"Case details extraction completed for {case_id}")
+        except Exception as e:
+            # Non-blocking - log and continue
+            logger.warning(f"Case details extraction failed (non-critical): {e}")
+
         return {"analysis": analysis, "generated": True}
 
     except document_analysis_service.AnalysisBlockedError as e:

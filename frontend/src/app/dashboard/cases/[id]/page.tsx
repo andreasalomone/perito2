@@ -26,6 +26,7 @@ import {
     ClosurePanel,
     ReportLanguage,
 } from "@/components/cases/workflow";
+import CaseDetailsPanel from "@/components/cases/CaseDetailsPanel";
 
 export default function CaseWorkspace() {
     const { id } = useParams();
@@ -333,38 +334,47 @@ export default function CaseWorkspace() {
                         onRetryGeneration={handleGenerate}
                     />
                 ) : displayStep === 1 ? (
-                    <IngestionPanel
-                        caseData={caseData}
-                        caseId={caseId as string}
-                        onUploadComplete={mutate}
-                        onGenerate={handleGenerate}
-                        onDeleteDocument={handleDeleteDocument}
-                        isGenerating={isGeneratingReport ?? false}
-                        isProcessingDocs={isProcessingDocs ?? false}
-                        documentAnalysis={{
-                            analysis: documentAnalysisHook.analysis,
-                            isStale: documentAnalysisHook.isStale,
-                            canAnalyze: documentAnalysisHook.canAnalyze,
-                            pendingDocs: documentAnalysisHook.pendingDocs,
-                            isLoading: documentAnalysisHook.isLoading,
-                            isGenerating: documentAnalysisHook.isGenerating,
-                            onGenerate: documentAnalysisHook.generate,
-                        }}
-                        preliminaryReport={{
-                            report: preliminaryReportHook.report,
-                            canGenerate: preliminaryReportHook.canGenerate,
-                            pendingDocs: preliminaryReportHook.pendingDocs,
-                            isLoading: preliminaryReportHook.isLoading,
-                            isGenerating: preliminaryReportHook.isGenerating || streamingHook.isStreaming,
-                            onGenerate: preliminaryReportHook.generate,
-                            // Streaming props
-                            streamingEnabled: true,
-                            streamState: streamingHook.state,
-                            streamedThoughts: streamingHook.thoughts,
-                            streamedContent: streamingHook.content,
-                            onGenerateStream: streamingHook.generateStream,
-                        }}
-                    />
+                    <>
+                        <IngestionPanel
+                            caseData={caseData}
+                            caseId={caseId as string}
+                            onUploadComplete={mutate}
+                            onGenerate={handleGenerate}
+                            onDeleteDocument={handleDeleteDocument}
+                            isGenerating={isGeneratingReport ?? false}
+                            isProcessingDocs={isProcessingDocs ?? false}
+                            documentAnalysis={{
+                                analysis: documentAnalysisHook.analysis,
+                                isStale: documentAnalysisHook.isStale,
+                                canAnalyze: documentAnalysisHook.canAnalyze,
+                                pendingDocs: documentAnalysisHook.pendingDocs,
+                                isLoading: documentAnalysisHook.isLoading,
+                                isGenerating: documentAnalysisHook.isGenerating,
+                                onGenerate: async (force) => {
+                                    await documentAnalysisHook.generate(force);
+                                    mutate(); // Refetch case data to show extracted fields
+                                },
+                            }}
+                            preliminaryReport={{
+                                report: preliminaryReportHook.report,
+                                canGenerate: preliminaryReportHook.canGenerate,
+                                pendingDocs: preliminaryReportHook.pendingDocs,
+                                isLoading: preliminaryReportHook.isLoading,
+                                isGenerating: preliminaryReportHook.isGenerating || streamingHook.isStreaming,
+                                onGenerate: preliminaryReportHook.generate,
+                                // Streaming props
+                                streamingEnabled: true,
+                                streamState: streamingHook.state,
+                                streamedThoughts: streamingHook.thoughts,
+                                streamedContent: streamingHook.content,
+                                onGenerateStream: streamingHook.generateStream,
+                            }}
+                        />
+                        <CaseDetailsPanel
+                            caseDetail={caseData}
+                            onUpdate={(updated) => mutate(updated, false)}
+                        />
+                    </>
                 ) : displayStep === 3 ? (
                     <ReviewPanel
                         caseData={caseData}

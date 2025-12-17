@@ -360,18 +360,21 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
 
     db.commit()
 
+
     # 5. Trigger async extraction of case details
-    # MUST be AFTER commit to ensure case is in CLOSED state
-    try:
-        trigger_case_details_extraction_task(
-            case_id=str(case_id),
-            organization_id=str(org_id),
-            final_docx_path=final_docx_path,
-            overwrite_existing=False,  # Preserve existing manual entries
-        )
-    except Exception as e:
-        # Don't fail finalization if extraction trigger fails
-        logger.error(f"Failed to trigger case details extraction: {e}")
+    # REMOVED: Now handled during "Document Analysis" phase (cases.py)
+    # trigger_case_details_extraction_task(...)
+    # try:
+    #     trigger_case_details_extraction_task(
+    #         case_id=str(case_id),
+    #         organization_id=str(org_id),
+    #         final_docx_path=final_docx_path,
+    #         overwrite_existing=False,  # Preserve existing manual entries
+    #     )
+    # except Exception as e:
+    #     # Don't fail finalization if extraction trigger fails
+    #     logger.error(f"Failed to trigger case details extraction: {e}")
+
 
     return final_version
 

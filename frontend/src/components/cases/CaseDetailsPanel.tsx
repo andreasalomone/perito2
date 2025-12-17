@@ -39,8 +39,7 @@ const SECTIONS = [
         icon: FileSpreadsheet,
         color: "text-blue-500",
         fields: [
-            { key: "ns_rif", label: "Ns. Rif", type: "number" },
-            { key: "reference_code", label: "Reference Code", type: "text" },
+            { key: "reference_code", label: "Ns. Rif", type: "text" },
             { key: "polizza", label: "Polizza", type: "text" },
             { key: "tipo_perizia", label: "Tipo Perizia", type: "text" },
             { key: "data_sinistro", label: "Data Sinistro", type: "date" },
@@ -200,7 +199,7 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
 export default function CaseDetailsPanel({ caseDetail, onUpdate }: Props) {
     const { getToken } = useAuth();
     const [editingKey, setEditingKey] = useState<string | null>(null);
-    const [isOpen, setIsOpen] = useState(true);
+    const [isOpen, setIsOpen] = useState(false); // Default: collapsed
 
     const handleSave = async (key: string, newVal: string | number | null) => {
         // Optimistic check
