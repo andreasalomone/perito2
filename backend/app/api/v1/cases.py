@@ -555,7 +555,7 @@ async def trigger_generation(
 
 @router.post("/{case_id}/final-report/stream")
 async def stream_final_report_endpoint(
-    case_id: str,
+    case_id: UUID,
     payload: schemas.GeneratePayload,
     current_user: Annotated[dict[str, Any], Depends(get_current_user_token)],
     db: AsyncSession = Depends(get_async_db),
@@ -565,12 +565,18 @@ async def stream_final_report_endpoint(
     Returns NDJSON stream with "thought" and "content" events.
     """
     # RLS in get_async_db ensures user can only see their own cases.
-    # No extra check needed against payload.organization_id since valid requests don't provide it.
+    # Query user's organization_id from the database (token only has uid/email)
+    result = await db.execute(
+        select(User).where(User.id == current_user["uid"])
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=403, detail="User account not found.")
 
     return StreamingResponse(
         generation_service.stream_final_report(
-            case_id=case_id,
-            organization_id=str(current_user["oid"]),
+            case_id=str(case_id),
+            organization_id=str(user.organization_id),
             db=db,
             language=payload.language,
             extra_instructions=payload.extra_instructions,
