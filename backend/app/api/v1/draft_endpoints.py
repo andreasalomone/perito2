@@ -30,7 +30,7 @@ router = APIRouter()
 
 
 class OpenInDocsRequest(BaseModel):
-    template: Literal["bn", "salomone"]
+    template: Literal["default", "bn", "salomone"]
 
 
 class OpenInDocsResponse(BaseModel):
@@ -119,12 +119,20 @@ async def open_in_docs(
             docx_stream = await asyncio.to_thread(
                 docx_generator_salomone.create_styled_docx, version.ai_raw_output
             )
-        else:
+        elif payload.template == "bn":
             from app.services import docx_generator
 
             docx_stream = await asyncio.to_thread(
                 docx_generator.create_styled_docx, version.ai_raw_output
             )
+        elif payload.template == "default":
+            from app.services import docx_generator_default
+
+            docx_stream = await asyncio.to_thread(
+                docx_generator_default.create_styled_docx, version.ai_raw_output
+            )
+        else:
+            raise ValueError(f"Invalid template type: {payload.template}")
 
         # 5. Upload to Google Docs
         filename = f"{version.case.reference_code}_v{version.version_number}"

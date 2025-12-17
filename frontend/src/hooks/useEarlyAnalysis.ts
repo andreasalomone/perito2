@@ -311,3 +311,147 @@ export function usePreliminaryReportStream(caseId: string | undefined) {
     };
 }
 
+/**
+ * Hook for streaming Final Report.
+ * Targeting: /api/v1/cases/{caseId}/final-report/stream
+ */
+export function useFinalReportStream(caseId: string | undefined) {
+    const { getToken } = useAuth();
+    const [result, setResult] = useState<StreamingResult>({
+        thoughts: "",
+        content: "",
+        state: "idle",
+        error: null,
+    });
+
+    const reset = useCallback(() => {
+        setResult({
+            thoughts: "",
+            content: "",
+            state: "idle",
+            error: null,
+        });
+    }, []);
+
+    const generateStream = useCallback(async (language: string, extraInstructions?: string) => {
+        if (!caseId) return;
+
+        // Reset state
+        setResult({
+            thoughts: "",
+            content: "",
+            state: "thinking", // Initial state
+            error: null,
+        });
+
+        try {
+            const token = await getToken();
+            if (!token) throw new Error("No token available");
+
+            const baseUrl = getApiUrl()?.replace(/\/$/, "") || "";
+            const response = await fetch(
+                `${baseUrl}/api/v1/cases/${caseId}/final-report/stream`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Authorization": `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        language,
+                        extra_instructions: extraInstructions
+                    })
+                }
+            );
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || `HTTP ${response.status}`);
+            }
+
+            const reader = response.body?.getReader();
+            const decoder = new TextDecoder();
+
+            if (!reader) {
+                throw new Error("No response body");
+            }
+
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || "";
+
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+
+                    try {
+                        const event = JSON.parse(line);
+
+                        if (event.type === "thought") {
+                            setResult(prev => ({
+                                ...prev,
+                                thoughts: prev.thoughts + event.text,
+                                state: "thinking",
+                            }));
+                        } else if (event.type === "content") {
+                            setResult(prev => ({
+                                ...prev,
+                                content: prev.content + event.text,
+                                state: "streaming",
+                            }));
+                        } else if (event.type === "done") {
+                            setResult(prev => ({
+                                ...prev,
+                                state: "done",
+                            }));
+                        } else if (event.type === "error") {
+                            setResult(prev => ({
+                                ...prev,
+                                state: "error",
+                                error: event.text,
+                            }));
+                            toast.error(event.text);
+                        }
+                    } catch {
+                        // Skip
+                    }
+                }
+            }
+
+            // Flush buffer
+            if (buffer.trim()) {
+                try {
+                    const event = JSON.parse(buffer);
+                    if (event.type === "done") {
+                        setResult(prev => ({ ...prev, state: "done" }));
+                    }
+                } catch { }
+            }
+
+            toast.success("Report finale generato");
+
+        } catch (err: any) {
+            const message = err?.message || "Errore durante lo streaming";
+            setResult(prev => ({
+                ...prev,
+                state: "error",
+                error: message,
+            }));
+            toast.error(message);
+        }
+    }, [caseId, getToken]);
+
+    return {
+        ...result,
+        generateStream,
+        reset,
+        isStreaming: result.state === "thinking" || result.state === "streaming",
+    };
+}
+
+

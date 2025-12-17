@@ -312,6 +312,8 @@ class PromptBuilderService:
             "italian": None,  # No instruction needed for default
             "english": "English",
             "spanish": "Spanish",
+            "french": "French",
+            "german": "German",
         }
 
         # Normalize and validate language (reject unknown values)

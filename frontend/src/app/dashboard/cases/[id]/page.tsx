@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useConfig } from "@/context/ConfigContext";
@@ -13,18 +13,14 @@ import { toast } from "sonner";
 import { handleApiError } from "@/lib/error";
 import { TemplateType } from "@/components/cases/VersionItem";
 
-import { useCaseDetail, WorkflowStep } from "@/hooks/useCaseDetail";
-import { useDocumentAnalysis, usePreliminaryReport, usePreliminaryReportStream } from "@/hooks/useEarlyAnalysis";
+import { useCaseDetail } from "@/hooks/useCaseDetail";
+import { useDocumentAnalysis, usePreliminaryReport, usePreliminaryReportStream, useFinalReportStream } from "@/hooks/useEarlyAnalysis";
 import { api } from "@/lib/api";
 import { mutate as globalMutate } from 'swr';
 
-// Workflow components
 import {
     ErrorStateOverlay,
     IngestionPanel,
-    ReviewPanel,
-    ClosurePanel,
-    ReportLanguage,
 } from "@/components/cases/workflow";
 import CaseDetailsPanel from "@/components/cases/CaseDetailsPanel";
 
@@ -35,17 +31,14 @@ export default function CaseWorkspace() {
     const { apiUrl } = useConfig();
     const caseId = Array.isArray(id) ? id[0] : id;
 
-    // For backward navigation: allow manual step override (only numeric steps 1-4)
-    const [manualStep, setManualStep] = useState<1 | 2 | 3 | 4 | null>(null);
+
 
     const {
         caseData,
         isLoading,
         isError,
         mutate,
-        isGeneratingReport,
         isProcessingDocs,
-        setIsGenerating,
         currentStep,
     } = useCaseDetail(caseId);
 
@@ -54,7 +47,10 @@ export default function CaseWorkspace() {
     const preliminaryReportHook = usePreliminaryReport(caseId, isProcessingDocs ?? false);
 
     // Streaming hook for preliminary report (chain of thought visibility)
-    const streamingHook = usePreliminaryReportStream(caseId);
+    // Streaming hook for preliminary report (chain of thought visibility)
+    const preliminaryStreamHook = usePreliminaryReportStream(caseId);
+    // Streaming hook for final report
+    const finalReportStreamHook = useFinalReportStream(caseId);
 
     // Redirect CLOSED/finalized cases to summary page
     useEffect(() => {
@@ -68,51 +64,23 @@ export default function CaseWorkspace() {
         }
     }, [caseData, isLoading, caseId, router]);
 
-    // Reset manual step only when workflow naturally progresses forward
-    // We use a ref to track the previous currentStep to detect forward progress
-    const prevCurrentStepRef = useRef<WorkflowStep>(currentStep);
-    useEffect(() => {
-        const prevStep = prevCurrentStepRef.current;
-        prevCurrentStepRef.current = currentStep;
 
-        // Only clear manualStep if:
-        // 1. We have a manualStep set
-        // 2. The workflow has naturally progressed forward (currentStep increased)
-        // 3. We're not in error state
-        if (
-            manualStep !== null &&
-            currentStep !== 'ERROR' &&
-            typeof currentStep === 'number' &&
-            typeof prevStep === 'number' &&
-            currentStep > prevStep
-        ) {
-            setManualStep(null);
-        }
-    }, [currentStep, manualStep]);
-
-    // Determine which step to display (manualStep overrides currentStep when set)
-    // We treat step 2 (Processing) as step 1 (Ingestion/Analysis) to keep the Dashboard UI consistent
-    const displayStep: WorkflowStep = manualStep ?? (currentStep === 2 ? 1 : currentStep);
 
     // --- Handlers ---
 
-    const handleGenerate = useCallback(async (language: ReportLanguage = "italian", extraInstructions?: string) => {
-        setIsGenerating(true);
+    // Note: handleGenerate (blocking) is kept for fallback but UI uses streaming hook now.
+    // We implement handleUpdateNotes for the new functionality
+    const handleUpdateNotes = useCallback(async (notes: string) => {
+        if (!caseId) return;
         try {
             const token = await getToken();
-            await axios.post(`${apiUrl}/api/v1/cases/${caseId}/generate`, {
-                language,
-                extra_instructions: extraInstructions || null
-            }, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            toast.success("Generazione avviata! Il sistema ti avviserà al termine.");
+            await api.cases.update(token, caseId, { note: notes });
+            toast.success("Note salvate");
             mutate();
         } catch (error) {
-            handleApiError(error, "Errore durante l'avvio della generazione");
-            setIsGenerating(false);
+            handleApiError(error, "Errore salvataggio note");
         }
-    }, [setIsGenerating, getToken, apiUrl, caseId, mutate]);
+    }, [caseId, getToken, mutate]);
 
     const handleDownload = useCallback(async (v: ReportVersion, template: TemplateType) => {
         try {
@@ -247,16 +215,7 @@ export default function CaseWorkspace() {
         }
     }, [caseId, getToken, apiUrl, router]);
 
-    // handleStepClick removed - WorkflowStepper no longer used
 
-    const handleProceedToClosure = () => {
-        // Move to step 4 (manual override since we don't have a version marked as "ready for closure")
-        setManualStep(4);
-    };
-
-    const handleGoBackToIngestion = () => {
-        setManualStep(1);
-    };
 
     // --- Render States ---
 
@@ -319,77 +278,51 @@ export default function CaseWorkspace() {
                 </div>
             </div>
 
-            {/* Workflow Layout: Stepper + Content */}
-
-
-
-
-
-            {/* Main: Step Content */}
+            {/* Main: Consolidated Workflow (Ingestion -> Analysis -> Final Report) */}
             <main className="min-h-[500px]">
-                {displayStep === 'ERROR' ? (
+                {currentStep === 'ERROR' ? (
                     <ErrorStateOverlay
                         caseData={caseData}
                         onDeleteDocument={handleDeleteDocument}
-                        onRetryGeneration={handleGenerate}
+                        onRetryGeneration={() => finalReportStreamHook.generateStream("italian")} // Simple retry
                     />
-                ) : displayStep === 1 ? (
+                ) : (
                     <>
                         <IngestionPanel
                             caseData={caseData}
                             caseId={caseId as string}
-                            onUploadComplete={mutate}
-                            onGenerate={handleGenerate}
-                            onDeleteDocument={handleDeleteDocument}
-                            isGenerating={isGeneratingReport ?? false}
-                            isProcessingDocs={isProcessingDocs ?? false}
-                            documentAnalysis={{
-                                analysis: documentAnalysisHook.analysis,
-                                isStale: documentAnalysisHook.isStale,
-                                canAnalyze: documentAnalysisHook.canAnalyze,
-                                pendingDocs: documentAnalysisHook.pendingDocs,
-                                isLoading: documentAnalysisHook.isLoading,
-                                isGenerating: documentAnalysisHook.isGenerating,
-                                onGenerate: async (force) => {
-                                    await documentAnalysisHook.generate(force);
-                                    mutate(); // Refetch case data to show extracted fields
-                                },
+                            isUploading={false}
+                            onUpload={async (files) => {
+                                await mutate();
                             }}
-                            preliminaryReport={{
-                                report: preliminaryReportHook.report,
-                                canGenerate: preliminaryReportHook.canGenerate,
-                                pendingDocs: preliminaryReportHook.pendingDocs,
-                                isLoading: preliminaryReportHook.isLoading,
-                                isGenerating: preliminaryReportHook.isGenerating || streamingHook.isStreaming,
-                                onGenerate: preliminaryReportHook.generate,
-                                // Streaming props
-                                streamingEnabled: true,
-                                streamState: streamingHook.state,
-                                streamedThoughts: streamingHook.thoughts,
-                                streamedContent: streamingHook.content,
-                                onGenerateStream: streamingHook.generateStream,
-                            }}
+                            onRemoveDocument={handleDeleteDocument}
+                            onAnalyzeDocuments={(force) => documentAnalysisHook.generate(force)}
+                            onGeneratePreliminary={preliminaryReportHook.generate}
+
+                            // Streaming Props (Preliminary)
+                            preliminaryStreamState={preliminaryStreamHook.state}
+                            preliminaryStreamedThoughts={preliminaryStreamHook.thoughts}
+                            preliminaryStreamedContent={preliminaryStreamHook.content}
+
+                            // Streaming Props (Final Report)
+                            onGenerateFinalReport={finalReportStreamHook.generateStream}
+                            finalReportStreamState={finalReportStreamHook.state}
+                            finalReportStreamedThoughts={finalReportStreamHook.thoughts}
+                            finalReportStreamedContent={finalReportStreamHook.content}
+
+                            // Actions
+                            onUpdateNotes={handleUpdateNotes}
+                            onDownloadFinalReport={handleDownload}
+                            onFinalizeCase={handleFinalize}
+                            onConfirmDocs={handleConfirmDocs}
+                            onOpenInDocs={handleOpenInDocs}
                         />
                         <CaseDetailsPanel
                             caseDetail={caseData}
                             onUpdate={(updated) => mutate(updated, false)}
                         />
                     </>
-                ) : displayStep === 3 ? (
-                    <ReviewPanel
-                        caseData={caseData}
-                        onDownload={handleDownload}
-                        onOpenInDocs={handleOpenInDocs}
-                        onProceedToClosure={handleProceedToClosure}
-                        onGoBackToIngestion={handleGoBackToIngestion}
-                    />
-                ) : displayStep === 4 ? (
-                    <ClosurePanel
-                        caseData={caseData}
-                        onFinalize={handleFinalize}
-                        onConfirmDocs={handleConfirmDocs}
-                    />
-                ) : null}
+                )}
             </main>
 
         </div >

@@ -31,32 +31,7 @@ export default function DashboardPage() {
         client_id: clientIdParam || undefined
     });
 
-    if (isLoading) {
-        return (
-            <div className="space-y-4 max-w-7xl mx-auto px-4 md:px-0">
-                <div className="h-32 bg-muted rounded-lg animate-pulse mb-8" />
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {[1, 2, 3, 4, 5, 6].map((i) => (
-                        <div key={i} className="h-48 bg-muted rounded-lg animate-pulse" />
-                    ))}
-                </div>
-            </div>
-        );
-    }
 
-    if (isError) {
-        return (
-            <div className="flex flex-col items-center justify-center h-64 text-center space-y-4">
-                <AlertCircle className="h-12 w-12 text-destructive" />
-                <h3 className="text-lg font-semibold">Qualcosa è andato storto</h3>
-                <p className="text-muted-foreground">Impossibile caricare i sinistri.</p>
-                <Button onClick={() => mutate()} variant="outline">
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Riprova
-                </Button>
-            </div>
-        );
-    }
 
     // Apply client-side filters
     const allCases = cases || [];
@@ -65,7 +40,35 @@ export default function DashboardPage() {
         : allCases;
 
     // View Rendering Logic
+    // View Rendering Logic
     const renderContent = () => {
+        if (isLoading) {
+            return (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                        <div key={i} className="h-[280px] bg-muted/40 rounded-xl animate-pulse border border-border/50" />
+                    ))}
+                </div>
+            );
+        }
+
+        if (isError) {
+            return (
+                <div className="flex flex-col items-center justify-center h-64 text-center space-y-4 py-12">
+                    <div className="p-4 bg-destructive/10 rounded-full">
+                        <AlertCircle className="h-8 w-8 text-destructive" />
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-semibold">Qualcosa è andato storto</h3>
+                        <p className="text-muted-foreground max-w-sm mx-auto mt-1">Impossibile caricare i sinistri. Verifica la connessione e riprova.</p>
+                    </div>
+                    <Button onClick={() => mutate()} variant="outline" className="mt-4">
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Riprova
+                    </Button>
+                </div>
+            );
+        }
         if (allCases.length === 0) {
             return (
                 <Card className="border-dashed border-2 bg-muted/10 mt-8">

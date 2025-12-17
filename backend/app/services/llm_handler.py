@@ -13,12 +13,13 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Deque, Dict, List, Optional, Protocol, Set, Tuple
+from typing import Any, AsyncGenerator, Deque, Dict, List, Optional, Protocol, Set, Tuple
 
 # Google GenAI imports (Assumed installed)
 from google import genai
 from google.api_core import exceptions as google_exceptions
 from google.genai import errors as genai_errors
+from google.genai import types
 
 # Use pydantic v2
 from pydantic import BaseModel, ConfigDict, Field
@@ -491,6 +492,135 @@ class GeminiReportGenerator:
             # Filter to get only types.File objects (have 'name' attribute)
             files_to_cleanup = [f for f in vision_parts if hasattr(f, "name")]
             self._schedule_cleanup(files_to_cleanup)
+
+    async def generate_stream(
+        self,
+        processed_files: List[ProcessedFile],
+        language: str = "italian",
+        extra_instructions: Optional[str] = None,
+        case_context: Optional[Dict[str, str]] = None,
+    ) -> AsyncGenerator[Dict[str, str], None]:
+        """
+        Streams report generation with "Thinking Process" visibility.
+        Yields NDJSON events: {"type": "thought"|"content", "text": "..."}
+
+        Args:
+            processed_files: List of files to process.
+            language: Target output language.
+            extra_instructions: Optional additional instructions.
+            case_context: Optional dict with 'ref_code' and 'client_name'.
+
+        Yields:
+            Dict representing a stream event.
+        """
+        # Cost Safeguard: Limit concurrent executions via instance semaphore
+        async with self._semaphore:
+            # Re-implement preparation logic locally to avoid touching _generate_internal
+            # Ideally this would be shared, but we prioritize safety (no regressions).
+
+            vision_parts: List[Any] = []
+            upload_errors: List[str] = []
+            cache_name: Optional[str] = None
+
+            try:
+                # 1. Context Caching
+                cache_name = self.cache_service.get_or_create_prompt_cache(self.client)
+
+                # 2. Prepare Vision Assets (async for non-blocking I/O)
+                gcs_candidates, upload_candidates, skipped_errors = (
+                    await self._prepare_vision_assets(processed_files)
+                )
+                upload_errors.extend(skipped_errors)
+
+                # 2a. GCS Direct Parts
+                from app.services.gcs_service import gcs_blob_exists
+                from app.services.llm.file_upload_service import create_gcs_direct_part
+
+                check_tasks = [
+                    asyncio.to_thread(gcs_blob_exists, c.gcs_uri) for c in gcs_candidates
+                ]
+                check_results = await asyncio.gather(*check_tasks)
+
+                for candidate, (exists, reason) in zip(
+                    gcs_candidates, check_results, strict=True
+                ):
+                    if not exists:
+                        error_msg = f"Skipping GCS file '{candidate.display_name}': File not found or inaccessible. Reason: {reason}"
+                        logger.warning(error_msg)
+                        upload_errors.append(error_msg)
+                        continue
+
+                    try:
+                        part = create_gcs_direct_part(
+                            candidate.gcs_uri, candidate.mime_type
+                        )
+                        vision_parts.append(part)
+                    except Exception as e:
+                        error_msg = f"GCS direct access failed for {candidate.display_name}: {e}"
+                        logger.warning(error_msg)
+                        upload_errors.append(error_msg)
+
+                # 2b. Upload non-GCS files
+                if upload_candidates:
+                    upload_results = (
+                        await self.file_upload_service.upload_vision_files_batch(
+                            self.client, upload_candidates
+                        )
+                    )
+                    uploaded_files_objs = [
+                        res.gemini_file for res in upload_results if res.success
+                    ]
+                    vision_parts.extend(uploaded_files_objs)
+                    upload_errors.extend(
+                        [res.error_message for res in upload_results if not res.success and res.error_message]
+                    )
+
+                # 3. Build Prompt (using existing service)
+                file_dicts = [f.model_dump(by_alias=True) for f in processed_files]
+                contents = self.prompt_builder_service.build_prompt_parts(
+                    processed_files=file_dicts,
+                    uploaded_file_objects=vision_parts,
+                    upload_error_messages=upload_errors,
+                    use_cache=bool(cache_name),
+                    language=language,
+                    extra_instructions=extra_instructions,
+                    case_context=case_context,
+                )
+
+                # 4. Stream Generation
+                config = self.generation_service.build_generation_config(cache_name)
+                # Force Thinking Config
+                config.thinking_config = types.ThinkingConfig(include_thoughts=True)
+
+                async for attempt in self.retry_policy:
+                    with attempt:
+                        # Use generate_content_stream
+                        stream_response = await self.client.aio.models.generate_content_stream(
+                            model=self.model_name,
+                            contents=contents,
+                            config=config,
+                        )
+
+                        async for chunk in stream_response:
+                            if chunk.candidates and chunk.candidates[0].content.parts:
+                                for part in chunk.candidates[0].content.parts:
+                                    is_thought = getattr(part, "thought", False)
+                                    text = part.text or ""
+                                    if text:
+                                        yield {
+                                            "type": "thought" if is_thought else "content",
+                                            "text": text
+                                        }
+
+            except Exception as e:
+                logger.error(f"LLM Streaming Generation Failed: {e}", exc_info=True)
+                yield {"type": "error", "text": str(e)}
+                raise LLMGenerationError(f"Report generation failed: {str(e)}") from e
+
+            finally:
+                # 5. Cleanup
+                files_to_cleanup = [f for f in vision_parts if hasattr(f, "name")]
+                self._schedule_cleanup(files_to_cleanup)
 
     # Vertex AI supported MIME types for vision assets
     VERTEX_SUPPORTED_MIME_TYPES = frozenset(

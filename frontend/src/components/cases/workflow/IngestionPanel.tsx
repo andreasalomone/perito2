@@ -1,71 +1,44 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { CaseDetail, DocumentAnalysis, PreliminaryReport, DocumentWithUrl } from "@/types";
+import { CaseDetail, DocumentAnalysis, PreliminaryReport, DocumentWithUrl, ReportVersion } from "@/types";
 import type { StreamState } from "@/hooks/useEarlyAnalysis";
 import { CaseFileUploader } from "@/components/cases/CaseFileUploader";
 import { DocumentItem } from "@/components/cases/DocumentItem";
 import { DocumentAnalysisCard } from "@/components/cases/DocumentAnalysisCard";
 import { PreliminaryReportCard } from "@/components/cases/PreliminaryReportCard";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
-import { Upload, UploadCloud, Play, AlertCircle, Loader2, Globe, MessageSquare } from "lucide-react";
-import { AnimatePresence } from "framer-motion";
-import { StaggerList, StaggerItem, ReportGeneratingSkeleton, FadeIn } from "@/components/primitives";
-import { api } from "@/lib/api";
-import { useAuth } from "@/context/AuthContext";
-
-// Language options for report generation
-export type ReportLanguage = "italian" | "english" | "spanish";
-
-const LANGUAGE_OPTIONS: { value: ReportLanguage; label: string }[] = [
-    { value: "italian", label: "Italiano" },
-    { value: "english", label: "English" },
-    { value: "spanish", label: "Español" },
-];
+import { FinalReportCard } from "@/components/cases/FinalReportCard";
+import { TemplateType } from "@/components/cases/VersionItem";
+import { DocumentAnalysisCard } from "@/components/cases/DocumentAnalysisCard";
+import { PreliminaryReportCard } from "@/components/cases/PreliminaryReportCard";
+import { FinalReportCard } from "@/components/cases/FinalReportCard";
+import { ReportVersion, TemplateType } from "@/types"; // Use global types
 
 interface IngestionPanelProps {
     caseData: CaseDetail;
     caseId: string;
-    onUploadComplete: () => void;
-    onGenerate: (language: ReportLanguage, extraInstructions?: string) => Promise<void>;
-    onDeleteDocument: (docId: string) => Promise<void>;
-    isGenerating: boolean;
-    isProcessingDocs: boolean;
-    // Early Analysis props (optional for backward compatibility)
-    documentAnalysis?: {
-        analysis: DocumentAnalysis | null;
-        isStale: boolean;
-        canAnalyze: boolean;
-        pendingDocs: number;
-        isLoading: boolean;
-        isGenerating: boolean;
-        onGenerate: (force?: boolean) => void;
-    };
-    preliminaryReport?: {
-        report: PreliminaryReport | null;
-        canGenerate: boolean;
-        pendingDocs: number;
-        isLoading: boolean;
-        isGenerating: boolean;
-        onGenerate: (force?: boolean) => void;
-        // Streaming props
-        streamingEnabled?: boolean;
-        streamState?: StreamState;
-        streamedThoughts?: string;
-        streamedContent?: string;
-        onGenerateStream?: () => void;
-    };
+    isUploading: boolean;
+    onUpload: (files: File[]) => Promise<void>;
+    onRemoveDocument: (docId: string) => Promise<void>;
+
+    // Analysis & Report Actions
+    onAnalyzeDocuments: (force?: boolean) => void;
+    onGeneratePreliminary: (force?: boolean) => void;
+    // Preliminary Streaming
+    preliminaryStreamState?: StreamState;
+    preliminaryStreamedThoughts?: string;
+    preliminaryStreamedContent?: string;
+
+    // Final Report Props
+    finalReportStreamState?: StreamState;
+    finalReportStreamedThoughts?: string;
+    finalReportStreamedContent?: string;
+    onGenerateFinalReport: (language: string, extraInstructions?: string) => void;
+    onUpdateNotes: (notes: string) => void;
+    onDownloadFinalReport: (version: ReportVersion, template: TemplateType) => Promise<void>;
+    onFinalizeCase: (file: File) => Promise<void>;
+    onConfirmDocs: (versionId: string) => Promise<void>;
+    onOpenInDocs: (version: ReportVersion, template: TemplateType) => Promise<void>;
 }
 
 /**
@@ -78,19 +51,30 @@ interface IngestionPanelProps {
 export function IngestionPanel({
     caseData,
     caseId,
-    onUploadComplete,
-    onGenerate,
-    onDeleteDocument,
-    isGenerating,
-    isProcessingDocs,
-    documentAnalysis,
-    preliminaryReport,
+    isUploading,
+    onUpload,
+    onRemoveDocument,
+    onAnalyzeDocuments,
+    onGeneratePreliminary,
+    preliminaryStreamState,
+    preliminaryStreamedThoughts,
+    preliminaryStreamedContent,
+
+    // Final Report Props
+    finalReportStreamState,
+    finalReportStreamedThoughts,
+    finalReportStreamedContent,
+    onGenerateFinalReport,
+    onUpdateNotes,
+    onDownloadFinalReport,
+    onFinalizeCase,
+    onConfirmDocs,
+    onOpenInDocs,
 }: IngestionPanelProps) {
     const { getToken } = useAuth();
     const documents = caseData?.documents || [];
-    const [selectedLanguage, setSelectedLanguage] = useState<ReportLanguage>("italian");
-    const [extraInstructions, setExtraInstructions] = useState<string>("");
-    const MAX_INSTRUCTIONS_LENGTH = 2000;
+    // Determine if generating final report
+    const isGeneratingFinal = caseData.status === "GENERATING" || finalReportStreamState === "thinking" || finalReportStreamState === "streaming";
 
     // Document URLs for preview/download
     const [documentUrls, setDocumentUrls] = useState<DocumentWithUrl[]>([]);
@@ -137,7 +121,7 @@ export function IngestionPanel({
     const errorDocs = documents.filter(d => d.ai_status === 'ERROR');
 
     // Can generate if we have at least one successfully processed document
-    const canGenerate = successDocs.length > 0 && !isGenerating && !isProcessingDocs;
+    const canGenerate = successDocs.length > 0 && !isGeneratingFinal && pendingDocs.length === 0;
 
     // Show warning if some docs failed
     const hasErrors = errorDocs.length > 0;
@@ -162,7 +146,8 @@ export function IngestionPanel({
                         {documents.length > 0 && (
                             <CaseFileUploader
                                 caseId={caseId}
-                                onUploadComplete={onUploadComplete}
+                                onUpload={onUpload}
+                                isUploading={isUploading}
                             />
                         )}
                     </div>
@@ -171,7 +156,8 @@ export function IngestionPanel({
                     {documents.length === 0 ? (
                         <CaseFileUploader
                             caseId={caseId}
-                            onUploadComplete={onUploadComplete}
+                            onUpload={onUpload}
+                            isUploading={isUploading}
                             trigger={
                                 <div className="flex flex-col items-center justify-center py-12 px-4 rounded-lg border-2 border-dashed border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50 cursor-pointer transition-all">
                                     <div className="p-4 rounded-full bg-background shadow-sm mb-4">
@@ -195,7 +181,7 @@ export function IngestionPanel({
                                             <StaggerItem key={doc.id}>
                                                 <DocumentItem
                                                     doc={doc}
-                                                    onDelete={() => onDeleteDocument(doc.id)}
+                                                    onDelete={() => onRemoveDocument(doc.id)}
                                                     url={urlData?.url}
                                                     canPreview={urlData?.canPreview}
                                                 />
@@ -312,81 +298,25 @@ export function IngestionPanel({
                 </FadeIn>
             )}
 
-            {/* Language Selection & Generate Button */}
-            <div className="flex flex-col gap-4 pt-4">
-                {/* Extra Instructions */}
-                <div className="space-y-2">
-                    <Label htmlFor="extra-instructions" className="flex items-center gap-2 text-sm font-medium">
-                        <MessageSquare className="h-4 w-4" />
-                        Istruzioni Aggiuntive (opzionale)
-                    </Label>
-                    <Textarea
-                        id="extra-instructions"
-                        placeholder="Es: Concentrati sui danni causati dall'acqua. Ignora i dettagli sulla responsabilità."
-                        value={extraInstructions}
-                        onChange={(e) => setExtraInstructions(e.target.value.slice(0, MAX_INSTRUCTIONS_LENGTH))}
-                        disabled={isGenerating || isProcessingDocs}
-                        className="min-h-[80px] resize-none"
-                    />
-                    <p className="text-xs text-muted-foreground text-right">
-                        {extraInstructions.length}/{MAX_INSTRUCTIONS_LENGTH}
-                    </p>
-                    {extraInstructions.length >= MAX_INSTRUCTIONS_LENGTH && (
-                        <p className="text-xs text-amber-600 text-right">Limite raggiunto</p>
-                    )}
-                </div>
-
-                {/* Language and Generate */}
-                <div className="flex flex-col sm:flex-row justify-end items-stretch sm:items-center gap-3">
-                    {/* Language Dropdown */}
-                    <div className="flex items-center gap-2">
-                        <Globe className="h-4 w-4 text-muted-foreground" />
-                        <Select
-                            value={selectedLanguage}
-                            onValueChange={(value) => setSelectedLanguage(value as ReportLanguage)}
-                            disabled={isGenerating || isProcessingDocs}
-                        >
-                            <SelectTrigger className="w-[140px]">
-                                <SelectValue placeholder="Lingua" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {LANGUAGE_OPTIONS.map((lang) => (
-                                    <SelectItem key={lang.value} value={lang.value}>
-                                        {lang.label}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    {/* Generate Button */}
-                    <Button
-                        size="lg"
-                        disabled={!canGenerate}
-                        onClick={() => onGenerate(selectedLanguage, extraInstructions || undefined)}
-                        className="min-w-[200px]"
-                    >
-                        {isGenerating ? (
-                            <>
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                Generazione in corso...
-                            </>
-                        ) : isProcessingDocs ? (
-                            <>
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                Elaborazione documenti...
-                            </>
-                        ) : (
-                            <>
-                                <Play className="h-4 w-4 mr-2" />
-                                Genera Report
-                            </>
-                        )}
-                    </Button>
-                </div>
-            </div>
-
-
+            {/* 3. Final Report Card (Replaces old footer) */}
+            <FinalReportCard
+                caseData={caseData}
+                isGenerating={isGeneratingFinal}
+                onGenerate={onGenerateFinalReport}
+                onUpdateNotes={onUpdateNotes}
+                onDownload={onDownloadFinalReport}
+                onFinalize={onFinalizeCase}
+                onConfirmDocs={onConfirmDocs}
+                onOpenInDocs={onOpenInDocs}
+                streamingEnabled={true}
+                streamState={finalReportStreamState}
+                streamedThoughts={finalReportStreamedThoughts}
+                streamedContent={finalReportStreamedContent}
+            />
         </div>
+    );
+}
+
+        </div >
     );
 }

@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Annotated, Any, List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Response, status, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -538,6 +538,32 @@ async def trigger_generation(
         )
 
     return {"status": "generation_started"}
+
+
+@router.post("/{case_id}/final-report/stream")
+async def stream_final_report_endpoint(
+    case_id: str,
+    payload: schemas.GeneratePayload,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: Annotated[dict[str, Any], Depends(get_current_user_token)] = None,
+):
+    """
+    Generate Final Report (Streaming).
+    Returns NDJSON stream with "thought" and "content" events.
+    """
+    # RLS in get_async_db ensures user can only see their own cases.
+    # No extra check needed against payload.organization_id since valid requests don't provide it.
+
+    return StreamingResponse(
+        generation_service.stream_final_report(
+            case_id=case_id,
+            organization_id=str(current_user["oid"]),
+            db=db,
+            language=payload.language,
+            extra_instructions=payload.extra_instructions
+        ),
+        media_type="application/x-ndjson"
+    )
 
 
 @router.post("/{case_id}/finalize", response_model=schemas.VersionRead)

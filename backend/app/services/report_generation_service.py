@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
+from typing import AsyncGenerator, Optional
 from app.db.database import AsyncSessionLocal
 from app.models import Case, Document, ReportVersion
 from app.schemas.enums import CaseStatus, ExtractionStatus
@@ -683,7 +684,119 @@ async def generate_report_logic(
 
     except Exception as e:
         await _handle_generation_error(case_id, e, db)
-        return  # Return success to Cloud Tasks so it marks the task as completed
+
+async def stream_final_report(
+    case_id: str,
+    organization_id: str,
+    db: AsyncSession,
+    language: str = "italian",
+    extra_instructions: Optional[str] = None,
+) -> AsyncGenerator[str, None]:
+    """
+    Orchestrates streaming final report generation.
+    Yields NDJSON strings.
+    """
+    # 1. Fetch case for context
+    result = await db.execute(
+        select(Case)
+        .options(selectinload(Case.client), selectinload(Case.assicurato_rel))
+        .filter(Case.id == case_id)
+    )
+    case = result.scalars().first()
+    if not case:
+        yield json.dumps({"type": "error", "text": "Case not found"}) + "\n"
+        return
+
+    # 2. Validation
+    # NOTE: We skip idempotency check (force generation) for interactive requests usually,
+    # or we could check existing report. For now, interactive means "do it now".
+
+    # Check docs
+    all_docs = await _validate_documents_ready(case_id, case, db)
+    if all_docs is None:
+        yield json.dumps({"type": "error", "text": "Documents are not ready"}) + "\n"
+        return
+
+    # Check if already finalized
+    existing_final = await db.execute(
+        select(ReportVersion).filter(
+            ReportVersion.case_id == case_id,
+            ReportVersion.is_final == True
+        )
+    )
+    if existing_final.scalars().first():
+        yield json.dumps({"type": "error", "text": "The case is already finalized (ReportFinalizedError)."}) + "\n"
+        return
+
+    # Check if active draft exists (Google Docs)
+    active_draft_res = await db.execute(
+        select(ReportVersion).filter(
+            ReportVersion.case_id == case_id,
+            ReportVersion.is_draft_active == True,
+            ReportVersion.is_final == False
+        )
+    )
+    if active_draft_res.scalars().first():
+        yield json.dumps({"type": "error", "text": "A live draft is currently active in Google Docs. Please sync or close usage before regenerating."}) + "\n"
+        return
+
+    try:
+        # 3. Collect Data
+        processed_data, failed_docs, _ = await _collect_documents_for_generation(case_id, db)
+        if not processed_data:
+            yield json.dumps({"type": "error", "text": "No processed data found"}) + "\n"
+            return
+
+        # 4. Build Context & Models
+        case_context = _build_case_context(case)
+        processed_files_models = [ProcessedFile(**item) for item in processed_data]
+
+        # 5. Stream from LLM
+        # Use the NEW parallel method
+        acc_text = ""
+        async for event in gemini_generator.generate_stream(
+            processed_files=processed_files_models,
+            language=language,
+            extra_instructions=extra_instructions,
+            case_context=case_context,
+        ):
+            # Pass through thoughts and content
+            yield json.dumps(event) + "\n"
+            if event["type"] == "content":
+                acc_text += event["text"]
+
+        # 6. Post-processing (DOCX + DB)
+        if acc_text:
+            # Generate DOCX
+            docx_stream = await asyncio.to_thread(
+                docx_generator.create_styled_docx, acc_text
+            )
+            bucket_name = settings.STORAGE_BUCKET_NAME
+            blob_name = f"reports/{organization_id}/{case_id}/v1_AI_Draft.docx"
+
+            def upload_blob():
+                storage_client = get_storage_client()
+                bucket = storage_client.bucket(bucket_name)
+                blob = bucket.blob(blob_name)
+                blob.upload_from_file(
+                    docx_stream,
+                    content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+                return f"gs://{bucket_name}/{blob_name}"
+
+            final_docx_path = await asyncio.to_thread(upload_blob)
+
+            # Save Version (re-acquire lock to be safe/atomic)
+            await _save_report_version(
+                case_id, organization_id, acc_text, final_docx_path, db
+            )
+
+        yield json.dumps({"type": "done", "text": ""}) + "\n"
+
+    except Exception as e:
+        logger.error(f"Streaming failed: {e}", exc_info=True)
+        yield json.dumps({"type": "error", "text": str(e)}) + "\n"
+
 
 
 async def generate_docx_variant(
