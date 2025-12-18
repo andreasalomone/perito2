@@ -33,7 +33,7 @@ export const ReportVersionSchema = z.object({
     id: z.string().uuid(),
     version_number: z.number(),
     is_final: z.boolean(),
-    source: z.string().optional().nullable(), // 'preliminary' | 'final' | null
+    source: z.string().optional().nullable(), // 'preliminary' | 'final' | 'human' | null
     created_at: z.string().datetime(),
     error_message: z.string().optional().nullable(),
     // Google Docs Live Draft support

@@ -160,7 +160,7 @@ def get_db(
     uid = current_user_token["uid"]
     email = current_user_token.get("email", "unknown")
 
-    logger.info(f"get_db: Processing request for user {uid} ({email})")
+    logger.debug(f"get_db: Processing request for user {uid} ({email})")
 
     try:
         # 1. Set the User UID session variable FIRST
@@ -206,7 +206,7 @@ def get_db(
             )
 
         org_id = str(user_msg.organization_id)
-        logger.info(f"get_db: User {uid} belongs to organization {org_id}")
+        logger.debug(f"get_db: User {uid} belongs to organization {org_id}")
 
         # 3. Set the Full RLS Context (User + Org) using the shared helper
         # This uses is_local=False
@@ -221,7 +221,7 @@ def get_db(
                 status_code=500, detail="Database session initialization failed"
             ) from e
 
-        logger.info(
+        logger.debug(
             f"get_db: Successfully initialized session for user {uid} in org {org_id}"
         )
 

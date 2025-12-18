@@ -20,8 +20,6 @@ from app.services.llm_handler import ProcessedFile, gemini_generator
 
 logger = logging.getLogger(__name__)
 
-# Module-level set to hold background task references and prevent garbage collection
-_active_background_tasks: set = set()
 
 # NOTE: Phase 3 optimization removed the download step - we now use Part.from_uri() directly
 
@@ -566,38 +564,7 @@ async def _save_report_version(
         )
         raise
 
-    # Generate summary in background (fire-and-forget, ~3-5s savings)
-    async def _generate_summary_background():
-        try:
-            async with AsyncSessionLocal() as bg_db:
-                from sqlalchemy import text
-
-                from app.services import summary_service
-
-                # Set RLS context for background session
-                await bg_db.execute(
-                    text("SELECT set_config('app.current_org_id', :org_id, false)"),
-                    {"org_id": organization_id},
-                )
-
-                summary = await summary_service.generate_summary(report_text)
-                if summary:
-                    result = await bg_db.execute(
-                        select(Case).filter(Case.id == case_id).with_for_update()
-                    )
-                    if c := result.scalars().first():
-                        c.ai_summary = summary
-                        await bg_db.commit()
-                        logger.info(
-                            f"✅ Background summary generated for case {case_id}"
-                        )
-        except Exception as e:
-            logger.warning(f"⚠️ Background summary generation failed: {e}")
-
-    # Store task in module-level set to prevent garbage collection
-    task = asyncio.create_task(_generate_summary_background())
-    _active_background_tasks.add(task)
-    task.add_done_callback(_active_background_tasks.discard)
+    # Summary generation moved to case_service.finalize_case (when status becomes CLOSED)
 
 
 async def _handle_generation_error(

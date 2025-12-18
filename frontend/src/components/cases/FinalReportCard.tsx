@@ -59,7 +59,7 @@ export function FinalReportCard({
     const [showCloseDialog, setShowCloseDialog] = useState(false);
 
     // Derived Data - ONLY consider non-preliminary reports for FinalReportCard
-    // Preliminary reports have source:"preliminary", final reports have source:"ai" or null
+    // source values: 'preliminary' (Early Analysis), 'final' (AI report), 'human' (finalized), or null (legacy)
     const versions = (caseData?.report_versions || []).filter(
         v => v.source !== "preliminary"
     );

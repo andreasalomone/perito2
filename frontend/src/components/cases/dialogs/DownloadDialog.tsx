@@ -52,7 +52,7 @@ export function TemplateSelectionDialog({
                     >
                         <Building2 className="h-6 w-6" />
                         <div className="text-center">
-                            <div className="font-semibold">Banca Nazionale</div>
+                            <div className="font-semibold">BN Surveys</div>
                             <div className="text-xs text-muted-foreground">Template specifico per BN</div>
                         </div>
                     </Button>
@@ -64,8 +64,8 @@ export function TemplateSelectionDialog({
                     >
                         <Briefcase className="h-6 w-6" />
                         <div className="text-center">
-                            <div className="font-semibold">Studio Salomone</div>
-                            <div className="text-xs text-muted-foreground">Template ufficiale Studio Salomone</div>
+                            <div className="font-semibold">Salomone e Associati</div>
+                            <div className="text-xs text-muted-foreground">Template ufficiale Salomone</div>
                         </div>
                     </Button>
                 </div>

@@ -53,6 +53,9 @@ extraction_semaphore = asyncio.Semaphore(9)  # Increased for 30-50 doc batch wor
 
 logger = logging.getLogger(__name__)
 
+# Module-level set to hold background task references and prevent garbage collection
+_active_background_tasks: set = set()
+
 SET_ORG_ID_CONFIG_SQL = "SELECT set_config('app.current_org_id', :org_id, false)"
 CONTENT_TYPE_JSON = "application/json"
 
@@ -374,7 +377,7 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
         version_number=next_version,
         docx_storage_path=final_docx_path,
         is_final=True,
-        source="final",  # Mark as final report source
+        source="human",  # User-finalized (uploaded DOCX or confirmed Google Docs)
     )
     db.add(final_version)
     try:
@@ -417,6 +420,41 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
     logger.info(f"Case {case_id} finalized and set to CLOSED status")
 
     db.commit()
+
+    # 5. Generate summary in background (triggered by status CLOSED)
+    if ai_version and ai_version.ai_raw_output:
+        report_text = ai_version.ai_raw_output
+
+        async def _generate_summary_background():
+            try:
+                # Use a fresh async session for background work
+                async with AsyncSessionLocal() as bg_db:
+                    from app.services import summary_service
+
+                    # Set RLS context for background session
+                    await bg_db.execute(
+                        text(SET_ORG_ID_CONFIG_SQL),
+                        {"org_id": str(org_id)},
+                    )
+
+                    summary = await summary_service.generate_summary(report_text)
+                    if summary:
+                        result = await bg_db.execute(
+                            select(Case).filter(Case.id == case_id).with_for_update()
+                        )
+                        if c := result.scalars().first():
+                            c.ai_summary = summary
+                            await bg_db.commit()
+                            logger.info(
+                                f"✅ Background summary generated for case {case_id}"
+                            )
+            except Exception as e:
+                logger.warning(f"⚠️ Background summary generation failed: {e}")
+
+        # Store task in module-level set to prevent garbage collection
+        task = asyncio.create_task(_generate_summary_background())
+        _active_background_tasks.add(task)
+        task.add_done_callback(_active_background_tasks.discard)
 
     return final_version
 
