@@ -22,9 +22,9 @@ security = HTTPBearer(auto_error=False)
 
 # SQL constants to avoid duplication
 SQL_SET_USER_UID = "SELECT set_config('app.current_user_uid', :uid, false)"
-SQL_RESET_USER_UID = "RESET app.current_user_uid;"
-SQL_RESET_ORG_ID = "RESET app.current_org_id;"
-SQL_RESET_RLS_ALL = "RESET app.current_user_uid; RESET app.current_org_id;"
+SQL_RESET_USER_UID = "RESET app.current_user_uid"
+SQL_RESET_ORG_ID = "RESET app.current_org_id"
+# NOTE: SQL_RESET_RLS_ALL removed - asyncpg requires separate statements
 
 
 # -----------------------------------------------------------------------------

@@ -725,9 +725,12 @@ async def run_process_document_extraction_standalone(doc_id: UUID, org_id: str):
             raise
 
 
-async def process_document_extraction(doc_id: UUID, org_id: str, db: AsyncSession):
+async def process_document_extraction(doc_id: UUID, _org_id: str, db: AsyncSession):
     """
     Actual logic to process the document (Download -> Extract -> Save).
+
+    Args:
+        _org_id: Unused but kept for API compatibility with callers.
     """
 
     result = await db.execute(select(Document).filter(Document.id == doc_id))
@@ -763,9 +766,11 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: AsyncSessio
         finally:
             shutil.rmtree(tmp_dir)
 
-    # Auto-generation disabled: User must click "Genera con IA" to trigger report.
-    # logger.info(f"Document {doc.id} extraction complete. Awaiting user action.")
-    await _check_and_trigger_generation(db, doc.case_id, org_id, is_async=True)
+    # Auto-generation DISABLED: User must click "Genera con IA" to trigger report.
+    # This prevents unwanted generation when user intends to upload more documents.
+    logger.info(
+        f"Document {doc.id} extraction complete. Awaiting user action to generate report."
+    )
 
 
 def _perform_extraction_logic(doc: Document, tmp_dir: str):

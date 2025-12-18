@@ -107,7 +107,11 @@ from app.models.base import (  # noqa: F401 - Required for SQLAlchemy model regi
 # -----------------------------------------------------------------------------
 # 4. RLS Cleanup Listeners (Pool Level)
 # -----------------------------------------------------------------------------
-SQL_RESET_RLS_ALL = "RESET app.current_user_uid; RESET app.current_org_id;"
+# CRITICAL: asyncpg does NOT support multiple statements in a single execute().
+# We must execute each RESET separately to avoid "cannot insert multiple commands
+# into a prepared statement" errors that cause connection invalidation.
+SQL_RESET_USER_UID = "RESET app.current_user_uid"
+SQL_RESET_ORG_ID = "RESET app.current_org_id"
 
 
 def _reset_rls_context(dbapi_connection, connection_record):
@@ -115,21 +119,22 @@ def _reset_rls_context(dbapi_connection, connection_record):
     Guaranteed cleanup of RLS context when a connection is returned to the pool.
     This prevents "Context Poisoning" where one user's state leaks to another.
     Handles both pg8000 (sync) and asyncpg (async via sync_engine listener).
+
+    IMPORTANT: Commands are executed separately for asyncpg compatibility.
     """
     try:
         if hasattr(dbapi_connection, "cursor"):
-            # pg8000 / standard DBAPI
+            # pg8000 / standard DBAPI - can batch but we stay consistent
             cursor = dbapi_connection.cursor()
             try:
-                cursor.execute(SQL_RESET_RLS_ALL)
+                cursor.execute(SQL_RESET_USER_UID)
+                cursor.execute(SQL_RESET_ORG_ID)
             finally:
                 cursor.close()
         elif hasattr(dbapi_connection, "execute"):
-            # asyncpg connection (when called via sync_engine listener)
-            # We use await-less execution if possible or a different helper
-            # Actually, asyncpg connections in SQLAlchemy listeners are tricky.
-            # The most robust way is to just run the raw SQL if available.
-            dbapi_connection.execute(SQL_RESET_RLS_ALL)
+            # asyncpg connection - MUST execute separately
+            dbapi_connection.execute(SQL_RESET_USER_UID)
+            dbapi_connection.execute(SQL_RESET_ORG_ID)
         else:
             logger.warning(
                 f"Unknown connection type in RLS reset: {type(dbapi_connection)}"
@@ -146,11 +151,13 @@ def _reset_rls_context(dbapi_connection, connection_record):
             if hasattr(dbapi_connection, "cursor"):
                 cursor = dbapi_connection.cursor()
                 try:
-                    cursor.execute(SQL_RESET_RLS_ALL)
+                    cursor.execute(SQL_RESET_USER_UID)
+                    cursor.execute(SQL_RESET_ORG_ID)
                 finally:
                     cursor.close()
             elif hasattr(dbapi_connection, "execute"):
-                dbapi_connection.execute(SQL_RESET_RLS_ALL)
+                dbapi_connection.execute(SQL_RESET_USER_UID)
+                dbapi_connection.execute(SQL_RESET_ORG_ID)
         except Exception as e2:
             logger.critical(
                 f"CRITICAL: Connection sanitization FAILED: {e2}. Invalidating connection."

@@ -18,6 +18,7 @@ export function useCaseDetail(id: string | undefined) {
         data: caseData,
         error: caseError,
         isLoading,
+        isValidating,
         mutate: mutateCase
     } = useSWR<CaseDetail>(
         user && id ? ['case', id] : null,
@@ -29,9 +30,14 @@ export function useCaseDetail(id: string | undefined) {
         {
             revalidateOnFocus: true,   // Re-fetch full data when tab focused
             refreshInterval: 0,        // DO NOT POLL HEAVY DATA
-            keepPreviousData: true     // FIX: Prevent blank screen during refetch/mutation
+            keepPreviousData: true,    // FIX: Prevent blank screen during refetch/mutation
+            revalidateOnMount: true,   // Ensure fresh data on mount
         }
     );
+
+    // FIX: Only show loading state on INITIAL load, not on refetch
+    // This prevents white screen flash when upload triggers refetch
+    const isInitialLoading = isLoading && !caseData;
 
     // 2. Determine if we need to poll based on case state
     useEffect(() => {
@@ -167,7 +173,8 @@ export function useCaseDetail(id: string | undefined) {
     // Explicit return to avoid object literal syntax errors
     return {
         caseData: displayData,
-        isLoading,
+        isLoading: isInitialLoading, // FIX: Only true on initial load, prevents white screen flash on refetch
+        isValidating,                // NEW: True during any background revalidation (for subtle loading indicators)
         isError: caseError,
         mutate: safeRefresh,
         isGeneratingReport: isGeneratingReport || (shouldPoll && !isProcessingDocs), // optimistic UI fallback
