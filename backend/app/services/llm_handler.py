@@ -1063,6 +1063,11 @@ class LazyGeminiProxy:
             )
             return self._delegate
 
+    async def generate_stream(self, *args, **kwargs) -> AsyncGenerator[Dict[str, str], None]:
+        instance = await self._get_instance()
+        async for item in instance.generate_stream(*args, **kwargs):
+            yield item
+
 
 # Export the proxy as the singleton
 gemini_generator = LazyGeminiProxy()

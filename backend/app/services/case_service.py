@@ -1,3 +1,29 @@
+"""
+Case Service Module.
+
+This module encapsulates the core business logic for managing "Cases" within the RobotPerizia platform.
+It acts as the central orchestrator for the lifecycle of a case, from creation to finalization.
+
+Key Responsibilities:
+1.  **Case Lifecycle Management**: Handles the creation (`create_case_with_client`),
+    versioning (`create_ai_version`), and finalization (`finalize_case`) of claims cases.
+2.  **CRM Integration**: Manages the lookup and creation of Clients and Assicurati (insured parties),
+    ensuring proper organization-level scoping.
+3.  **Asynchronous Task Orchestration**: Enqueues background tasks to Google Cloud Tasks for:
+    - Document data extraction (OCR and LLM processing).
+    - Full case analysis and report generation.
+    - Intelligent Client Enrichment (ICE) for CRM data.
+    - Post-finalization details extraction.
+4.  **Security & Multi-tenancy**: Strictly enforces Row-Level Security (RLS) by setting
+    the `app.current_org_id` and `app.current_user_uid` context in database sessions,
+    especially for background tasks and cross-transactional operations.
+5.  **Local Development Support**: Provides fallback background processing using Python
+    threading when running in local environments (`settings.RUN_LOCALLY`).
+
+The module uses SQLAlchemy for database interactions, Google Cloud Tasks for queueing,
+and integrates with specialized services like `document_processor`, `gcs_service`,
+and `enrichment_service`.
+"""
 import asyncio
 import json
 import logging
@@ -25,6 +51,9 @@ from app.services.gcs_service import download_file_to_temp, get_storage_client
 extraction_semaphore = asyncio.Semaphore(9)  # Increased for 30-50 doc batch workloads
 
 logger = logging.getLogger(__name__)
+
+SET_ORG_ID_CONFIG_SQL = "SELECT set_config('app.current_org_id', :org_id, false)"
+CONTENT_TYPE_JSON = "application/json"
 
 
 from sqlalchemy.exc import IntegrityError
@@ -144,96 +173,9 @@ def create_case_with_client(
     - Transaction management
     """
     try:
-        logger.info(f"Creating case for user {user_uid}")
-
-        # 1. Fetch User (Strict Check)
-        user = db.query(User).filter(User.id == user_uid).first()
-        if not user:
-            raise HTTPException(status_code=403, detail="User account not found.")
-
-        # 2. CRM Logic (Get or Create Client) + ICE Enrichment Trigger
-        client_id = None
-        client = None
-        is_new_client = False
-
-        if case_data.client_name:
-            # Check if client already exists BEFORE get_or_create (for enrichment trigger)
-            existing_client = (
-                db.query(Client)
-                .filter(
-                    Client.name == case_data.client_name,
-                    Client.organization_id == user_org_id,
-                )
-                .first()
-            )
-
-            client = get_or_create_client(db, case_data.client_name, user_org_id)
-            client_id = client.id
-
-            # If we didn't find existing, client is new → trigger enrichment
-            is_new_client = existing_client is None
-
-        if not client_id:
-            client_id = None
-
-        # 2b. Assicurato Logic (Get or Create) - NO LLM enrichment
-        assicurato_id = None
-        assicurato = None
-
-        if case_data.assicurato_name:
-            assicurato = get_or_create_assicurato(
-                db, case_data.assicurato_name, user_org_id
-            )
-            assicurato_id = assicurato.id
-
-        # 3. Create Case
-        new_case = Case(
-            reference_code=case_data.reference_code,
-            organization_id=user_org_id,
-            client_id=client_id,
-            assicurato_id=assicurato_id,
-            creator_id=user_uid,
-            status=CaseStatus.OPEN,
+        return _create_case_logic(
+            user_uid, db, case_data, user_org_id
         )
-
-        db.add(new_case)
-        db.commit()
-
-        # RE-APPLY RLS CONTEXT
-        # db.commit() releases the connection to the pool.
-        # db.refresh() starts a new transaction, potentially on a cleaner/different connection.
-        # We must ensure app.current_org_id is set to allow visibility of the new row.
-        try:
-            db.execute(
-                text("SELECT set_config('app.current_org_id', :oid, false)"),
-                {"oid": str(user_org_id)},
-            )
-            # Re-apply user_uid too just in case (though org_id is the key for row visibility)
-            db.execute(
-                text("SELECT set_config('app.current_user_uid', :uid, false)"),
-                {"uid": user_uid},
-            )
-        except Exception as e:
-            logger.warning(f"Failed to re-apply RLS context before refresh: {e}")
-
-        db.refresh(new_case)
-
-        # 4. Reload relationships for Pydantic
-        # Manually assign to avoid lazy load issues after commit if session is closed/expired
-        new_case.client = client
-        new_case.assicurato_rel = assicurato
-        new_case.creator = user
-        new_case.documents = []
-        new_case.report_versions = []
-
-        # 5. ICE: Trigger background enrichment for NEW clients only
-        if is_new_client and client and case_data.client_name:
-            trigger_client_enrichment_task(
-                str(client.id), case_data.client_name, str(user_org_id)
-            )
-
-        return new_case
-
     except HTTPException:
         raise
     except Exception as e:
@@ -242,6 +184,98 @@ def create_case_with_client(
         raise HTTPException(
             status_code=500, detail=f"Failed to create case: {str(e)}"
         ) from e
+
+
+def _create_case_logic(user_uid, db, case_data, user_org_id):
+    logger.info(f"Creating case for user {user_uid}")
+
+    # 1. Fetch User (Strict Check)
+    user = db.query(User).filter(User.id == user_uid).first()
+    if not user:
+        raise HTTPException(status_code=403, detail="User account not found.")
+
+    # 2. CRM Logic (Get or Create Client) + ICE Enrichment Trigger
+    client_id = None
+    client = None
+    is_new_client = False
+
+    if case_data.client_name:
+        # Check if client already exists BEFORE get_or_create (for enrichment trigger)
+        existing_client = (
+            db.query(Client)
+            .filter(
+                Client.name == case_data.client_name,
+                Client.organization_id == user_org_id,
+            )
+            .first()
+        )
+
+        client = get_or_create_client(db, case_data.client_name, user_org_id)
+        client_id = client.id
+
+        # If we didn't find existing, client is new → trigger enrichment
+        is_new_client = existing_client is None
+
+    if not client_id:
+        client_id = None
+
+    # 2b. Assicurato Logic (Get or Create) - NO LLM enrichment
+    assicurato_id = None
+    assicurato = None
+
+    if case_data.assicurato_name:
+        assicurato = get_or_create_assicurato(
+            db, case_data.assicurato_name, user_org_id
+        )
+        assicurato_id = assicurato.id
+
+    # 3. Create Case
+    new_case = Case(
+        reference_code=case_data.reference_code,
+        organization_id=user_org_id,
+        client_id=client_id,
+        assicurato_id=assicurato_id,
+        creator_id=user_uid,
+        status=CaseStatus.OPEN,
+    )
+
+    db.add(new_case)
+    db.commit()
+
+    # RE-APPLY RLS CONTEXT
+    # db.commit() releases the connection to the pool.
+    # db.refresh() starts a new transaction, potentially on a cleaner/different connection.
+    # We must ensure app.current_org_id is set to allow visibility of the new row.
+    try:
+        db.execute(
+            text(SET_ORG_ID_CONFIG_SQL),
+            {"org_id": str(user_org_id)},
+        )
+        # Re-apply user_uid too just in case (though org_id is the key for row visibility)
+        db.execute(
+            text("SELECT set_config('app.current_user_uid', :uid, false)"),
+            {"uid": user_uid},
+        )
+    except Exception as e:
+        logger.warning(f"Failed to re-apply RLS context before refresh: {e}")
+
+    db.refresh(new_case)
+
+    # 4. Reload relationships for Pydantic
+    # Manually assign to avoid lazy load issues after commit if session is closed/expired
+    new_case.client = client
+    new_case.assicurato_rel = assicurato
+    new_case.creator = user
+    new_case.documents = []
+    new_case.report_versions = []
+
+    # 5. ICE: Trigger background enrichment for NEW clients only
+    if is_new_client and client and case_data.client_name:
+        trigger_client_enrichment_task(
+            str(client.id), case_data.client_name, str(user_org_id)
+        )
+
+    return new_case
 
 
 def create_ai_version(
@@ -430,9 +464,7 @@ def trigger_extraction_task(doc_id: UUID, org_id: str):
                     async with async_session() as db:
                         # Set RLS context
                         await db.execute(
-                            text(
-                                "SELECT set_config('app.current_org_id', :org_id, false)"
-                            ),
+                            text(SET_ORG_ID_CONFIG_SQL),
                             {"org_id": org_id},
                         )
                         await process_document_extraction(doc_id, org_id, db)
@@ -459,7 +491,7 @@ def trigger_extraction_task(doc_id: UUID, org_id: str):
             "http_request": {
                 "http_method": tasks_v2.HttpMethod.POST,
                 "url": f"{settings.RESOLVED_BACKEND_URL}/api/v1/tasks/process-document",
-                "headers": {"Content-Type": "application/json"},
+                "headers": {"Content-Type": CONTENT_TYPE_JSON},
                 "oidc_token": {
                     "service_account_email": settings.CLOUD_TASKS_SA_EMAIL,
                     "audience": settings.CLOUD_RUN_AUDIENCE_URL,  # Use Cloud Run URL, not custom domain
@@ -533,9 +565,7 @@ def trigger_case_processing_task(case_id: str, org_id: str):
                 try:
                     async with async_session_factory() as db:
                         await db.execute(
-                            text(
-                                "SELECT set_config('app.current_org_id', :org_id, false)"
-                            ),
+                            text(SET_ORG_ID_CONFIG_SQL),
                             {"org_id": org_id},
                         )
                         await report_generation_service.process_case_logic(
@@ -563,13 +593,13 @@ def trigger_case_processing_task(case_id: str, org_id: str):
             "http_request": {
                 "http_method": tasks_v2.HttpMethod.POST,
                 "url": f"{settings.RESOLVED_BACKEND_URL}/api/v1/tasks/process-case",
-                "headers": {"Content-Type": "application/json"},
+                "headers": {"Content-Type": CONTENT_TYPE_JSON},
                 "oidc_token": {
                     "service_account_email": settings.CLOUD_TASKS_SA_EMAIL,
                     "audience": settings.CLOUD_RUN_AUDIENCE_URL,  # Use Cloud Run URL, not custom domain
                 },
                 "body": json.dumps(
-                    {"case_id": str(case_id), "organization_id": org_id}
+                    {"case_id": case_id, "organization_id": org_id}
                 ).encode(),
             }
         }
@@ -578,7 +608,8 @@ def trigger_case_processing_task(case_id: str, org_id: str):
         response = client.create_task(request={"parent": parent, "task": task})
         logger.info(f"Task created: {response.name}")
 
-    except Exception:
+    except Exception as e:
+        logger.error(f"Failed to enqueue case processing task for case {case_id}: {e}")
         # Re-raise to propagate error to caller (API endpoint returns HTTP error)
         raise
 
@@ -613,8 +644,8 @@ def trigger_client_enrichment_task(
                 with SessionLocal() as db:
                     # Set RLS context for local execution
                     db.execute(
-                        text("SELECT set_config('app.current_org_id', :oid, false)"),
-                        {"oid": organization_id},
+                        text(SET_ORG_ID_CONFIG_SQL),
+                        {"org_id": organization_id},
                     )
                     await service.enrich_and_update_client(client_id, original_name, db)
 
@@ -636,7 +667,7 @@ def trigger_client_enrichment_task(
             "http_request": {
                 "http_method": tasks_v2.HttpMethod.POST,
                 "url": f"{settings.RESOLVED_BACKEND_URL}/api/v1/tasks/enrich-client",
-                "headers": {"Content-Type": "application/json"},
+                "headers": {"Content-Type": CONTENT_TYPE_JSON},
                 "oidc_token": {
                     "service_account_email": settings.CLOUD_TASKS_SA_EMAIL,
                     "audience": settings.CLOUD_RUN_AUDIENCE_URL,
@@ -704,7 +735,7 @@ def trigger_case_details_extraction_task(
             "http_request": {
                 "http_method": tasks_v2.HttpMethod.POST,
                 "url": f"{settings.RESOLVED_BACKEND_URL}/api/v1/tasks/extract-case-details",
-                "headers": {"Content-Type": "application/json"},
+                "headers": {"Content-Type": CONTENT_TYPE_JSON},
                 "oidc_token": {
                     "service_account_email": settings.CLOUD_TASKS_SA_EMAIL,
                     "audience": settings.CLOUD_RUN_AUDIENCE_URL,
@@ -740,7 +771,7 @@ async def run_process_document_extraction_standalone(doc_id: UUID, org_id: str):
         try:
             # Set RLS context for the background session (async style)
             await db.execute(
-                text("SELECT set_config('app.current_org_id', :org_id, false)"),
+                text(SET_ORG_ID_CONFIG_SQL),
                 {"org_id": org_id},
             )
 
@@ -790,7 +821,8 @@ async def process_document_extraction(doc_id: UUID, org_id: str, db: AsyncSessio
             shutil.rmtree(tmp_dir)
 
     # Auto-generation disabled: User must click "Genera con IA" to trigger report.
-    logger.info(f"Document {doc.id} extraction complete. Awaiting user action.")
+    # logger.info(f"Document {doc.id} extraction complete. Awaiting user action.")
+    await _check_and_trigger_generation(db, doc.case_id, org_id, is_async=True)
 
 
 def _perform_extraction_logic(doc: Document, tmp_dir: str):

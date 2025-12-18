@@ -148,9 +148,7 @@ async def run_preliminary_report(
         existing = await get_latest_preliminary_report(case_id, db)
         if existing:
             # Check if documents have changed since last report
-            # We store the hash in template_used field as a workaround
-            # (avoids schema migration)
-            cached_hash = existing.template_used or ""
+            cached_hash = existing.document_hash or ""
             if cached_hash == current_hash:
                 logger.info(f"Returning existing preliminary report for case {case_id}")
                 return existing
@@ -302,7 +300,7 @@ async def run_preliminary_report(
             is_final=False,
             source="preliminary",  # Mark as preliminary report
             version_number=next_version,
-            template_used=current_hash,  # Store hash for staleness detection
+            document_hash=current_hash,  # Store hash for staleness detection
         )
 
         db.add(new_version)
@@ -561,7 +559,7 @@ async def stream_preliminary_report(
                 is_final=False,
                 source="preliminary",
                 version_number=next_version,
-                template_used=current_hash,
+                document_hash=current_hash,
             )
 
             db.add(new_version)

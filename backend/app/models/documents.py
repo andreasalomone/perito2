@@ -96,4 +96,13 @@ class ReportVersion(Base):
     google_doc_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     is_draft_active: Mapped[bool] = mapped_column(Boolean, default=False)
     edit_link: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
-    template_used: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+    # Styling/Output metadata
+    template_used: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True
+    )  # Which template (bn/salomone) was used
+
+    # Cache/Staleness metadata
+    document_hash: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True
+    )  # SHA256 of documents used for this version (for staleness detection)
