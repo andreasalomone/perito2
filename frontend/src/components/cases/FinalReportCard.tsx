@@ -107,54 +107,60 @@ export function FinalReportCard({
 
                             {/* Right: Actions (Collapsed) */}
                             <div className="flex items-center gap-4">
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setShowNotesDialog(true)}
-                                >
-                                    <Edit className="h-4 w-4 mr-2" />
-                                    {caseData.note ? "Modifica Info" : "Aggiungi Info"}
-                                </Button>
+                                {/* Show generation controls only when no report exists or while generating */}
+                                {(!hasReport || showGeneratingState) && (
+                                    <>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setShowNotesDialog(true)}
+                                        >
+                                            <Edit className="h-4 w-4 mr-2" />
+                                            {caseData.note ? "Modifica Info" : "Aggiungi Info"}
+                                        </Button>
 
-                                <div className="min-w-[150px]">
-                                    <Select value={language} onValueChange={setLanguage} disabled={showGeneratingState}>
-                                        <SelectTrigger className="h-10">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="italian">Italiano</SelectItem>
-                                            <SelectItem value="english">Inglese</SelectItem>
-                                            <SelectItem value="spanish">Spagnolo</SelectItem>
-                                            <SelectItem value="german">Tedesco</SelectItem>
-                                            <SelectItem value="french">Francese</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
+                                        <div className="min-w-[150px]">
+                                            <Select value={language} onValueChange={setLanguage} disabled={showGeneratingState}>
+                                                <SelectTrigger className="h-10">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="italian">Italiano</SelectItem>
+                                                    <SelectItem value="english">Inglese</SelectItem>
+                                                    <SelectItem value="spanish">Spagnolo</SelectItem>
+                                                    <SelectItem value="german">Tedesco</SelectItem>
+                                                    <SelectItem value="french">Francese</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
 
-                                <Button
-                                    onClick={handleGenerateClick}
-                                    disabled={showGeneratingState}
-                                    variant="brand"
-                                    size="default"
-                                >
-                                    {showGeneratingState ? (
-                                        <>
-                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                            Generazione...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <BrainCircuit className="h-4 w-4 mr-2" />
-                                            {hasReport ? "Rigenera Report" : "Genera Report"}
-                                        </>
-                                    )}
-                                </Button>
+                                        <Button
+                                            onClick={handleGenerateClick}
+                                            disabled={showGeneratingState}
+                                            variant="brand"
+                                            size="default"
+                                        >
+                                            {showGeneratingState ? (
+                                                <>
+                                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                                    Generazione...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <BrainCircuit className="h-4 w-4 mr-2" />
+                                                    Genera Report
+                                                </>
+                                            )}
+                                        </Button>
+                                    </>
+                                )}
 
-                                {/* Visible only when report exists */}
-                                {hasReport && (
+                                {/* Show "Vedi Report" as main CTA when report exists and not generating */}
+                                {hasReport && !showGeneratingState && (
                                     <ExpandableScreenTrigger>
-                                        <Button variant="ghost" size="sm">
-                                            Anteprima/Azioni
+                                        <Button variant="brand" size="default">
+                                            <FileText className="h-4 w-4 mr-2" />
+                                            Vedi Report
                                         </Button>
                                     </ExpandableScreenTrigger>
                                 )}
@@ -187,7 +193,7 @@ export function FinalReportCard({
                         <div className="flex flex-col h-full bg-slate-50 dark:bg-zinc-950/50">
                             {/* Toolbar */}
                             <div className="bg-white dark:bg-zinc-900 border-b px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 ml-12">
                                     <h4 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">
                                         Anteprima Report {latestVersion ? `(v${latestVersion.version_number})` : ""}
                                     </h4>

@@ -151,8 +151,6 @@ export function DocumentAnalysisCard({
                 {hasAnalysis ? (
                     <ExpandableScreen
                         layoutId="document-analysis-expand"
-                        triggerRadius="8px"
-                        contentRadius="12px"
                     >
                         <div className="space-y-4">
                             <div className="bg-muted/30 rounded-lg p-4 border border-dashed flex flex-col items-center justify-center text-center space-y-3">
@@ -176,7 +174,7 @@ export function DocumentAnalysisCard({
                             <div className="flex flex-col h-full max-w-4xl mx-auto w-full">
                                 {/* Header */}
                                 <div className="flex items-center justify-between p-6 border-b shrink-0 bg-background/95 backdrop-blur z-10 relative">
-                                    <div className="space-y-1">
+                                    <div className="space-y-1 ml-12">
                                         <h2 className="text-2xl font-bold flex items-center gap-2">
                                             <FileSearch className="h-6 w-6 text-blue-600" />
                                             Analisi Documenti
@@ -185,7 +183,7 @@ export function DocumentAnalysisCard({
                                             Dettaglio dell'estrazione informazioni e verifica completezza.
                                         </p>
                                     </div>
-                                    <div className="flex items-center gap-2 mr-12"> {/* mr-12 to avoid close button */}
+                                    <div className="flex items-center gap-2">
                                         <Button
                                             variant={isStale ? "default" : "outline"}
                                             size="sm"

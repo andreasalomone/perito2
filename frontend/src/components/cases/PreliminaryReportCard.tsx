@@ -124,8 +124,6 @@ export function PreliminaryReportCard({
                 {hasReport ? (
                     <ExpandableScreen
                         layoutId="preliminary-report-expand"
-                        triggerRadius="8px"
-                        contentRadius="12px"
                     >
                         <div className="space-y-4">
                             <div className="bg-muted/30 rounded-lg p-6 border border-dashed flex flex-col items-center justify-center text-center space-y-4">
@@ -149,7 +147,7 @@ export function PreliminaryReportCard({
                             <div className="flex flex-col h-full max-w-5xl mx-auto w-full bg-background">
                                 {/* Header */}
                                 <div className="flex items-center justify-between p-6 border-b shrink-0 bg-background/95 backdrop-blur z-10 relative">
-                                    <div className="space-y-1">
+                                    <div className="space-y-1 ml-12">
                                         <h2 className="text-2xl font-bold flex items-center gap-2 text-purple-700 dark:text-purple-400">
                                             <FileText className="h-6 w-6" />
                                             Report Preliminare
@@ -158,7 +156,7 @@ export function PreliminaryReportCard({
                                             Bozza di lavoro generata dall'AI.
                                         </p>
                                     </div>
-                                    <div className="flex items-center gap-3 mr-12">
+                                    <div className="flex items-center gap-3">
                                         <Button variant="outline" size="sm" disabled title="Funzionalità in arrivo">
                                             <Edit className="h-4 w-4 mr-2" />
                                             Modifica

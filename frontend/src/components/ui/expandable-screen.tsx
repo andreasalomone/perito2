@@ -42,7 +42,7 @@ export function ExpandableScreen({
     children,
     layoutId,
     triggerRadius = "12px",
-    contentRadius = "0px",
+    contentRadius = "16px",
     animationDuration = 0.3,
     defaultExpanded = false,
     onExpandChange,
@@ -187,7 +187,7 @@ export function ExpandableScreenContent({
                     <motion.div
                         layoutId={layoutId}
                         className={cn(
-                            "fixed inset-0 z-50 flex flex-col bg-background m-4 md:m-8 text-foreground shadow-2xl overflow-hidden",
+                            "fixed inset-[10%] z-50 flex flex-col bg-background text-foreground shadow-2xl overflow-hidden",
                             className
                         )}
                         style={{ borderRadius: contentRadius }}
@@ -196,7 +196,7 @@ export function ExpandableScreenContent({
                             <button
                                 onClick={collapse}
                                 className={cn(
-                                    "absolute right-4 top-4 z-10 rounded-full p-2 bg-background/50 hover:bg-background/80 transition-colors",
+                                    "absolute left-4 top-4 z-10 rounded-full p-2 bg-background/50 hover:bg-background/80 transition-colors",
                                     closeButtonClassName
                                 )}
                                 aria-label="Close"
