@@ -76,7 +76,7 @@ export function FinalReportCard({
     const showGeneratingState = isGenerating || (streamingEnabled && (streamState === "thinking" || streamState === "streaming"));
 
     // Content to show: Streamed content (if available/generating) OR Latest Version content
-    const displayContent = (showGeneratingState && streamedContent) ? streamedContent : (latestVersion?.ai_raw_output || caseData.ai_summary || "");
+    const displayContent = (showGeneratingState && streamedContent) ? streamedContent : (latestVersion?.ai_raw_output || "");
 
     const handleGenerateClick = () => {
         onGenerate(language, caseData.note || undefined);

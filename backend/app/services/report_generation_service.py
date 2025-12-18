@@ -618,8 +618,11 @@ async def generate_report_logic(
     )
     case = result.scalars().first()
     if not case:
-        logger.error(f"Case {case_id} not found")
-        return
+        raise ValueError(f"Case {case_id} not found")
+
+    # Clear old summary to avoid stale data (Summary only regenerates on Finalization)
+    case.ai_summary = None
+    await db.commit()
 
     # 2. Idempotency checks
     if await _check_existing_report(case_id, case, db):
@@ -700,6 +703,11 @@ async def stream_final_report(
     if not case:
         yield json.dumps({"type": "error", "text": "Case not found"}) + "\n"
         return
+
+    # Clear old summary to avoid stale data in preview fallbacks
+    case.ai_summary = None
+    await db.commit()
+    await db.refresh(case)
 
     # 2. Validation
     # NOTE: We skip idempotency check (force generation) for interactive requests usually,
