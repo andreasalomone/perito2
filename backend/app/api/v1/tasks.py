@@ -181,17 +181,6 @@ class EnrichClientPayload(BaseModel):
     organization_id: str = Field(..., description="Organization UUID for RLS context")
 
 
-class ExtractCaseDetailsPayload(BaseModel):
-    """Payload for case details extraction task."""
-
-    case_id: UUID4 = Field(..., description="Case UUID to extract details for")
-    organization_id: UUID4 = Field(..., description="Organization UUID")
-    final_docx_path: str = Field(..., description="GCS path to final DOCX")
-    overwrite_existing: bool = Field(
-        default=False, description="If True, overwrite non-null fields"
-    )
-
-
 @router.post(
     "/enrich-client",
     status_code=status.HTTP_202_ACCEPTED,
@@ -247,66 +236,6 @@ async def enrich_client(
         # Don't raise - enrichment failure shouldn't cause Cloud Tasks retry
 
     return {"status": "success"}
-
-
-@router.post(
-    "/extract-case-details",
-    status_code=status.HTTP_202_ACCEPTED,
-    summary="Extract Case Details from Final Report",
-)
-async def extract_case_details(
-    payload: ExtractCaseDetailsPayload,
-    _: bool = Depends(verify_cloud_tasks_auth),
-):
-    """
-    Async Worker: Extracts structured metadata from finalized DOCX.
-
-    Triggered after case finalization to auto-populate CaseDetailsPanel.
-    Uses gemini-2.0-flash-lite-001 for cost-effective extraction.
-    """
-    logger.info(f"📊 Extracting case details: {payload.case_id}")
-    try:
-        from app.db.database import AsyncSessionLocal
-        from app.services.case_details_extractor import (
-            extract_case_details_from_docx,
-            update_case_from_extraction,
-        )
-
-        # 1. Extract details from DOCX
-        result = await extract_case_details_from_docx(payload.final_docx_path)
-
-        if not result.extraction_success:
-            logger.warning(
-                f"⚠️ Extraction failed for case {payload.case_id}: {result.error_message}"
-            )
-            # Return success to Cloud Tasks (don't retry - extraction failure is final)
-            return {"status": "extraction_failed", "error": result.error_message}
-
-        # 2. Update database
-        async with AsyncSessionLocal() as db:
-            fields_updated = await update_case_from_extraction(
-                case_id=str(payload.case_id),
-                org_id=str(payload.organization_id),
-                extraction_result=result,
-                db=db,
-                overwrite_existing=payload.overwrite_existing,
-            )
-
-        logger.info(
-            f"✅ Case {payload.case_id}: extracted {result.fields_extracted} fields, "
-            f"updated {fields_updated} in DB"
-        )
-        return {
-            "status": "success",
-            "fields_extracted": result.fields_extracted,
-            "fields_updated": fields_updated,
-        }
-
-    except Exception as e:
-        logger.error(f"❌ Extract Details Task Failed: {e}", exc_info=True)
-        # Don't raise HTTP exception - let Cloud Tasks know we handled it
-        # This prevents infinite retry loops for non-retryable errors
-        return {"status": "error", "error": str(e)}
 
 
 # -----------------------------------------------------------------------------

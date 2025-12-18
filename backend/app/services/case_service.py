@@ -24,6 +24,7 @@ The module uses SQLAlchemy for database interactions, Google Cloud Tasks for que
 and integrates with specialized services like `document_processor`, `gcs_service`,
 and `enrichment_service`.
 """
+
 import asyncio
 import json
 import logging
@@ -132,6 +133,12 @@ def validate_storage_path(
     """
     Sanitizes and validates that a GCS path belongs to the specific case context.
     Prevents Path Traversal and IDOR (Insecure Direct Object Reference).
+
+    Security checks:
+    1. Blocks path traversal (../, ~)
+    2. Blocks absolute paths (/)
+    3. Validates org_id and case_id context
+    4. Validates prefix is in allowed list
     """
     # 1. Traversal Check
     if ".." in raw_path or "~" in raw_path:
@@ -140,8 +147,21 @@ def validate_storage_path(
             detail="Invalid path characters detected.",
         )
 
-    # 2. Normalize: Remove 'gs://bucket/' prefix if present
-    clean_path = raw_path.replace(f"gs://{settings.STORAGE_BUCKET_NAME}/", "")
+    # 2. Normalize: Strip 'gs://bucket/' prefix ONCE using startswith for safety
+    # SECURITY: Using startswith+slice instead of replace() to prevent bypass via
+    # nested protocols like 'gs://bucket/gs://bucket/malicious/path'
+    gs_prefix = f"gs://{settings.STORAGE_BUCKET_NAME}/"
+    if raw_path.startswith(gs_prefix):
+        clean_path = raw_path[len(gs_prefix) :]
+    else:
+        clean_path = raw_path
+
+    # 2b. Reject paths starting with / (absolute paths are invalid in GCS context)
+    if clean_path.startswith("/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid path: absolute paths not allowed.",
+        )
 
     # 3. Context Validation
     # Ensure the path starts with one of the allowed prefixes for this specific Org/Case
@@ -173,9 +193,7 @@ def create_case_with_client(
     - Transaction management
     """
     try:
-        return _create_case_logic(
-            user_uid, db, case_data, user_org_id
-        )
+        return _create_case_logic(user_uid, db, case_data, user_org_id)
     except HTTPException:
         raise
     except Exception as e:
@@ -186,7 +204,9 @@ def create_case_with_client(
         ) from e
 
 
-def _create_case_logic(user_uid, db, case_data, user_org_id):
+def _create_case_logic(
+    user_uid: str, db: Session, case_data: schemas.CaseCreate, user_org_id: UUID
+) -> Case:
     logger.info(f"Creating case for user {user_uid}")
 
     # 1. Fetch User (Strict Check)
@@ -396,20 +416,6 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
 
     db.commit()
 
-    # 5. Trigger async extraction of case details
-    # REMOVED: Now handled during "Document Analysis" phase (cases.py)
-    # trigger_case_details_extraction_task(...)
-    # try:
-    #     trigger_case_details_extraction_task(
-    #         case_id=str(case_id),
-    #         organization_id=str(org_id),
-    #         final_docx_path=final_docx_path,
-    #         overwrite_existing=False,  # Preserve existing manual entries
-    #     )
-    # except Exception as e:
-    #     # Don't fail finalization if extraction trigger fails
-    #     logger.error(f"Failed to trigger case details extraction: {e}")
-
     return final_version
 
 
@@ -419,9 +425,13 @@ def trigger_extraction_task(doc_id: UUID, org_id: str):
     """
     if settings.RUN_LOCALLY:
         # Local dev: run extraction in background thread
-        # CRITICAL: We must create a NEW async connector inside the new event loop
-        # because asyncio.run() creates a fresh loop, and the global _async_connector
-        # is bound to the main loop.
+        #
+        # ⚠️ WARNING (Connection Pool): Each background task spawns a new event loop
+        # and creates a NEW AsyncEngine with pool_size=1. This means N concurrent
+        # tasks = N separate connections (not pooled). This is acceptable for
+        # development/debugging but NOT suitable for load testing. Under high load,
+        # you may hit "FATAL: remaining connection slots are reserved" errors.
+        # In production, Cloud Tasks provides the necessary throttling.
         import threading
 
         def _run_extraction():
@@ -692,73 +702,6 @@ def trigger_client_enrichment_task(
         # Don't fail case creation if enrichment task fails - it's a nice-to-have
         logger.error(
             f"Failed to enqueue ICE enrichment task for client {client_id}: {e}"
-        )
-
-
-def trigger_case_details_extraction_task(
-    case_id: str,
-    organization_id: str,
-    final_docx_path: str,
-    overwrite_existing: bool = False,
-) -> None:
-    """
-    Enqueue async task to extract case details from final report.
-
-    Called AFTER case finalization (after db.commit()) to populate CaseDetailsPanel.
-    Uses gemini-2.0-flash-lite-001 for cost-effective extraction.
-    """
-    if settings.RUN_LOCALLY:
-        # Local dev: run in background thread (like ICE enrichment)
-        import threading
-
-        from app.services.case_details_extractor import run_extraction_sync
-
-        def _run() -> None:
-            run_extraction_sync(
-                case_id=case_id,
-                org_id=organization_id,
-                final_docx_path=final_docx_path,
-                overwrite_existing=overwrite_existing,
-            )
-
-        thread = threading.Thread(target=_run, daemon=True)
-        thread.start()
-        logger.info(f"[LOCAL] Started case details extraction thread for {case_id}")
-        return
-
-    # Production: Cloud Tasks
-    try:
-        client = tasks_v2.CloudTasksClient()
-        parent = settings.CLOUD_TASKS_QUEUE_PATH
-
-        task = {
-            "http_request": {
-                "http_method": tasks_v2.HttpMethod.POST,
-                "url": f"{settings.RESOLVED_BACKEND_URL}/api/v1/tasks/extract-case-details",
-                "headers": {"Content-Type": CONTENT_TYPE_JSON},
-                "oidc_token": {
-                    "service_account_email": settings.CLOUD_TASKS_SA_EMAIL,
-                    "audience": settings.CLOUD_RUN_AUDIENCE_URL,
-                },
-                "body": json.dumps(
-                    {
-                        "case_id": case_id,
-                        "organization_id": organization_id,
-                        "final_docx_path": final_docx_path,
-                        "overwrite_existing": overwrite_existing,
-                    }
-                ).encode(),
-            }
-        }
-
-        logger.info(f"📊 Enqueuing case details extraction task for case {case_id}")
-        response = client.create_task(request={"parent": parent, "task": task})
-        logger.info(f"Case details extraction task created: {response.name}")
-
-    except Exception as e:
-        # Don't fail finalization if extraction task fails - case is already saved
-        logger.error(
-            f"Failed to enqueue case details extraction task for {case_id}: {e}"
         )
 
 

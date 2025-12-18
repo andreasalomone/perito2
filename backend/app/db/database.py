@@ -39,7 +39,7 @@ def getconn() -> Any:
     """Sync Connection Factory (for API endpoints)"""
     connector = get_connector()
     try:
-        conn = connector.connect(
+        return connector.connect(
             instance_connection_string=settings.CLOUD_SQL_CONNECTION_NAME,
             driver="pg8000",
             user=settings.DB_USER,
@@ -47,7 +47,6 @@ def getconn() -> Any:
             db=settings.DB_NAME,
             ip_type=IPTypes.PUBLIC,
         )
-        return conn
     except Exception as e:
         logger.error(f"Failed to establish Cloud SQL connection: {e}")
         raise

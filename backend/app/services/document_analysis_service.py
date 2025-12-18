@@ -30,7 +30,9 @@ logger = logging.getLogger(__name__)
 class DocumentAnalysisSchema(BaseModel):
     """Schema for document analysis LLM response."""
 
-    summary: str = Field(description="Ultra-brief Italian case summary in 3-4 sentences (max 150 words). NO bullet points. Identify: claim type, goods, client, apparent cause, critical points.")
+    summary: str = Field(
+        description="Ultra-brief Italian case summary in 3-4 sentences (max 150 words). NO bullet points. Identify: claim type, goods, client, apparent cause, critical points."
+    )
     received_docs: List[str] = Field(
         description="List of document types received (Italian)"
     )
@@ -159,6 +161,229 @@ async def check_analysis_staleness(
     return is_stale, analysis
 
 
+def _extract_entries_from_document(extracted: Any) -> List[dict[str, Any]]:
+    """Extract entries list from ai_extracted_data in either format."""
+    if isinstance(extracted, dict):
+        return cast(List[dict[str, Any]], extracted.get("entries", []))
+    if isinstance(extracted, list):
+        return extracted
+    return []
+
+
+def _process_text_entry(
+    entry: dict[str, Any], filename: str, document_contents: List[dict[str, str]]
+) -> None:
+    """Process a text entry and append to document_contents if valid."""
+    content = entry.get("content", "")
+    if content:
+        document_contents.append(
+            {
+                "filename": filename,
+                "content": content[:10000],  # Limit per-doc content
+            }
+        )
+
+
+def _process_vision_entry(
+    entry: dict[str, Any], filename: str, vision_parts: List[dict[str, Any]]
+) -> None:
+    """Process a vision entry and append to vision_parts if valid."""
+    gcs_path = entry.get("gcs_path")
+    mime_type = entry.get("mime_type")
+    if not (gcs_path and mime_type):
+        return
+
+    try:
+        vision_part = types.Part.from_uri(file_uri=gcs_path, mime_type=mime_type)
+        vision_parts.append({"part": vision_part, "filename": filename})
+        logger.debug(f"Added vision file to analysis: {filename}")
+    except Exception as e:
+        logger.warning(f"Failed to create Part for {filename}: {e}")
+
+
+def _extract_document_contents(
+    documents: Sequence[Document],
+) -> tuple[List[dict[str, str]], List[dict[str, Any]]]:
+    """
+    Extract text and vision content from documents.
+
+    Returns:
+        Tuple of (document_contents, vision_parts)
+    """
+    document_contents: List[dict[str, str]] = []
+    vision_parts: List[dict[str, Any]] = []
+
+    for doc in documents:
+        if not doc.ai_extracted_data:
+            continue
+
+        entries = _extract_entries_from_document(doc.ai_extracted_data)
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+
+            entry_type = entry.get("type")
+            if entry_type == "text":
+                _process_text_entry(entry, doc.filename, document_contents)
+            elif entry_type == "vision":
+                _process_vision_entry(entry, doc.filename, vision_parts)
+
+    return document_contents, vision_parts
+
+
+async def _load_system_prompt() -> str:
+    """Load the document analysis system prompt with fallback."""
+    from app.core.prompt_config import prompt_manager
+
+    try:
+        return prompt_manager.get_prompt_content("document_analysis")
+    except (ValueError, FileNotFoundError) as e:
+        logger.warning(f"Analysis prompt not in PromptManager, loading directly: {e}")
+
+    # Fallback: load directly from file
+    import os
+
+    prompt_path = os.path.join(
+        os.path.dirname(__file__), "..", "core", "document_analysis_prompt.txt"
+    )
+
+    def read_prompt_file() -> str:
+        with open(prompt_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    return await asyncio.to_thread(read_prompt_file)
+
+
+def _build_evidence_section(document_contents: List[dict[str, str]]) -> str:
+    """Build XML evidence section from document contents."""
+    evidence_parts = []
+    for doc_data in document_contents:
+        safe_filename = html.escape(str(doc_data["filename"]))
+        evidence_parts.append(
+            f'<document filename="{safe_filename}">\n{doc_data["content"]}\n</document>'
+        )
+    return "\n".join(evidence_parts)
+
+
+def _build_vision_section(vision_parts: List[dict[str, Any]]) -> str:
+    """Build vision files context section."""
+    vision_filenames = [v["filename"] for v in vision_parts]
+    if not vision_filenames:
+        return ""
+
+    vision_list = "\n".join(f"- {html.escape(fn)}" for fn in vision_filenames)
+    return (
+        f"\n\n<attached_vision_files>\n"
+        f"The following files are attached as images for visual analysis:\n"
+        f"{vision_list}\n</attached_vision_files>"
+    )
+
+
+def _build_context_block(case: Optional[Case]) -> str:
+    """Build confirmed data context block from case."""
+    if not case:
+        return ""
+
+    from app.services.report_generation_service import _build_case_context
+
+    case_context = _build_case_context(case)
+    safe_ref = html.escape(case_context.get("ref_code", "N.D."))
+    safe_client = html.escape(case_context.get("client_name", "N.D."))
+    safe_assicurato = html.escape(case_context.get("assicurato_name", "N.D."))
+
+    location_parts = [
+        case_context.get("client_address_street"),
+        case_context.get("client_zip_code"),
+        case_context.get("client_city"),
+        case_context.get("client_province"),
+        case_context.get("client_country"),
+    ]
+    location_str = ", ".join(html.escape(p) for p in location_parts if p)
+    client_info = f"{safe_client}, {location_str}" if location_str else safe_client
+
+    return (
+        f"<confirmed_data>\n"
+        f"Il nostro cliente per questo sinistro è: {client_info}.\n"
+        f"Il Ns. Rif (nostro riferimento interno) è: {safe_ref}.\n"
+        f"L'assicurato di questo caso è: {safe_assicurato}.\n"
+        f"</confirmed_data>\n\n"
+    )
+
+
+def _check_response_truncation(response: Any, case_id: UUID) -> None:
+    """Check if LLM response was truncated and raise if so."""
+    if not (response.candidates and response.candidates[0].finish_reason):
+        return
+
+    finish_reason = response.candidates[0].finish_reason
+    reason_name = (
+        finish_reason.name if hasattr(finish_reason, "name") else str(finish_reason)
+    )
+
+    if reason_name not in ("STOP", "1"):
+        logger.warning(
+            f"Response truncated for case {case_id}: finish_reason={reason_name}"
+        )
+        raise AnalysisGenerationError(
+            f"Response truncated (finish_reason={reason_name}). Please retry."
+        )
+
+
+def _parse_analysis_response(response_text: str) -> dict[str, Any]:
+    """Parse and validate the JSON response from the LLM."""
+    import json
+
+    try:
+        analysis_data = json.loads(response_text)
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse analysis JSON: {e}\nRaw: {response_text[:500]}")
+        raise AnalysisGenerationError(f"Invalid JSON from model: {e}") from None
+
+    # Extract fields with defaults and ensure they're lists
+    summary = analysis_data.get("summary", "Analisi non disponibile")
+    received_docs = analysis_data.get("received_docs", [])
+    missing_docs = analysis_data.get("missing_docs", [])
+
+    if not isinstance(received_docs, list):
+        received_docs = [str(received_docs)] if received_docs else []
+    if not isinstance(missing_docs, list):
+        missing_docs = [str(missing_docs)] if missing_docs else []
+
+    return {
+        "summary": summary,
+        "received_docs": received_docs,
+        "missing_docs": missing_docs,
+    }
+
+
+async def _call_gemini_analysis(
+    content_parts: List[types.Part | str], case_id: UUID
+) -> dict[str, Any]:
+    """Call Gemini API for document analysis and return parsed result."""
+    client = genai.Client(
+        vertexai=True,
+        project=settings.GOOGLE_CLOUD_PROJECT,
+        location=settings.GEMINI_API_LOCATION,
+    )
+
+    response = await client.aio.models.generate_content(
+        model=settings.GEMINI_DOC_ANALYSIS_MODEL,
+        contents=content_parts,  # type: ignore
+        config=types.GenerateContentConfig(
+            temperature=0.2,
+            max_output_tokens=16000,
+            response_mime_type="application/json",
+            response_schema=DocumentAnalysisSchema,
+        ),
+    )
+
+    if not response or not response.text:
+        raise AnalysisGenerationError("Empty response from analysis model")
+
+    _check_response_truncation(response, case_id)
+    return _parse_analysis_response(response.text)
+
+
 async def run_document_analysis(
     case_id: UUID, org_id: UUID, db: AsyncSession, force: bool = False
 ) -> DocumentAnalysis:
@@ -198,7 +423,7 @@ async def run_document_analysis(
             logger.info(f"Returning cached analysis for case {case_id} (not stale)")
             return existing_analysis
 
-    # 3. Fetch all documents with their extracted data
+    # 3. Fetch documents with SUCCESS status
     docs_stmt = (
         select(Document)
         .where(Document.case_id == case_id)
@@ -210,7 +435,7 @@ async def run_document_analysis(
     if not documents:
         raise AnalysisBlockedError("No documents available for analysis")
 
-    # 3b. Fetch case with relationships for context
+    # 4. Fetch case with relationships for context
     case_result = await db.execute(
         select(Case)
         .options(selectinload(Case.client), selectinload(Case.assicurato_rel))
@@ -218,231 +443,65 @@ async def run_document_analysis(
     )
     case = case_result.scalar_one_or_none()
 
-    # 4. Build prompt content from extracted data
-    document_contents: List[dict[str, str]] = []
-    vision_parts: List[dict[str, Any]] = (
-        []
-    )  # NEW: List to hold Part objects for vision files
+    # 5. Extract content from documents
+    document_contents, vision_parts = _extract_document_contents(documents)
 
-    for doc in documents:
-        if doc.ai_extracted_data:
-            # Handle both formats: list directly or dict with "entries" key
-            extracted = doc.ai_extracted_data
-            if isinstance(extracted, dict):
-                entries = extracted.get("entries", [])
-            elif isinstance(extracted, list):
-                entries = extracted
-            else:
-                entries = []
+    # 6. Build prompt components
+    system_prompt = await _load_system_prompt()
+    evidence_section = _build_evidence_section(document_contents)
+    vision_section = _build_vision_section(vision_parts)
+    context_block = _build_context_block(case)
 
-            for entry in entries:
-                if isinstance(entry, dict):
-                    entry_type = entry.get("type")
-                    if entry_type == "text":
-                        # Text content - add to text section
-                        content = entry.get("content", "")
-                        if content:
-                            document_contents.append(
-                                {
-                                    "filename": doc.filename,
-                                    "content": content[:10000],  # Limit per-doc content
-                                }
-                            )
-                    elif entry_type == "vision":
-                        # Vision file (PDF/image) - create Part for Gemini
-                        gcs_path = entry.get("gcs_path")
-                        mime_type = entry.get("mime_type")
-                        if gcs_path and mime_type:
-                            try:
-                                vision_part = types.Part.from_uri(
-                                    file_uri=gcs_path, mime_type=mime_type
-                                )
-                                vision_parts.append(
-                                    {
-                                        "part": vision_part,
-                                        "filename": doc.filename,
-                                    }
-                                )
-                                logger.debug(
-                                    f"Added vision file to analysis: {doc.filename}"
-                                )
-                            except Exception as e:
-                                logger.warning(
-                                    f"Failed to create Part for {doc.filename}: {e}"
-                                )
-
-    # 5. Load prompt template
-    from app.core.prompt_config import prompt_manager
-
-    try:
-        system_prompt = prompt_manager.get_prompt_content("document_analysis")
-    except (ValueError, FileNotFoundError) as e:
-        logger.warning(f"Analysis prompt not in PromptManager, loading directly: {e}")
-        # Fallback: load directly from file
-        import os
-
-        prompt_path = os.path.join(
-            os.path.dirname(__file__), "..", "core", "document_analysis_prompt.txt"
-        )
-
-        def read_prompt_file():
-            with open(prompt_path, "r", encoding="utf-8") as f:
-                return f.read()
-
-        system_prompt = await asyncio.to_thread(read_prompt_file)
-
-    # 6. Build the evidence section (text documents)
-    evidence_parts = []
-    for doc_data in document_contents:
-        safe_filename = html.escape(str(doc_data["filename"]))
-        evidence_parts.append(
-            f'<document filename="{safe_filename}">\n{doc_data["content"]}\n</document>'
-        )
-    evidence_section = "\n".join(evidence_parts)
-
-    # 6b. NEW: Add vision file names to context so LLM knows they exist
-    vision_filenames = [v["filename"] for v in vision_parts]
-    if vision_filenames:
-        vision_list = "\n".join(f"- {html.escape(fn)}" for fn in vision_filenames)
-        vision_section = f"\n\n<attached_vision_files>\nThe following files are attached as images for visual analysis:\n{vision_list}\n</attached_vision_files>"
-    else:
-        vision_section = ""
-
-    # 6c. Build confirmed data context
-    context_block = ""
-    if case:
-        from app.services.report_generation_service import _build_case_context
-
-        case_context = _build_case_context(case)
-        safe_ref = html.escape(case_context.get("ref_code", "N.D."))
-        safe_client = html.escape(case_context.get("client_name", "N.D."))
-        safe_assicurato = html.escape(case_context.get("assicurato_name", "N.D."))
-        location_parts = [
-            case_context.get("client_address_street"),
-            case_context.get("client_zip_code"),
-            case_context.get("client_city"),
-            case_context.get("client_province"),
-            case_context.get("client_country"),
-        ]
-        location_str = ", ".join(html.escape(p) for p in location_parts if p)
-        client_info = f"{safe_client}, {location_str}" if location_str else safe_client
-        context_block = (
-            f"<confirmed_data>\n"
-            f"Il nostro cliente per questo sinistro è: {client_info}.\n"
-            f"Il Ns. Rif (nostro riferimento interno) è: {safe_ref}.\n"
-            f"L'assicurato di questo caso è: {safe_assicurato}.\n"
-            f"</confirmed_data>\n\n"
-        )
-
-    full_prompt = f"{system_prompt}\n\n{context_block}<case_documents>\n{evidence_section}\n</case_documents>{vision_section}"
+    full_prompt = (
+        f"{system_prompt}\n\n{context_block}"
+        f"<case_documents>\n{evidence_section}\n</case_documents>"
+        f"{vision_section}"
+    )
 
     # 7. Build multimodal content array
-    # Start with the text prompt
     content_parts: List[types.Part | str] = [full_prompt]
-
-    # Add vision parts (real file references)
     for vision_item in vision_parts:
         content_parts.append(cast(types.Part, vision_item["part"]))
 
-    # 8. Call Gemini API with JSON output (now multimodal)
     logger.info(
         f"Running document analysis for case {case_id} with {len(documents)} documents "
         f"({len(document_contents)} text, {len(vision_parts)} vision)"
     )
 
+    # 8. Call Gemini and get parsed result
     try:
-        # Use Vertex AI mode for direct GCS access via Part.from_uri()
-        # API key mode does NOT support gs:// URIs
-        client = genai.Client(
-            vertexai=True,
-            project=settings.GOOGLE_CLOUD_PROJECT,
-            location=settings.GEMINI_API_LOCATION,
-        )
-
-        response = await client.aio.models.generate_content(
-            model=settings.GEMINI_DOC_ANALYSIS_MODEL,
-            contents=content_parts,  # type: ignore
-            config=types.GenerateContentConfig(
-                temperature=0.2,  # Lower for more consistent structured output
-                max_output_tokens=16000,  # Increased to prevent truncation
-                response_mime_type="application/json",
-                response_schema=DocumentAnalysisSchema,  # Force valid JSON structure
-            ),
-        )
-
-        if not response or not response.text:
-            raise AnalysisGenerationError("Empty response from analysis model")
-
-        # Check for truncated response (finish_reason != STOP means incomplete)
-        # This catches cases where the model hit token limits
-        if response.candidates and response.candidates[0].finish_reason:
-            finish_reason = response.candidates[0].finish_reason
-            # STOP (1) is normal completion, MAX_TOKENS (2) means truncated
-            if hasattr(finish_reason, "name"):
-                reason_name = finish_reason.name
-            else:
-                reason_name = str(finish_reason)
-            if reason_name not in ("STOP", "1"):
-                logger.warning(
-                    f"Response truncated for case {case_id}: finish_reason={reason_name}"
-                )
-                raise AnalysisGenerationError(
-                    f"Response truncated (finish_reason={reason_name}). Please retry."
-                )
-
-        # 8. Parse JSON response
-        import json
-
-        try:
-            analysis_data = json.loads(response.text)
-        except json.JSONDecodeError as e:
-            logger.error(
-                f"Failed to parse analysis JSON: {e}\nRaw: {response.text[:500]}"
-            )
-            raise AnalysisGenerationError(f"Invalid JSON from model: {e}") from None
-
-        # 9. Extract fields with defaults
-        summary = analysis_data.get("summary", "Analisi non disponibile")
-        received_docs = analysis_data.get("received_docs", [])
-        missing_docs = analysis_data.get("missing_docs", [])
-
-        # Ensure they're lists
-        if not isinstance(received_docs, list):
-            received_docs = [str(received_docs)] if received_docs else []
-        if not isinstance(missing_docs, list):
-            missing_docs = [str(missing_docs)] if missing_docs else []
-
-        # 10. Fetch all docs again for hash (including non-SUCCESS)
-        all_docs_stmt = select(Document).where(Document.case_id == case_id)
-        all_docs_result = await db.execute(all_docs_stmt)
-        all_documents = all_docs_result.scalars().all()
-
-        # 11. Create and persist the analysis
-        document_hash = compute_document_hash(list(all_documents))
-
-        new_analysis = DocumentAnalysis(
-            case_id=case_id,
-            organization_id=org_id,
-            summary=summary,
-            received_docs=received_docs,
-            missing_docs=missing_docs,
-            document_hash=document_hash,
-            is_stale=False,
-        )
-
-        db.add(new_analysis)
-        await db.commit()
-        await db.refresh(new_analysis)
-
-        logger.info(
-            f"Analysis complete for case {case_id}: "
-            f"{len(received_docs)} received, {len(missing_docs)} missing"
-        )
-
-        return new_analysis
-
+        analysis_data = await _call_gemini_analysis(content_parts, case_id)
     except AnalysisGenerationError:
         raise
     except Exception as e:
         logger.error(f"Document analysis failed for case {case_id}: {e}", exc_info=True)
         raise AnalysisGenerationError(f"Analysis failed: {str(e)}") from None
+
+    # 9. Fetch all docs for hash (including non-SUCCESS)
+    all_docs_stmt = select(Document).where(Document.case_id == case_id)
+    all_docs_result = await db.execute(all_docs_stmt)
+    all_documents = all_docs_result.scalars().all()
+
+    # 10. Create and persist the analysis
+    document_hash = compute_document_hash(list(all_documents))
+    new_analysis = DocumentAnalysis(
+        case_id=case_id,
+        organization_id=org_id,
+        summary=analysis_data["summary"],
+        received_docs=analysis_data["received_docs"],
+        missing_docs=analysis_data["missing_docs"],
+        document_hash=document_hash,
+        is_stale=False,
+    )
+
+    db.add(new_analysis)
+    await db.commit()
+    await db.refresh(new_analysis)
+
+    logger.info(
+        f"Analysis complete for case {case_id}: "
+        f"{len(analysis_data['received_docs'])} received, "
+        f"{len(analysis_data['missing_docs'])} missing"
+    )
+
+    return new_analysis

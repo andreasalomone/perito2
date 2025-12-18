@@ -236,8 +236,7 @@ class Settings(BaseSettings):
         # perito (project root)
         project_root = os.path.dirname(backend_root)
 
-        local_assets = os.path.join(project_root, "assets")
-        return local_assets
+        return os.path.join(project_root, "assets")
 
     class Config:
         env_file = ".env"

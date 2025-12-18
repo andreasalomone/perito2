@@ -534,7 +534,10 @@ async def stream_preliminary_report(
                     f"Preliminary report truncated for case {case_id}: finish_reason={reason_name}"
                 )
                 yield json.dumps(
-                    {"type": "error", "text": f"Risposta troncata (finish_reason={reason_name}). Riprova."}
+                    {
+                        "type": "error",
+                        "text": f"Risposta troncata (finish_reason={reason_name}). Riprova.",
+                    }
                 ) + "\n"
                 return  # Don't store truncated content
 

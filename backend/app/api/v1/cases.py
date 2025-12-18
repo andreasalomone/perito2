@@ -800,7 +800,6 @@ def delete_case(case_id: UUID, db: Annotated[Session, Depends(get_db)]):
     logger.info(
         f"Case {case_id} soft-deleted with {len(docs)} docs and {len(versions)} versions removed."
     )
-    return
 
 
 @router.delete("/{case_id}/documents/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -829,7 +828,6 @@ def delete_document(
     db.delete(doc)
     db.commit()
     logger.info(f"Document {doc_id} deleted from case {case_id}.")
-    return
 
 
 # -----------------------------------------------------------------------------

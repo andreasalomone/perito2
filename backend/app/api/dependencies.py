@@ -1,3 +1,4 @@
+import contextlib
 import logging
 import os
 from typing import Any, AsyncGenerator, Generator, Optional
@@ -19,6 +20,11 @@ logger = logging.getLogger("app.auth")
 
 security = HTTPBearer(auto_error=False)
 
+# SQL constants to avoid duplication
+SQL_SET_USER_UID = "SELECT set_config('app.current_user_uid', :uid, false)"
+SQL_RESET_USER_UID = "RESET app.current_user_uid;"
+SQL_RESET_ORG_ID = "RESET app.current_org_id;"
+
 
 # -----------------------------------------------------------------------------
 # 1. Firebase Initialization
@@ -28,12 +34,9 @@ def initialize_firebase() -> None:
     Idempotent Firebase initialization.
     Handles both local development (SA file) and Cloud Run (ADC).
     """
-    try:
+    with contextlib.suppress(ValueError):
         firebase_admin.get_app()
         return  # Already initialized
-    except ValueError:
-        pass  # Not initialized yet
-
     logger.info("🔥 Initializing Firebase Admin SDK...")
 
     # In Cloud Run, we mount the secret to /secrets/service-account.json
@@ -167,7 +170,7 @@ def get_db(
         # We use is_local=False to ensure it persists if we commit, but we MUST reset it.
         try:
             db.execute(
-                text("SELECT set_config('app.current_user_uid', :uid, false)"),
+                text(SQL_SET_USER_UID),
                 {"uid": uid},
             )
             connection_dirtied = True
@@ -232,8 +235,8 @@ def get_db(
         # 5. CRITICAL: RESET variables before returning connection to pool
         if connection_dirtied:
             try:
-                db.execute(text("RESET app.current_user_uid;"))
-                db.execute(text("RESET app.current_org_id;"))
+                db.execute(text(SQL_RESET_USER_UID))
+                db.execute(text(SQL_RESET_ORG_ID))
             except Exception as e:
                 logger.warning(
                     f"Initial RESET RLS failed in get_db (likely aborted transaction): {e}. Attempting rollback."
@@ -241,8 +244,8 @@ def get_db(
                 try:
                     # If the transaction is aborted, we must rollback before we can run RESET
                     db.rollback()
-                    db.execute(text("RESET app.current_user_uid;"))
-                    db.execute(text("RESET app.current_org_id;"))
+                    db.execute(text(SQL_RESET_USER_UID))
+                    db.execute(text(SQL_RESET_ORG_ID))
                     logger.info(
                         "Successfully reset RLS context in get_db after rollback."
                     )
@@ -271,9 +274,7 @@ def get_registration_db(
 
     try:
         # Use is_local=False for consistency and safety against commits
-        db.execute(
-            text("SELECT set_config('app.current_user_uid', :uid, false)"), {"uid": uid}
-        )
+        db.execute(text(SQL_SET_USER_UID), {"uid": uid})
         connection_dirtied = True
         yield db
     except Exception as e:
@@ -284,14 +285,14 @@ def get_registration_db(
     finally:
         if connection_dirtied:
             try:
-                db.execute(text("RESET app.current_user_uid;"))
+                db.execute(text(SQL_RESET_USER_UID))
             except Exception as e:
                 logger.warning(
                     f"Initial RESET RLS failed in get_registration_db (likely aborted transaction): {e}. Attempting rollback."
                 )
                 try:
                     db.rollback()
-                    db.execute(text("RESET app.current_user_uid;"))
+                    db.execute(text(SQL_RESET_USER_UID))
                     logger.info(
                         "Successfully reset RLS context in get_registration_db after rollback."
                     )
@@ -347,7 +348,7 @@ async def get_async_db(
 
             # 2. Set RLS variables (is_local=false to persist across statements)
             await db.execute(
-                text("SELECT set_config('app.current_user_uid', :uid, false)"),
+                text(SQL_SET_USER_UID),
                 {"uid": uid},
             )
             await db.execute(
@@ -366,16 +367,16 @@ async def get_async_db(
             # 3. CRITICAL: Reset RLS context before returning to pool
             if connection_dirtied:
                 try:
-                    await db.execute(text("RESET app.current_user_uid;"))
-                    await db.execute(text("RESET app.current_org_id;"))
+                    await db.execute(text(SQL_RESET_USER_UID))
+                    await db.execute(text(SQL_RESET_ORG_ID))
                 except Exception as e:
                     logger.warning(
                         f"get_async_db: Initial RESET failed: {e}. Attempting rollback."
                     )
                     try:
                         await db.rollback()
-                        await db.execute(text("RESET app.current_user_uid;"))
-                        await db.execute(text("RESET app.current_org_id;"))
+                        await db.execute(text(SQL_RESET_USER_UID))
+                        await db.execute(text(SQL_RESET_ORG_ID))
                     except Exception as e2:
                         logger.critical(
                             f"get_async_db: FAILED TO RESET RLS after rollback: {e2}"
@@ -410,7 +411,4 @@ def get_superadmin_user(
     # Superadmins don't need to have a User record or belong to an organization
     # They can operate independently
     uid = current_user_token["uid"]
-    user_record = db.query(User).filter(User.id == uid).first()
-
-    # Return the user if exists, None if not (superadmin doesn't need User record)
-    return user_record
+    return db.query(User).filter(User.id == uid).first()

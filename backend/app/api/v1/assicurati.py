@@ -44,7 +44,7 @@ def list_assicurati(
     """
     user = db.get(User, current_user["uid"])
     if not user:
-        raise HTTPException(status_code=403, detail="User not found")
+        raise HTTPException(status_code=404, detail="User not found")
 
     org_id = user.organization_id
 
@@ -53,13 +53,12 @@ def list_assicurati(
     )
 
     if q:
-        # Escape LIKE wildcards to prevent injection
-        safe_q = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        stmt = stmt.where(Assicurato.name.ilike(f"%{safe_q}%", escape="\\"))
+        stmt = stmt.where(Assicurato.name.ilike(f"%{q}%"))
 
     # Order by name, with limit/skip
     stmt = stmt.order_by(Assicurato.name.asc()).offset(skip).limit(limit)
 
-    results = db.execute(stmt).all()
+    # Fetch bounded result set (limit already applied in query)
+    results = db.execute(stmt).fetchmany(limit)
 
     return [AssicuratoListItem(id=row.id, name=row.name) for row in results]

@@ -619,17 +619,24 @@ class GeminiReportGenerator:
                         )
 
                         async for chunk in stream_response:
-                            if chunk.candidates and chunk.candidates[0].content.parts:
-                                for part in chunk.candidates[0].content.parts:
-                                    is_thought = getattr(part, "thought", False)
-                                    text = part.text or ""
-                                    if text:
-                                        yield {
-                                            "type": (
-                                                "thought" if is_thought else "content"
-                                            ),
-                                            "text": text,
-                                        }
+                            # Defensive check for empty candidates (common in filtered responses)
+                            if (
+                                not chunk.candidates
+                                or not chunk.candidates[0].content
+                                or not chunk.candidates[0].content.parts
+                            ):
+                                continue
+
+                            for part in chunk.candidates[0].content.parts:
+                                is_thought = getattr(part, "thought", False)
+                                text = part.text or ""
+                                if text:
+                                    yield {
+                                        "type": (
+                                            "thought" if is_thought else "content"
+                                        ),
+                                        "text": text,
+                                    }
 
             except Exception as e:
                 logger.error(f"LLM Streaming Generation Failed: {e}", exc_info=True)
@@ -1063,7 +1070,9 @@ class LazyGeminiProxy:
             )
             return self._delegate
 
-    async def generate_stream(self, *args, **kwargs) -> AsyncGenerator[Dict[str, str], None]:
+    async def generate_stream(
+        self, *args, **kwargs
+    ) -> AsyncGenerator[Dict[str, str], None]:
         instance = await self._get_instance()
         async for item in instance.generate_stream(*args, **kwargs):
             yield item

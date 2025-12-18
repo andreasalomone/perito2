@@ -549,7 +549,6 @@ def _get_bucket_size_gb_safe(timeout_seconds: float = 5.0) -> float | None:
     Uses a timeout to prevent blocking on large buckets.
     """
     from concurrent.futures import ThreadPoolExecutor
-    from concurrent.futures import TimeoutError as FuturesTimeout
 
     from app.core.config import settings
     from app.services import gcs_service
@@ -564,7 +563,7 @@ def _get_bucket_size_gb_safe(timeout_seconds: float = 5.0) -> float | None:
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(calculate_size)
             return future.result(timeout=timeout_seconds)
-    except (FuturesTimeout, Exception) as e:
+    except Exception as e:
         logger.warning(f"GCS bucket size calculation timed out or failed: {e}")
         return None
 

@@ -1,3 +1,4 @@
+import contextlib
 import logging
 import time
 from typing import Any, Callable, Dict, Set
@@ -30,16 +31,13 @@ class CloudRunLoggingMiddleware(BaseHTTPMiddleware):
         span_id = None
 
         if trace_header:
-            try:
+            with contextlib.suppress(Exception):
                 # Header format: "TRACE_ID/SPAN_ID;o=TRACE_TRUE"
                 parts = trace_header.split("/")
                 if len(parts) > 0:
                     trace_id = parts[0]
                 if len(parts) > 1:
                     span_id = parts[1].split(";")[0]
-            except Exception:
-                pass  # Fail gracefully
-
         # 3. Prepare Log Context
         log_context: Dict[str, Any] = {
             "http_method": request.method,
