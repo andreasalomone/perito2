@@ -188,6 +188,8 @@ export default function CaseWorkspace() {
     };
 
     const handleOpenInDocs = useCallback(async (v: ReportVersion, template: TemplateType) => {
+        // Open window immediately to prevent popup blocker (preserves user gesture)
+        const newWindow = window.open("about:blank", "_blank", "noopener,noreferrer");
         const toastId = toast.loading("Apertura in Google Docs...");
         try {
             const token = await getToken();
@@ -196,10 +198,17 @@ export default function CaseWorkspace() {
                 { template },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
-            window.open(res.data.url, "_blank", "noopener,noreferrer");
+            // Navigate the already-opened window to the URL
+            if (newWindow) {
+                newWindow.location.href = res.data.url;
+            }
             toast.success("Documento aperto in Google Docs", { id: toastId });
             mutate();
         } catch (e) {
+            // Close the blank window on error
+            if (newWindow) {
+                newWindow.close();
+            }
             handleApiError(e, "Errore apertura Google Docs");
             toast.dismiss(toastId);
         }
