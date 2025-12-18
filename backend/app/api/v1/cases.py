@@ -1066,10 +1066,16 @@ async def create_document_analysis(
             all_text = []
             for doc in docs:
                 if doc.ai_extracted_data:
+                    # ai_extracted_data is a LIST of entries, not a dict
+                    # Format: [{"type": "text", "content": "..."}, ...]
                     entries = (
-                        doc.ai_extracted_data.get("entries", [])
-                        if isinstance(doc.ai_extracted_data, dict)
-                        else []
+                        doc.ai_extracted_data
+                        if isinstance(doc.ai_extracted_data, list)
+                        else (
+                            doc.ai_extracted_data.get("entries", [])
+                            if isinstance(doc.ai_extracted_data, dict)
+                            else []
+                        )
                     )
                     for entry in entries:
                         if isinstance(entry, dict) and entry.get("type") == "text":
@@ -1079,7 +1085,13 @@ async def create_document_analysis(
 
             combined = "\n\n---\n\n".join(all_text)
 
-            if combined and len(combined) > 100:
+            # Diagnostic: Log why we might skip extraction
+            if not combined or len(combined) <= 100:
+                logger.info(
+                    f"Case details extraction skipped for {case_id}: "
+                    f"text too short ({len(combined)} chars, need >100)"
+                )
+            else:
                 extraction_result = await extract_case_details_from_text(combined)
                 if extraction_result.extraction_success:
                     await update_case_from_extraction(
@@ -1090,6 +1102,10 @@ async def create_document_analysis(
                         overwrite_existing=False,  # NEVER overwrite user data
                     )
                     logger.info(f"Case details extraction completed for {case_id}")
+                else:
+                    logger.info(
+                        f"Case details extraction returned no success for {case_id}"
+                    )
         except Exception as e:
             # Non-blocking - log and continue
             logger.warning(f"Case details extraction failed (non-critical): {e}")

@@ -31,7 +31,7 @@ class DocumentAnalysisSchema(BaseModel):
     """Schema for document analysis LLM response."""
 
     summary: str = Field(
-        description="Ultra-brief Italian case summary in 3-4 sentences (max 150 words). NO bullet points. Identify: claim type, goods, client, apparent cause, critical points."
+        description="Very-brief but detailed Italian case summary (max 200 words). Identify: claim type, goods, client, apparent cause, critical points, numbers and references that might help the surveyor reading your summary."
     )
     received_docs: List[str] = Field(
         description="List of document types received (Italian)"

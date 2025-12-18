@@ -15,7 +15,7 @@ ISTRUZIONI OPERATIVE:
    Produci ESCLUSIVAMENTE un oggetto JSON valido con la seguente struttura:
 
    {
-     "summary": "Sintesi ULTRA-BREVE del caso (MAX 150 parole, 3-4 frasi). Formato: una frase per identificare il sinistro (merce, cliente, tipo danno), una frase sulla dinamica apparente, una frase sui punti critici. NON usare bullet points. NON elencare tutti i soggetti - menziona solo i principali.",
+     "summary": "Sintesi MOLTO BREVE del caso (MAX 250 parole). Formato: una frase per identificare il sinistro (merce, cliente, tipo danno), una frase sulla dinamica apparente, una frase sui punti critici. Elenca tutti i soggetti coinvolti, broker, assicurato, assicuratore, etc. - menziona solo i principali. Includi anche numeri e riferimenti che potrebbero aiutare il perito a comprendere meglio il caso.",
      "received_docs": [
        "Tipo documento 1 (es. 'Lettera di incarico del Cliente X')",
        "Tipo documento 2 (es. 'CMR n. 12345 del 01/01/2025')",
