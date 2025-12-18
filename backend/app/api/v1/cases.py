@@ -379,56 +379,92 @@ def initiate_upload(
             detail=f"MIME type mismatch. Expected {settings.ALLOWED_MIME_TYPES[ext]}.",
         )
 
-    # Helper to generate unique filename with (1), (2), etc. suffix
-    def get_unique_filename(base_filename: str, attempt: int = 0) -> str:
-        if attempt == 0:
-            return base_filename
-        stem = Path(base_filename).stem
-        suffix = Path(base_filename).suffix
-        return f"{stem}({attempt}){suffix}"
+    # 2.5. Efficiently handle filename collisions
+    # Fetch existing filenames for this case that match the pattern to avoid O(N) retries
+    from sqlalchemy import select
 
-    # Try to create document with auto-rename on duplicate
-    max_attempts = 10
-    final_filename = payload.filename
-    renamed = False
+    stem = Path(payload.filename).stem
+    suffix = Path(payload.filename).suffix
+    pattern = f"{stem}%{suffix}"
 
-    for attempt in range(max_attempts):
-        try_filename = get_unique_filename(payload.filename, attempt)
+    stmt = select(Document.filename).where(
+        Document.case_id == case.id, Document.filename.like(pattern)
+    )
+    existing_filenames = set(db.scalars(stmt).all())
 
-        # 3. Generate signed URL and get expected GCS path
-        gcs_clean_filename = get_unique_filename(clean_filename, attempt)
-        url_response = gcs_service.generate_upload_signed_url(
-            filename=gcs_clean_filename,
-            content_type=payload.content_type,
-            organization_id=str(case.organization_id),
-            case_id=str(case.id),
-        )
+    def get_next_filename(base_stem: str, base_suffix: str, existing: set[str]) -> str:
+        candidate = f"{base_stem}{base_suffix}"
+        if candidate not in existing:
+            return candidate
 
-        # 4. Pre-register document in PENDING state
-        new_doc = Document(
-            case_id=case.id,
-            organization_id=case.organization_id,
-            filename=try_filename,  # Keep original filename for display
-            gcs_path=url_response["gcs_path"],
-            mime_type=payload.content_type,
-            ai_status=ExtractionStatus.PENDING,
-        )
-        db.add(new_doc)
+        # Linear search for next available index (efficient since N is typically small)
+        i = 1
+        while True:
+            candidate = f"{base_stem}({i}){base_suffix}"
+            if candidate not in existing:
+                return candidate
+            i += 1
 
+    final_display_filename = get_next_filename(stem, suffix, existing_filenames)
+    renamed = final_display_filename != f"{stem}{suffix}"
+
+    # Calculate corresponding clean filename for GCS storage
+    clean_stem = Path(clean_filename).stem
+    clean_ext = Path(clean_filename).suffix
+
+    # Use the same index for both display and GCS filename for consistency
+    if renamed:
+        import re
+
+        match = re.search(r"\((\d+)\)$", Path(final_display_filename).stem)
+        if match:
+            idx = match.group(1)
+            final_gcs_filename = f"{clean_stem}({idx}){clean_ext}"
+        else:
+            final_gcs_filename = clean_filename
+    else:
+        final_gcs_filename = clean_filename
+
+    # 3. Generate signed URL and get expected GCS path (Exactly once)
+    url_response = gcs_service.generate_upload_signed_url(
+        filename=final_gcs_filename,
+        content_type=payload.content_type,
+        organization_id=str(case.organization_id),
+        case_id=str(case.id),
+    )
+
+    # 4. Pre-register document in PENDING state
+    new_doc = Document(
+        case_id=case.id,
+        organization_id=case.organization_id,
+        filename=final_display_filename,  # Unique display name
+        gcs_path=url_response["gcs_path"],
+        mime_type=payload.content_type,
+        ai_status=ExtractionStatus.PENDING,
+    )
+    db.add(new_doc)
+
+    # Final attempt with minimal retry only for extreme edge-case race conditions
+    for attempt in range(2):
         try:
             db.commit()
-            final_filename = try_filename
-            renamed = attempt > 0
             break
         except IntegrityError:
             db.rollback()
-            if attempt == max_attempts - 1:
+            if attempt == 1:
+                logger.error(
+                    f"Race condition: Filename collision for {final_display_filename} after pre-check."
+                )
                 raise HTTPException(
                     status_code=409,
-                    detail=f"Impossibile caricare '{payload.filename}': troppi duplicati.",
+                    detail=f"Conflitto durante il caricamento di '{payload.filename}'. Riprova.",
                 ) from None
-            # Continue to next attempt with incremented suffix
-            continue
+            # On first failure, wait a tiny bit or just try again with a likely unique ID
+            # In practice, pre-check should have solved this.
+            import uuid
+
+            new_doc.filename = f"{Path(final_display_filename).stem}_{uuid.uuid4().hex[:4]}{Path(final_display_filename).suffix}"
+            db.add(new_doc)
 
     db.refresh(new_doc)
 
@@ -440,9 +476,9 @@ def initiate_upload(
 
     # Include renamed filename info if applicable
     if renamed:
-        response_data["renamed_to"] = final_filename
+        response_data["renamed_to"] = final_display_filename
         logger.info(
-            f"Document renamed from '{payload.filename}' to '{final_filename}' due to duplicate"
+            f"Document renamed from '{payload.filename}' to '{final_display_filename}' due to duplicate"
         )
 
     return response_data

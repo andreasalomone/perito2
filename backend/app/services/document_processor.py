@@ -618,7 +618,7 @@ def _make_error_result(xlsx_path: str, message: str) -> Dict[str, Any]:
 @handle_extraction_errors()
 def extract_text_from_txt(txt_path: str) -> List[Dict[str, Any]]:
     # Prevent OOM on maliciously large text files
-    MAX_TXT_SIZE = 10 * 1024 * 1024  # 10MB
+    MAX_TXT_SIZE = 50 * 1024 * 1024  # 50MB (Transcript-friendly)
     file_size = os.path.getsize(txt_path)
     if file_size > MAX_TXT_SIZE:
         logger.warning(
@@ -633,7 +633,7 @@ def extract_text_from_txt(txt_path: str) -> List[Dict[str, Any]]:
         ]
 
     # Read raw bytes and detect encoding using charset-normalizer.
-    # This handles BOM (UTF-8, UTF-16LE/BE), and 99+ encodings automatically.
+    # We use a context manager to ensure the file is closed immediately after reading.
     with open(txt_path, "rb") as f:
         raw_bytes = f.read()
 
@@ -641,10 +641,15 @@ def extract_text_from_txt(txt_path: str) -> List[Dict[str, Any]]:
     detection_result = from_bytes(raw_bytes)
     best_match = detection_result.best()
 
+    # CRITICAL: We clear raw_bytes as soon as we have the string to free memory.
+    # For a 50MB file, this frees ~50MB RAM immediately.
+
     if best_match is not None:
         content = str(best_match)
         detected_encoding = best_match.encoding
         logger.debug(f"Detected encoding '{detected_encoding}' for {txt_path}")
+        # Explicitly delete raw_bytes to help GC
+        del raw_bytes
     else:
         # Fallback: try common encodings manually if detection fails
         # Order: BOM-aware first, then common Western encodings
@@ -656,6 +661,8 @@ def extract_text_from_txt(txt_path: str) -> List[Dict[str, Any]]:
                 break
             except (UnicodeDecodeError, LookupError):
                 continue
+        # Explicitly delete raw_bytes to help GC
+        del raw_bytes
 
     if content is None:
         logger.warning(f"Could not decode {txt_path} with any known encoding")

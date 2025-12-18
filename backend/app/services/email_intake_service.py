@@ -11,7 +11,7 @@ import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Dict, Optional, TypeVar
+from typing import Any, Dict, Optional, TypeVar
 from uuid import UUID
 
 import httpx
@@ -254,13 +254,12 @@ class EmailIntakeService:
             return None
 
         try:
-            file_content = self._download_attachment_with_token(
-                attachment.DownloadToken
-            )
             safe_name = document_processor.sanitize_filename(attachment.Name)
             local_path = os.path.join(temp_dir, safe_name)
-            with open(local_path, "wb") as f:
-                f.write(file_content)
+
+            # Streaming download directly to disk
+            self._download_attachment_to_file(attachment.DownloadToken, local_path)
+
             return local_path
         except Exception as e:
             logger.warning(
@@ -621,24 +620,28 @@ class EmailIntakeService:
 
         try:
             # Download from Brevo (or use pre-downloaded)
-            if pre_downloaded_path and os.path.exists(pre_downloaded_path):
-                with open(pre_downloaded_path, "rb") as f:
-                    file_content = f.read()
-                logger.debug(f"Using pre-downloaded file for {attachment.Name}")
-            else:
-                file_content = self._download_attachment_with_token(
-                    attachment.DownloadToken
-                )
+            # If not pre-downloaded, we download to a temp file first to avoid RAM pressure
+            if not (pre_downloaded_path and os.path.exists(pre_downloaded_path)):
+                import tempfile
+
+                # We use a temporary file to store the content during migration to GCS
+                with tempfile.NamedTemporaryFile(delete=False) as tmp_f:
+                    pre_downloaded_path = tmp_f.name
+                    self._download_attachment_to_file(
+                        attachment.DownloadToken, pre_downloaded_path
+                    )
 
             email_attach.status = "downloaded"
 
-            # Upload to GCS
-            gcs_path = self._upload_to_gcs(
-                content=file_content,
-                filename=attachment.Name,
-                case_id=case.id,
-                org_id=org_id,
-            )
+            # Upload to GCS using stream (from file)
+            with open(pre_downloaded_path, "rb") as f:
+                gcs_path = self._upload_stream_to_gcs(
+                    file_obj=f,
+                    filename=attachment.Name,
+                    case_id=case.id,
+                    org_id=org_id,
+                )
+
             email_attach.gcs_path = gcs_path
             email_attach.status = "uploaded"
 
@@ -663,11 +666,11 @@ class EmailIntakeService:
             logger.error(f"Attachment processing failed: {e}")
             return None
 
-    def _download_attachment_with_token(self, download_token: str) -> bytes:
+    def _download_attachment_to_file(
+        self, download_token: str, target_path: str
+    ) -> None:
         """
-        Download attachment content using Brevo's attachment API.
-
-        Reference: https://developers.brevo.com/reference/get_inbound_attachments-by-download-token
+        Download attachment content using Brevo's attachment API in chunks.
         """
         if not download_token:
             raise ValueError("No download token provided")
@@ -681,15 +684,18 @@ class EmailIntakeService:
             "accept": "application/octet-stream",
         }
 
+        # Use streaming to avoid loading large attachments into RAM
         with httpx.Client(timeout=120.0) as client:
-            response = client.get(url, headers=headers)
-            response.raise_for_status()
-            return response.content
+            with client.stream("GET", url, headers=headers) as response:
+                response.raise_for_status()
+                with open(target_path, "wb") as f:
+                    for chunk in response.iter_bytes(chunk_size=8192):
+                        f.write(chunk)
 
-    def _upload_to_gcs(
-        self, content: bytes, filename: str, case_id: UUID, org_id: UUID
+    def _upload_stream_to_gcs(
+        self, file_obj: Any, filename: str, case_id: UUID, org_id: UUID
     ) -> str:
-        """Upload file content to GCS and return gs:// path."""
+        """Upload file content to GCS from a file-like object and return gs:// path."""
         client = get_storage_client()
         bucket = client.bucket(settings.STORAGE_BUCKET_NAME)
 
@@ -697,13 +703,38 @@ class EmailIntakeService:
         blob_name = f"uploads/{org_id}/{case_id}/{filename}"
         blob = bucket.blob(blob_name)
 
-        blob.upload_from_string(content)
+        # upload_from_file uses a stream
+        blob.upload_from_file(file_obj)
 
         # Mark as finalized
         blob.metadata = {"status": "finalized", "source": "email"}
         blob.patch()
 
         return f"gs://{settings.STORAGE_BUCKET_NAME}/{blob_name}"
+
+    def _download_attachment_with_token(self, download_token: str) -> bytes:
+        """
+        DEPRECATED: Use _download_attachment_to_file for memory safety.
+        Keep as fallback or for small metadata if needed.
+        """
+        import tempfile
+
+        with tempfile.NamedTemporaryFile() as tmp:
+            self._download_attachment_to_file(download_token, tmp.name)
+            with open(tmp.name, "rb") as f:
+                return f.read()
+
+    def _upload_to_gcs(
+        self, content: bytes, filename: str, case_id: UUID, org_id: UUID
+    ) -> str:
+        """
+        DEPRECATED: Use _upload_stream_to_gcs for memory safety.
+        """
+        import io
+
+        return self._upload_stream_to_gcs(
+            io.BytesIO(content), filename, case_id, org_id
+        )
 
     def _create_document_record(
         self,

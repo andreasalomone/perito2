@@ -24,6 +24,7 @@ security = HTTPBearer(auto_error=False)
 SQL_SET_USER_UID = "SELECT set_config('app.current_user_uid', :uid, false)"
 SQL_RESET_USER_UID = "RESET app.current_user_uid;"
 SQL_RESET_ORG_ID = "RESET app.current_org_id;"
+SQL_RESET_RLS_ALL = "RESET app.current_user_uid; RESET app.current_org_id;"
 
 
 # -----------------------------------------------------------------------------
@@ -161,9 +162,6 @@ def get_db(
 
     logger.info(f"get_db: Processing request for user {uid} ({email})")
 
-    # Track if we have dirtied the connection
-    connection_dirtied = False
-
     try:
         # 1. Set the User UID session variable FIRST
         # This allows the 'user_self_access' RLS policy to let us read our own record.
@@ -173,7 +171,6 @@ def get_db(
                 text(SQL_SET_USER_UID),
                 {"uid": uid},
             )
-            connection_dirtied = True
             logger.debug(f"get_db: Set app.current_user_uid to {uid}")
         except Exception as e:
             logger.error(
@@ -232,29 +229,9 @@ def get_db(
         yield db
 
     finally:
-        # 5. CRITICAL: RESET variables before returning connection to pool
-        if connection_dirtied:
-            try:
-                db.execute(text(SQL_RESET_USER_UID))
-                db.execute(text(SQL_RESET_ORG_ID))
-            except Exception as e:
-                logger.warning(
-                    f"Initial RESET RLS failed in get_db (likely aborted transaction): {e}. Attempting rollback."
-                )
-                try:
-                    # If the transaction is aborted, we must rollback before we can run RESET
-                    db.rollback()
-                    db.execute(text(SQL_RESET_USER_UID))
-                    db.execute(text(SQL_RESET_ORG_ID))
-                    logger.info(
-                        "Successfully reset RLS context in get_db after rollback."
-                    )
-                except Exception as e2:
-                    logger.critical(
-                        f"FAILED TO RESET RLS CONTEXT in get_db after rollback: {e2}"
-                    )
-                    # Invalidate connection to prevent data leak
-                    db.invalidate()
+        # 5. Cleanup is now handled centrally by SQLAlchemy pool listeners in database.py
+        # This ensures consistency even if this dependency is bypassed or if transactions fail.
+        pass
 
 
 # -----------------------------------------------------------------------------
@@ -270,12 +247,10 @@ def get_registration_db(
     the user to exist in the User table yet. This allows first-time registration.
     """
     uid = current_user_token["uid"]
-    connection_dirtied = False
 
     try:
         # Use is_local=False for consistency and safety against commits
         db.execute(text(SQL_SET_USER_UID), {"uid": uid})
-        connection_dirtied = True
         yield db
     except Exception as e:
         logger.error(f"Failed to set app.current_user_uid for registration: {e}")
@@ -283,24 +258,8 @@ def get_registration_db(
             status_code=500, detail="Database context initialization failed"
         ) from e
     finally:
-        if connection_dirtied:
-            try:
-                db.execute(text(SQL_RESET_USER_UID))
-            except Exception as e:
-                logger.warning(
-                    f"Initial RESET RLS failed in get_registration_db (likely aborted transaction): {e}. Attempting rollback."
-                )
-                try:
-                    db.rollback()
-                    db.execute(text(SQL_RESET_USER_UID))
-                    logger.info(
-                        "Successfully reset RLS context in get_registration_db after rollback."
-                    )
-                except Exception as e2:
-                    logger.critical(
-                        f"FAILED TO RESET RLS CONTEXT in get_registration_db after rollback: {e2}"
-                    )
-                    db.invalidate()
+        # Cleanup is now handled centrally by database.py pool listeners
+        pass
 
 
 # -----------------------------------------------------------------------------
@@ -327,7 +286,6 @@ async def get_async_db(
             ...
     """
     uid = current_user_token["uid"]
-    connection_dirtied = False
 
     async with AsyncSessionLocal() as db:
         try:
@@ -355,8 +313,6 @@ async def get_async_db(
                 text("SELECT set_config('app.current_org_id', :oid, false)"),
                 {"oid": org_id},
             )
-            connection_dirtied = True
-
             logger.debug(
                 f"get_async_db: Set RLS context for user {uid} in org {org_id}"
             )
@@ -364,25 +320,8 @@ async def get_async_db(
             yield db
 
         finally:
-            # 3. CRITICAL: Reset RLS context before returning to pool
-            if connection_dirtied:
-                try:
-                    await db.execute(text(SQL_RESET_USER_UID))
-                    await db.execute(text(SQL_RESET_ORG_ID))
-                except Exception as e:
-                    logger.warning(
-                        f"get_async_db: Initial RESET failed: {e}. Attempting rollback."
-                    )
-                    try:
-                        await db.rollback()
-                        await db.execute(text(SQL_RESET_USER_UID))
-                        await db.execute(text(SQL_RESET_ORG_ID))
-                    except Exception as e2:
-                        logger.critical(
-                            f"get_async_db: FAILED TO RESET RLS after rollback: {e2}"
-                        )
-                        # Invalidate connection to prevent potential data leak
-                        await db.invalidate()
+            # 3. Cleanup is now handled centrally by database.py pool listeners
+            pass
 
 
 # -----------------------------------------------------------------------------

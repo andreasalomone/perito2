@@ -1,5 +1,6 @@
+import asyncio
 import logging
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Any, Literal, Optional, cast
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from google.auth.transport import requests as google_requests
@@ -53,14 +54,30 @@ class DocumentTaskPayload(TaskBase):
 _cached_request = google_requests.Request()
 
 
-def verify_cloud_tasks_auth(
+def _verify_token_sync(token: str) -> dict[str, Any]:
+    """
+    Internal sync helper: performs the blocking Google Auth verification.
+    Isolated here so it can be run in a thread pool.
+    """
+    return cast(
+        dict[str, Any],
+        id_token.verify_oauth2_token(
+            token,
+            _cached_request,
+            audience=None,  # Let Cloud Run handle audience validation
+        ),
+    )
+
+
+async def verify_cloud_tasks_auth(
     authorization: Annotated[str | None, Header()] = None,
 ) -> Literal[True]:
     """
     Validates Google Cloud Task OIDC Token.
 
-    NOTE: This is a synchronous function (def). When used as a dependency
-    in an 'async def' route, FastAPI runs it in a threadpool to prevent blocking.
+    ASYNC VERSION: Uses asyncio.to_thread() to run blocking Google Auth
+    verification without blocking the event loop. This prevents thread pool
+    exhaustion under high concurrent load.
     """
     if settings.ENVIRONMENT == "local" and settings.RUN_LOCALLY:
         return True
@@ -73,18 +90,9 @@ def verify_cloud_tasks_auth(
         if scheme.lower() != "bearer" or not token:
             raise ValueError("Invalid header format")
 
-        # Blocking I/O: Makes a request to Google's Certs endpoint
-        # Uses the global _cached_request to persist keys
-        #
-        # NOTE: Cloud Tasks uses the target URL as OIDC audience. We've configured
-        # Cloud Run to accept our custom domain (api.perito.my) as a valid audience
-        # via --add-custom-audiences. We skip audience verification here since
-        # Cloud Run validates it at the edge before the request reaches our code.
-        id_info = id_token.verify_oauth2_token(
-            token,
-            _cached_request,
-            audience=None,  # Let Cloud Run handle audience validation
-        )
+        # PERF FIX: Run blocking I/O in thread pool to prevent event loop starvation
+        # The _cached_request object handles caching of Google's public keys internally
+        id_info = await asyncio.to_thread(_verify_token_sync, token)
 
     except Exception as e:
         logger.warning(f"Auth Failed: {e}")

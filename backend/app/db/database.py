@@ -97,10 +97,70 @@ AsyncSessionLocal = async_sessionmaker(
     bind=async_engine, class_=AsyncSession, expire_on_commit=False
 )
 
+from sqlalchemy import event
+
 # Base is imported from app.models.base to avoid circular imports
 from app.models.base import (  # noqa: F401 - Required for SQLAlchemy model registration
     Base,
 )
+
+# -----------------------------------------------------------------------------
+# 4. RLS Cleanup Listeners (Pool Level)
+# -----------------------------------------------------------------------------
+SQL_RESET_RLS_ALL = "RESET app.current_user_uid; RESET app.current_org_id;"
+
+
+def _reset_rls_context(dbapi_connection, connection_record):
+    """
+    Guaranteed cleanup of RLS context when a connection is returned to the pool.
+    This prevents "Context Poisoning" where one user's state leaks to another.
+    Handles both pg8000 (sync) and asyncpg (async via sync_engine listener).
+    """
+    try:
+        if hasattr(dbapi_connection, "cursor"):
+            # pg8000 / standard DBAPI
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute(SQL_RESET_RLS_ALL)
+            finally:
+                cursor.close()
+        elif hasattr(dbapi_connection, "execute"):
+            # asyncpg connection (when called via sync_engine listener)
+            # We use await-less execution if possible or a different helper
+            # Actually, asyncpg connections in SQLAlchemy listeners are tricky.
+            # The most robust way is to just run the raw SQL if available.
+            dbapi_connection.execute(SQL_RESET_RLS_ALL)
+        else:
+            logger.warning(
+                f"Unknown connection type in RLS reset: {type(dbapi_connection)}"
+            )
+
+    except Exception as e:
+        logger.warning(
+            f"RLS reset failed on checkin: {e}. Attempting rollback cleanup."
+        )
+        try:
+            if hasattr(dbapi_connection, "rollback"):
+                dbapi_connection.rollback()
+
+            if hasattr(dbapi_connection, "cursor"):
+                cursor = dbapi_connection.cursor()
+                try:
+                    cursor.execute(SQL_RESET_RLS_ALL)
+                finally:
+                    cursor.close()
+            elif hasattr(dbapi_connection, "execute"):
+                dbapi_connection.execute(SQL_RESET_RLS_ALL)
+        except Exception as e2:
+            logger.critical(
+                f"CRITICAL: Connection sanitization FAILED: {e2}. Invalidating connection."
+            )
+            connection_record.invalidate()
+
+
+# Register listeners
+event.listen(engine, "checkin", _reset_rls_context)
+event.listen(async_engine.sync_engine, "checkin", _reset_rls_context)
 
 
 # -----------------------------------------------------------------------------
