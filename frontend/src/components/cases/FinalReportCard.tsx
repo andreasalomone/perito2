@@ -59,8 +59,11 @@ export function FinalReportCard({
     const [showEditDialog, setShowEditDialog] = useState(false);
     const [showCloseDialog, setShowCloseDialog] = useState(false);
 
-    // Derived Data
-    const versions = caseData?.report_versions || [];
+    // Derived Data - ONLY consider non-preliminary reports for FinalReportCard
+    // Preliminary reports have source:"preliminary", final reports have source:"ai" or null
+    const versions = (caseData?.report_versions || []).filter(
+        v => v.source !== "preliminary"
+    );
     const latestVersion = useMemo(() => {
         if (!versions.length) return undefined;
         return [...versions].sort((a, b) => b.version_number - a.version_number)[0];
