@@ -327,6 +327,7 @@ def create_ai_version(
         docx_storage_path=docx_path,
         ai_raw_output=ai_text,
         is_final=False,
+        source="final",  # Mark as final report source
     )
     db.add(version)
 
@@ -373,6 +374,7 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
         version_number=next_version,
         docx_storage_path=final_docx_path,
         is_final=True,
+        source="final",  # Mark as final report source
     )
     db.add(final_version)
     try:

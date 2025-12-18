@@ -50,6 +50,19 @@ export default function CaseWorkspace() {
     // Streaming hook for final report
     const finalReportStreamHook = useFinalReportStream(caseId);
 
+    // Refresh data when streaming completes
+    useEffect(() => {
+        if (finalReportStreamHook.state === "done") {
+            mutate(); // Refresh case data to get new report version
+        }
+    }, [finalReportStreamHook.state, mutate]);
+
+    useEffect(() => {
+        if (preliminaryStreamHook.state === "done") {
+            preliminaryReportHook.mutate(); // Refresh preliminary report data
+        }
+    }, [preliminaryStreamHook.state, preliminaryReportHook.mutate]);
+
     // Redirect CLOSED/finalized cases to summary page
     useEffect(() => {
         if (!caseData || isLoading) return;
@@ -61,7 +74,6 @@ export default function CaseWorkspace() {
             router.replace(`/dashboard/cases/${caseId}/summary`);
         }
     }, [caseData, isLoading, caseId, router]);
-
 
 
     // --- Handlers ---

@@ -7,7 +7,6 @@ import { FileText, Loader2, Edit, Download, BrainCircuit, CheckCircle, AlertCirc
 import { ExpandableScreen, ExpandableScreenTrigger, ExpandableScreenContent } from "@/components/ui/expandable-screen";
 import { CaseDetail, ReportVersion } from "@/types";
 import { MarkdownContent } from "@/components/ui/markdown-content";
-import { ReportGeneratingSkeleton } from "@/components/cases/ReportGeneratingSkeleton";
 import { ThinkingProcess } from "@/components/cases/ThinkingProcess";
 import { useState, useMemo } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -171,22 +170,14 @@ export function FinalReportCard({
                             </div>
                         )}
 
+
                         {/* GENERATING STATE (Visible in collapsed view too if generating) */}
                         {showGeneratingState && (
                             <div className="mt-8 border-t pt-8 animate-in fade-in zoom-in-95 duration-300">
-                                <div className="flex items-center gap-2 mb-4 text-primary font-medium">
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                    Generazione in corso...
-                                </div>
-
                                 <ThinkingProcess
                                     thoughts={streamedThoughts}
                                     state={streamState === "thinking" ? "thinking" : "done"}
                                 />
-
-                                <div className="mt-4">
-                                    <ReportGeneratingSkeleton />
-                                </div>
                             </div>
                         )}
                     </div>

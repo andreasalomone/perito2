@@ -261,6 +261,7 @@ async def _recover_orphaned_report(
             docx_storage_path=f"gs://{bucket_name}/{expected_blob_name}",
             ai_raw_output="[Recovered from GCS - original AI output not available]",
             is_final=False,
+            source="final",  # Mark as final report source
         )
         db.add(v1)
         case.status = CaseStatus.OPEN
@@ -541,6 +542,7 @@ async def _save_report_version(
     if v1 := result.scalars().first():
         v1.docx_storage_path = final_docx_path
         v1.ai_raw_output = report_text
+        v1.source = "final"  # Ensure source is set for updates
 
     else:
         v1 = ReportVersion(
@@ -550,6 +552,7 @@ async def _save_report_version(
             docx_storage_path=final_docx_path,
             ai_raw_output=report_text,
             is_final=False,
+            source="final",  # Mark as final report source
         )
         db.add(v1)
     case.status = CaseStatus.OPEN

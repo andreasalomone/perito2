@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { ChevronDown, ChevronRight, BrainCircuit, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { MarkdownContent } from "@/components/ui/markdown-content";
 
 interface ThinkingProcessProps {
     thoughts: string;
@@ -100,8 +101,8 @@ export function ThinkingProcess({ thoughts, state, className }: Readonly<Thinkin
                         ref={scrollRef}
                         className="h-[200px] w-full overflow-y-auto bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm"
                     >
-                        <div className="p-4 text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
-                            {thoughts}
+                        <div className="p-4 text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                            <MarkdownContent content={thoughts} variant="compact" />
                             {state === "thinking" && (
                                 <span className="inline-block w-0.5 h-4 ml-1 bg-purple-500 animate-pulse align-middle rounded-full" />
                             )}
