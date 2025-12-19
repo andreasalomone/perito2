@@ -5,6 +5,7 @@ import { initFirebase, googleProvider, getFirebaseAuth } from "@/lib/firebase";
 import { DBUser } from "@/types";
 import axios from "axios";
 import { useConfig } from "@/context/ConfigContext";
+import { SyncLoadingScreen } from "@/components/ui/SyncLoadingScreen";
 
 interface AuthContextType {
     user: User | null;
@@ -157,12 +158,7 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
     // PREVENT "ZOMBIE REQUESTS":
     // Do not render children until we know the Backend DB knows who we are.
     if (loading || (user && !isSynced)) {
-        return <div className="flex items-center justify-center min-h-screen">
-            <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                <p className="text-gray-600">Synchronizing Profile...</p>
-            </div>
-        </div>;
+        return <SyncLoadingScreen />;
     }
 
     if (error) {
