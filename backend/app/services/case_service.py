@@ -445,7 +445,9 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
                         summary = await summary_service.generate_summary(report_text)
                         if summary:
                             result = await bg_db.execute(
-                                select(Case).filter(Case.id == _case_id).with_for_update()
+                                select(Case)
+                                .filter(Case.id == _case_id)
+                                .with_for_update()
                             )
                             if c := result.scalars().first():
                                 c.ai_summary = summary

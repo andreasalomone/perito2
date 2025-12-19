@@ -389,16 +389,25 @@ def _process_document_for_llm(doc: Document) -> tuple[list[dict], dict | None]:
 
 def _deduplicate_by_content_hash(items: list[dict]) -> list[dict]:
     """
-    Remove duplicate items using content_hash.
+    Remove duplicates and filter useless item types.
 
+    - Skips: unsupported, error, warning types
     - Items WITH hash: deduplicate by hash
     - Items WITHOUT hash (legacy): always include
     """
+    SKIP_TYPES = {"unsupported", "error", "warning"}
+
     seen_hashes: set[str] = set()
     result = []
     duplicates_removed = 0
+    filtered_out = 0
 
     for item in items:
+        # Skip useless items
+        if item.get("type") in SKIP_TYPES:
+            filtered_out += 1
+            continue
+
         content_hash = item.get("content_hash")
 
         if content_hash:
@@ -410,10 +419,10 @@ def _deduplicate_by_content_hash(items: list[dict]) -> list[dict]:
         # Include item (either unique hash or no hash)
         result.append(item)
 
-    if duplicates_removed > 0:
+    if duplicates_removed > 0 or filtered_out > 0:
         logger.info(
-            f"🔁 Deduplication: Removed {duplicates_removed} duplicate items "
-            f"({len(result)} unique items remain)"
+            f"🔁 Filtering: {duplicates_removed} duplicates + {filtered_out} unsupported "
+            f"→ {len(result)} items remain"
         )
 
     return result
@@ -473,9 +482,7 @@ async def _collect_documents_for_generation(
     )
     if failed_docs:
         for fd in failed_docs:
-            logger.warning(
-                f"  ⚠️ Skipped: {fd['filename']} - Reason: {fd['reason']}"
-            )
+            logger.warning(f"  ⚠️ Skipped: {fd['filename']} - Reason: {fd['reason']}")
 
     # Deduplicate items with identical content hashes
     processed_data_for_llm = _deduplicate_by_content_hash(processed_data_for_llm)

@@ -150,7 +150,9 @@ async def check_has_pending_documents(
     # Auto-fail stuck documents
     if stuck_docs:
         for doc in stuck_docs:
-            age_minutes = (now - doc.created_at.replace(tzinfo=timezone.utc)).total_seconds() / 60
+            age_minutes = (
+                now - doc.created_at.replace(tzinfo=timezone.utc)
+            ).total_seconds() / 60
             logger.warning(
                 f"⏰ Stuck document detected: {doc.id} ({doc.filename}) "
                 f"stuck in {doc.ai_status.value} for {age_minutes:.1f} min. Auto-marking as ERROR."

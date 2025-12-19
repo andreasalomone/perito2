@@ -1,8 +1,8 @@
 import base64
 import binascii
 import datetime
-import hashlib
 import functools
+import hashlib
 import io
 import logging
 import mimetypes
@@ -687,14 +687,39 @@ def extract_text_from_txt(txt_path: str) -> List[Dict[str, Any]]:
 # --- EML Processing Helpers (Reduce Cognitive Complexity) ---
 
 
-def _extract_eml_body(mail: Any) -> str:
-    """Extract text body from parsed email, preferring plain text over HTML."""
+def _extract_eml_body(mail: Any) -> tuple[str, dict]:
+    """
+    Extract and clean text body from parsed email.
+    Returns (cleaned_body, email_metadata).
+    """
+    from app.services.email_parser import clean_email_body
+
+    # Get raw text content
     if mail.text_plain:
-        return "\n".join(mail.text_plain)
-    if mail.text_html:
+        raw_text = "\n".join(mail.text_plain)
+        content_type = "text/plain"
+    elif mail.text_html:
         raw_html = "\n".join(mail.text_html)
-        return _strip_html(raw_html)
-    return mail.body or ""
+        raw_text = _strip_html(raw_html)
+        content_type = "text/plain"  # Already converted
+    else:
+        raw_text = mail.body or ""
+        content_type = "text/plain"
+
+    # Get sender email for signature detection
+    sender_email = None
+    try:
+        if mail.from_ and len(mail.from_) > 0:
+            # mail.from_ is [('Name', 'email@domain.com'), ...]
+            sender = mail.from_[0]
+            sender_email = (
+                sender[1] if isinstance(sender, tuple) and len(sender) > 1 else None
+            )
+    except Exception:
+        pass  # Safely ignore sender extraction failures
+
+    # Clean with talon
+    return clean_email_body(raw_text, content_type, sender_email)
 
 
 def _decode_attachment_payload(
@@ -901,13 +926,14 @@ def process_eml_file(
     all_parts: List[Dict[str, Any]] = []
 
     # Extract email body
-    text_content = _extract_eml_body(mail)
+    text_content, email_metadata = _extract_eml_body(mail)
     all_parts.append(
         {
             "type": "text",
             "content": sanitize_text_content(text_content),
             "filename": f"{sanitize_filename(os.path.basename(eml_path))} (body)",
             "original_filetype": "eml",
+            "email_metadata": email_metadata,
         }
     )
 
