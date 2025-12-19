@@ -387,6 +387,38 @@ def _process_document_for_llm(doc: Document) -> tuple[list[dict], dict | None]:
     }
 
 
+def _deduplicate_by_content_hash(items: list[dict]) -> list[dict]:
+    """
+    Remove duplicate items using content_hash.
+
+    - Items WITH hash: deduplicate by hash
+    - Items WITHOUT hash (legacy): always include
+    """
+    seen_hashes: set[str] = set()
+    result = []
+    duplicates_removed = 0
+
+    for item in items:
+        content_hash = item.get("content_hash")
+
+        if content_hash:
+            if content_hash in seen_hashes:
+                duplicates_removed += 1
+                continue  # Skip duplicate
+            seen_hashes.add(content_hash)
+
+        # Include item (either unique hash or no hash)
+        result.append(item)
+
+    if duplicates_removed > 0:
+        logger.info(
+            f"🔁 Deduplication: Removed {duplicates_removed} duplicate items "
+            f"({len(result)} unique items remain)"
+        )
+
+    return result
+
+
 async def _collect_documents_for_generation(
     case_id: str, db: AsyncSession
 ) -> tuple[list[dict], list[dict], int]:
@@ -436,7 +468,7 @@ async def _collect_documents_for_generation(
     )
     logger.info(
         f"📊 LLM Input Summary for case {case_id}: "
-        f"{len(processed_data_for_llm)} items sent to LLM → "
+        f"{len(processed_data_for_llm)} items before dedup → "
         f"{vision_count} vision, {text_count} text"
     )
     if failed_docs:
@@ -444,6 +476,9 @@ async def _collect_documents_for_generation(
             logger.warning(
                 f"  ⚠️ Skipped: {fd['filename']} - Reason: {fd['reason']}"
             )
+
+    # Deduplicate items with identical content hashes
+    processed_data_for_llm = _deduplicate_by_content_hash(processed_data_for_llm)
 
     return processed_data_for_llm, failed_docs, len(documents)
 

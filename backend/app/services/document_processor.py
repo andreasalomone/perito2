@@ -1,6 +1,7 @@
 import base64
 import binascii
 import datetime
+import hashlib
 import functools
 import io
 import logging
@@ -933,6 +934,28 @@ def process_eml_file(
     return all_parts
 
 
+def _compute_content_hash(filepath: str) -> str | None:
+    """Compute MD5 hash of file content for deduplication."""
+    try:
+        with open(filepath, "rb") as f:
+            return hashlib.md5(f.read()).hexdigest()
+    except Exception as e:
+        logger.warning(f"Could not compute hash for {filepath}: {e}")
+        return None
+
+
+def _add_content_hash_to_items(
+    items: List[Dict[str, Any]], content_hash: str | None
+) -> List[Dict[str, Any]]:
+    """Add content_hash to vision/text items for deduplication."""
+    if not content_hash:
+        return items
+    for item in items:
+        if isinstance(item, dict) and item.get("type") in ("vision", "text"):
+            item["content_hash"] = content_hash
+    return items
+
+
 def process_uploaded_file(
     filepath: str, upload_folder: str, depth: int = 0
 ) -> List[Dict[str, Any]]:
@@ -952,13 +975,18 @@ def process_uploaded_file(
         ".txt": extract_text_from_txt,
     }
 
+    # EML files are processed recursively (attachments get their own hashes)
     if ext == ".eml":
         return process_eml_file(filepath, upload_folder, depth=depth)
 
+    # Compute content hash for deduplication
+    content_hash = _compute_content_hash(filepath)
+
     if processor := processors.get(ext):
         result = processor(filepath)
-        # Verify it is a list (POLA enforcement)
-        return [result] if isinstance(result, dict) else result
+        result = [result] if isinstance(result, dict) else result
+        return _add_content_hash_to_items(result, content_hash)
+
     return [
         {
             "type": "unsupported",
