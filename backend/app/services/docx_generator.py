@@ -248,7 +248,7 @@ def create_styled_docx(plain_text_report_content: str) -> io.BytesIO:
             )
             continue
 
-        # 3. Gestione Riferimenti (Vs. Rif., Polizza, Ns. Rif.)
+        # 3. Gestione Riferimenti (Vs. Rif., Rif. Broker, Ns. Rif.)
         ref_match = reference_line_pattern.match(stripped_line)
         if ref_match:
             # Create paragraph with 'List Bullet' style for automatic bullet character.

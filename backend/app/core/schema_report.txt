@@ -33,8 +33,8 @@ Genova, [Inserisci data di oggi completa nel formato "GG mese AAAA". ES: Genova,
 **BLOCCO RIFERIMENTI (FORMATTAZIONE IMPORTANTE):**
 (NOTA LLM: Genera ogni riferimento su una nuova riga. Allinea i due punti ":" usando esattamente 10 spazi prima e 10 dopo, per un aspetto pulito.)
 Vs. Rif.          :          [Riferimento fornito dal cliente. Se non reperibile, usa: N.D.]
-Polizza           :          [Numero polizza merci. Se non reperibile, usa: N.D.]
-Ns. Rif.          :          [Riferimento interno nostro, reperibile dalle informazioni del perito. Formato tipico XXX/YY. Se non reperibile, usa: N.D.]
+Rif. Broker       :          [Riferimento fornito dal broker/intermediario. Se non reperibile, usa: N.D.]
+Ns. Rif.          :          [Riferimento interno nostro, reperibile dalle informazioni del perito. Formato tipico XXXX/YY. Se non reperibile, usa: N.D.]
 
 \n\n
 (NOTA LLM: Lascia una riga vuota qui sopra, ottenuta con `\n\n`, prima dell'Oggetto)
@@ -105,7 +105,11 @@ Destinatario:[Nome completo società destinataria]
 [Indirizzo completo destinatario]
 [CAP Città (Nazione destinatario)]
 
-Vettore:[Nome completo società vettore]
+Vettore contrattuale:[Nome completo società vettore]
+[Indirizzo completo vettore]
+[CAP Città (Provincia, Nazione vettore)]
+
+Vettore effettivo:[Nome completo società vettore]
 [Indirizzo completo vettore]
 [CAP Città (Provincia, Nazione vettore)]
 
@@ -126,11 +130,11 @@ Data e luogo perizia:[Data/e perizia GG/MM/AAAA]
 (NOTA LLM: Dettaglio Spedizione si riferisce alle merce trasportata, ovvero Si riferisce alla **totalità** della merce oggetto del trasporto, non solo quella sinistrata/danneggiata (es. si trasportavano 60 colli con 10,050 pezzi, di cui danneggiati X, inserisci in questo campo 60 colli e 10,050 pezzi). Numero colli, quantità pezzi (se applicabile), tipo di merce, valore (aggiungi: 'come da fattura n°...'), peso lordo e peso netto)
 
 (**NOTA LLM**: I dati generali differiscono da perizia a perizia.
-- Sii intelligente a capire quale dati generali sono rilevanti per la perizia in oggetto, quali omettere, quali aggiungere, quali titoli modificare.
+- Sii intelligente a capire quale dati generali sono rilevanti per la perizia in oggetto, quali omettere, quali aggiungere, quali titoli modificare: sei un perito esperto intelligente, in base al sinistro specifico, al tipo di danno, alla documentazione fornita e al tipo di trasporto - adatta i dati generali di conseguenza (eg. i vettori possono essere molteplici, cos' i destinatari finali, i mittenti, i luoghi di partenza e di arrivo e tappe, ecc.).
 - Non generare dati generali che non siano presenti nei documenti forniti.
 - IMPORTANTE:Aggiungi, rimuovi o modifica i titoli + valore dei dati generali in base ai documenti forniti, al tipo di trasporto (terrestre o marittimo), di sinistro, ecc.
 – IMPORTANTE: a partire dai documenti devi capire se si tratta di un trasporto marittimo o terrestre.
-Se è marittimo inserisci nei dati generali nella formattazione di cui sopra:
+Se è marittimo inserisci nei dati generali nella formattazione di cui sopra, elementi come:
     Vettore marittimo
     Hbl/MBL
     B/l
@@ -138,6 +142,7 @@ Se è marittimo inserisci nei dati generali nella formattazione di cui sopra:
     Container
     Porto imbarco
     Porto sbarco
+    etc.
 
 Se terrestre inserisci
     Vettore contrattuale
@@ -145,6 +150,7 @@ Se terrestre inserisci
     Vettore effettivo
     Targa mezzo
     Autista
+    etc.
 
 - Esempi: Ecco alcuni esempi di entries per i dati generali ovvero i dati relativi alla spedizione:
     *   **Veicolo (se applicabile):**
@@ -173,7 +179,7 @@ Se terrestre inserisci
 
 2 – DINAMICA DEGLI EVENTI ED ACCERTAMENTI
 
-[Testo narrativo dettagliato. Separa i paragrafi con `\n\n`.
+[Testo narrativo dettagliato e verboso. Separa i paragrafi con `\n\n`.
 Per elenchi all'interno di questa sezione:
   - Per elenchi puntati (`- Testo item`).
   - Per elenchi numerati (`1. Testo item`).
@@ -229,8 +235,8 @@ Segui gli esempi di contenuto e stile forniti nella `GUIDA_STILE_TERMINOLOGIA_ED
 
 3 – QUANTIFICAZIONE DEL DANNO
 
-[Testo narrativo e, se presenti, dati economici. Separa i paragrafi con `\n\n`.
-Se presenti tabelle di calcolo danno, formattale testualmente usando 2 spazi per allineare le colonne.
+[Testo narrativo molto dettagliato per evitare ambiguità e, se presenti, dati economici. Separa i paragrafi con `\n\n`.
+Quando presenti tabelle di calcolo danno (caldamente consigliato se si tratta di un caso complesso), formattale testualmente usando 2 spazi per allineare le colonne.
 Importante: Includi sempre i marker [INIZIO_TABELLA_DANNI] e [FINE_TABELLA_DANNI] per delimitare ogni tabella che crei.
 
 Esempio struttura tabellare (adatta per l'output testuale):
@@ -246,32 +252,14 @@ Totale:  wxyz  wxyz  wxyz  wxyz  1900,00  wxyz
 Quando generi tabelle come sopra:
 IMPORTANTE: ogni riga è una row; per le colonne, separale da almeno 2 spazi come da esempio.
 Se presenti celle vuote (come da esempio, "Costi di smaltimento", "Totale:" o altre righe che hanno alcune celle vuote), scrivi "wxyz" per ogni colonna vuota.
-Esempio:
-[INIZIO_TABELLA_DANNI]
-Articolo  Q.tà  Unità  P.U. (€)  Valore (€)  Danno (€)  Note
-Maglioni  100 cartoni  15,00  1500,00  1500,00  Perdita totale
-Calze  50 casse  10,00  500,00  250,00  Realizzo 50%
-Costi di smaltimento wxyz  wxyz  wxyz  150,00  wxyz  wxyz
-Totale:  wxyz  wxyz  wxyz  wxyz  1900,00  wxyz
-[FINE_TABELLA_DANNI]
-
 
 Questa sezione deve dettagliare il valore economico del danno.
 Inizia spiegando la metodologia usata per la quantificazione (es. basata su fatture di acquisto, listini prezzi, preventivi di riparazione/sostituzione, valore di realizzo della merce danneggiata).
 Esempio: "Ai fini della quantificazione del danno, si è fatto riferimento alla documentazione commerciale prodotta (fatture di acquisto) e, per la parte recuperabile, al valore di realizzo ottenuto dalla vendita della merce danneggiata."
 Oppure, se il danno non è quantificabile per mancanza di documenti: "Non è stato possibile procedere ad una quantificazione economica precisa del danno in quanto, alla data di stesura della presente, non ci è stata fornita idonea documentazione attestante il valore della merce (es. fattura di acquisto)."
 
-Se il danno è stato quantificato, presenta i calcoli in modo chiaro. Se opportuno, utilizza una struttura tabellare (testo piano, allineato con spazi) o un elenco dettagliato.
-Esempio struttura tabellare (adatta per l'output testuale):
-[INIZIO_TABELLA_DANNI]
-Articolo  Q.tà  Unità  P.U. (€)  Valore (€)  Danno (€)  Note
-Maglioni  100 cartoni  15,00  1500,00  1500,00  Perdita totale
-Calze  50 casse  10,00  500,00  250,00  Realizzo 50%
-Costi di smaltimento wxyz  wxyz  wxyz  150,00  wxyz  wxyz
-Totale:  wxyz  wxyz  wxyz  wxyz  1900,00  wxyz
-[FINE_TABELLA_DANNI]
-
 Spiega ogni voce di costo o perdita. Includi eventuali costi accessori documentati (es. smaltimento, trasporto merce danneggiata, ri-lavorazione).
+
 Esempio: "L'importo relativo ai meloni cantalupo rappresenta la perdita totale di [numero] cartoni, valorizzati al prezzo di acquisto di EUR [prezzo] cadauno, come da fattura n. [numero]. Per la rucola, si è considerato un deprezzamento del 50% sul valore di acquisto, tenuto conto della parziale vendibilità. I costi di smaltimento sono stati documentati dalla fattura n. [numero] della ditta [Nome ditta smaltimento]."
 
 Se è stata effettuata una vendita di realizzo o proposto un valore di recupero, specificalo.
@@ -281,7 +269,7 @@ Esempio: "Si stima un valore di recupero per la merce [descrizione] pari a circa
 Concludi con l'importo finale del danno accertato.
 Esempio: "Pertanto, l'ammontare del danno complessivamente accertato e documentato risulta pari a Euro [Valore Totale Finale in cifre e valuta, es. EUR 1.900,00]."]
 
-Segui gli esempi di contenuto e stile forniti nella `GUIDA_STILE_TERMINOLOGIA_ED_ESEMPI` e le indicazioni precedenti per questa sezione.]
+Segui gli esempi di contenuto e stile forniti nella `GUIDA_STILE_TERMINOLOGIA_ED_ESEMPI` e le indicazioni precedenti per questa sezione.
 
 (NOTA PER LLM: Nel caso di un incidente durante il trasporto, i costi di soccorso, recupero e smaltimento della merce in sé (non del mezzo di trasporto) non vanno contati nei danni totali, ma devono essere calcolati e indicati scrivendo che sono lasciati a giudizio del liquidatore. Questo per i costi relativi alla merce, ma MAI per il mezzo di trasporto che ha subito l'incidente: i costi di soccorso, recupero e smaltimento del mezzo non sono mai coperti dall’assicurazione: vanno indicati per completezza, ma mai conteggiati nel computo del danno totale.)
 
@@ -302,7 +290,7 @@ Esempio alternativo: "Le cause del danneggiamento sono da ricondurre ad un urto 
 Se ci sono incertezze sulla causa esatta o se più fattori hanno concorso, indicalo.
 Esempio: "Sebbene non sia stato possibile determinare con assoluta certezza il momento esatto in cui è avvenuta la contaminazione da umidità, gli elementi raccolti suggeriscono che questa fosse già presente al momento del carico o si sia verificata nelle prime fasi del trasporto."]
 
-IMPORTANTE: per capire la causa del danno, comportati come un perito esperto e estrai o discerni la causa dai documenti e informazioni fornite.
+IMPORTANTE: per capire la causa del danno, comportati come un perito esperto e estrai o discerni la causa dai documenti e informazioni fornite: ragiona.
 
 Segui gli esempi di contenuto e stile forniti nella `GUIDA_STILE_TERMINOLOGIA_ED_ESEMPI` e le indicazioni precedenti per questa sezione.]
 
@@ -346,6 +334,7 @@ Restando comunque a disposizione per ulteriori chiarimenti che potessero necessi
   - Corrispondenza rilevante (es. email del GG/MM/AAAA tra X e Y)
   - Verbale/i Autorità (es. Verbale Polizia Stradale del GG/MM/AAAA) [Se applicabile]
   - [Elencare eventuali altri documenti specifici forniti e significativi, seguendo la stessa formattazione]
+etc.
 
 Concludi sempre con le seguenti frasi, separate da una riga vuota:
 Il presente certificato di perizia viene emesso senza pregiudizio alcuno dei diritti dei nostri mandanti.
