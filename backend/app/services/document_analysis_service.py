@@ -105,6 +105,9 @@ async def check_has_pending_documents(
     """
     Check if any documents are still being processed.
 
+    Includes stuck document recovery: Documents in PENDING/PROCESSING for over
+    4 minutes are automatically marked as ERROR to unblock the UI.
+
     Args:
         case_id: The case UUID
         db: Async database session
@@ -112,13 +115,56 @@ async def check_has_pending_documents(
     Returns:
         Tuple of (has_pending, pending_count)
     """
+    from datetime import datetime, timedelta, timezone
+
+    STUCK_TIMEOUT_MINUTES = 4
+
     stmt = select(Document).where(
         Document.case_id == case_id,
         Document.ai_status.in_([ExtractionStatus.PENDING, ExtractionStatus.PROCESSING]),
     )
     result = await db.execute(stmt)
-    pending_docs = result.scalars().all()
-    return len(pending_docs) > 0, len(pending_docs)
+    pending_docs = list(result.scalars().all())
+
+    if not pending_docs:
+        return False, 0
+
+    # Check for stuck documents (older than 4 minutes)
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(minutes=STUCK_TIMEOUT_MINUTES)
+
+    stuck_docs = []
+    still_pending = []
+
+    for doc in pending_docs:
+        created_at = doc.created_at
+        # Handle naive datetimes
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+
+        if created_at < cutoff:
+            stuck_docs.append(doc)
+        else:
+            still_pending.append(doc)
+
+    # Auto-fail stuck documents
+    if stuck_docs:
+        for doc in stuck_docs:
+            age_minutes = (now - doc.created_at.replace(tzinfo=timezone.utc)).total_seconds() / 60
+            logger.warning(
+                f"⏰ Stuck document detected: {doc.id} ({doc.filename}) "
+                f"stuck in {doc.ai_status.value} for {age_minutes:.1f} min. Auto-marking as ERROR."
+            )
+            doc.ai_status = ExtractionStatus.ERROR
+            doc.error_message = f"Extraction timeout: stuck in processing for over {STUCK_TIMEOUT_MINUTES} minutes"
+
+        await db.commit()
+        logger.info(
+            f"📋 Case {case_id}: Auto-failed {len(stuck_docs)} stuck docs, "
+            f"{len(still_pending)} still pending"
+        )
+
+    return len(still_pending) > 0, len(still_pending)
 
 
 async def check_analysis_staleness(

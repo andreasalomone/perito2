@@ -400,11 +400,50 @@ async def _collect_documents_for_generation(
     processed_data_for_llm = []
     failed_docs = []
 
+    # Tracking counters for detailed logging
+    vision_count = 0
+    text_count = 0
+    success_docs = 0
+    error_docs = 0
+    pending_docs = 0
+
     for doc in documents:
         items, failed_info = _process_document_for_llm(doc)
+
+        # Count document types for logging
+        if doc.ai_status == ExtractionStatus.SUCCESS:
+            success_docs += 1
+            for item in items:
+                item_type = item.get("type", "unknown")
+                if item_type == "vision":
+                    vision_count += 1
+                elif item_type == "text":
+                    text_count += 1
+        elif doc.ai_status == ExtractionStatus.ERROR:
+            error_docs += 1
+        else:
+            pending_docs += 1
+
         processed_data_for_llm.extend(items)
         if failed_info:
             failed_docs.append(failed_info)
+
+    # Detailed logging for document flow tracing
+    logger.info(
+        f"📊 Document Flow for case {case_id}: "
+        f"{len(documents)} total docs → "
+        f"{success_docs} SUCCESS, {error_docs} ERROR, {pending_docs} PENDING/OTHER"
+    )
+    logger.info(
+        f"📊 LLM Input Summary for case {case_id}: "
+        f"{len(processed_data_for_llm)} items sent to LLM → "
+        f"{vision_count} vision, {text_count} text"
+    )
+    if failed_docs:
+        for fd in failed_docs:
+            logger.warning(
+                f"  ⚠️ Skipped: {fd['filename']} - Reason: {fd['reason']}"
+            )
 
     return processed_data_for_llm, failed_docs, len(documents)
 

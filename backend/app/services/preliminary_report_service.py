@@ -85,6 +85,9 @@ async def check_has_pending_documents(
     """
     Check if any documents are still being processed.
 
+    Delegates to document_analysis_service.check_has_pending_documents which
+    includes stuck document recovery (auto-fails docs pending > 4 minutes).
+
     Args:
         case_id: The case UUID
         db: Async database session
@@ -92,13 +95,11 @@ async def check_has_pending_documents(
     Returns:
         Tuple of (has_pending, pending_count)
     """
-    stmt = select(Document).where(
-        Document.case_id == case_id,
-        Document.ai_status.in_([ExtractionStatus.PENDING, ExtractionStatus.PROCESSING]),
+    from app.services.document_analysis_service import (
+        check_has_pending_documents as _check_pending,
     )
-    result = await db.execute(stmt)
-    pending_docs = result.scalars().all()
-    return len(pending_docs) > 0, len(pending_docs)
+
+    return await _check_pending(case_id, db)
 
 
 async def run_preliminary_report(
