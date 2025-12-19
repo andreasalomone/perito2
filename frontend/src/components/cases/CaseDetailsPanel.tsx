@@ -19,6 +19,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableRow,
+} from "@/components/ui/table";
 
 type Props = {
     caseDetail: CaseDetail;
@@ -128,7 +134,7 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
 
     const formatValue = (val: any) => {
         if (val === null || val === undefined || val === "") {
-            return <span className="text-muted-foreground/50 font-normal">—</span>;
+            return <span className="text-muted-foreground/50 font-normal italic">Non definito</span>;
         }
 
         // Currency Formatting
@@ -159,15 +165,11 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
 
     if (isEditing) {
         return (
-            <div className="relative space-y-1.5">
-                <Label className="text-xs font-semibold text-primary uppercase tracking-wide">
-                    {field.label}
-                </Label>
+            <div className="p-1 px-4">
                 {field.type === "textarea" ? (
                     <Textarea
                         autoFocus
-                        className="min-h-[100px] ring-2 ring-ring"
-                        rows={4}
+                        className="min-h-[100px] ring-1 ring-primary text-sm shadow-sm"
                         value={tempValue}
                         onChange={(e) => setTempValue(e.target.value)}
                         onBlur={() => onSave(tempValue === "" ? null : tempValue)}
@@ -176,7 +178,7 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
                 ) : (
                     <Input
                         autoFocus
-                        className="ring-2 ring-ring"
+                        className="h-8 ring-1 ring-primary text-sm px-2 shadow-sm"
                         type={field.type || "text"}
                         step={field.step}
                         value={tempValue}
@@ -189,16 +191,10 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
         );
     }
 
-    // Read-only fields: show without edit capability
     if (field.readOnly) {
         return (
-            <div className="p-3 rounded-lg flex flex-col justify-center min-h-[64px]">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
-                    {field.label}
-                </span>
-                <div className="text-sm font-medium text-foreground truncate">
-                    {formatValue(value)}
-                </div>
+            <div className="px-4 py-2.5 text-sm font-medium text-foreground min-h-[40px] flex items-center">
+                {formatValue(value)}
             </div>
         );
     }
@@ -207,22 +203,22 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
         <div
             onClick={onStartEdit}
             className={cn(
-                "group p-3 rounded-lg border border-transparent hover:border-border hover:bg-muted/50 cursor-pointer transition-all duration-200",
-                "flex flex-col justify-center min-h-[64px]"
+                "px-4 py-2.5 cursor-pointer transition-colors duration-200 min-h-[40px] flex items-center group/cell",
+                "text-sm font-medium text-foreground hover:bg-primary/5"
             )}
         >
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1 group-hover:text-primary transition-colors">
-                {field.label}
-            </span>
             <div className={cn(
-                "text-sm font-medium text-foreground truncate",
-                field.type === "textarea" ? "whitespace-pre-wrap truncate-none line-clamp-4" : ""
+                "flex-1",
+                field.type === "textarea" ? "whitespace-pre-wrap line-clamp-6" : "truncate"
             )}>
                 {field.type === "markdown" ? (
                     <MarkdownContent content={String(value || "")} variant="compact" />
                 ) : (
                     formatValue(value)
                 )}
+            </div>
+            <div className="opacity-0 group-hover/cell:opacity-100 transition-opacity ml-2">
+                <span className="text-[10px] text-primary/50 uppercase font-bold">Modifica</span>
             </div>
         </div>
     );
@@ -267,58 +263,74 @@ export default function CaseDetailsPanel({ caseDetail, onUpdate }: Props) {
     };
 
     return (
-        <Card className="border shadow-sm overflow-hidden">
+        <Card className="border shadow-md overflow-hidden bg-background">
             <CardHeader
-                className="bg-muted/30 border-b flex flex-row items-center justify-between py-4 px-6 cursor-pointer hover:bg-muted/50 transition-colors"
+                className="bg-muted/30 border-b flex flex-row items-center justify-between py-5 px-6 cursor-pointer hover:bg-muted/50 transition-all group"
                 onClick={() => setIsOpen(!isOpen)}
             >
-                <div>
-                    <CardTitle className="text-lg font-semibold text-foreground flex items-center gap-2">
-                        Dettagli Pratica
-                    </CardTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                        Gestisci tutte le informazioni strutturate del caso.
-                    </p>
+                <div className="flex items-center gap-4">
+                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                        <FileSpreadsheet className="h-5 w-5" />
+                    </div>
+                    <div>
+                        <CardTitle className="text-xl font-bold tracking-tight text-foreground">
+                            Dettagli Pratica
+                        </CardTitle>
+                        <p className="text-sm text-muted-foreground mt-0.5">
+                            Gestisci tutte le informazioni strutturate del caso.
+                        </p>
+                    </div>
                 </div>
 
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground">
-                    {isOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
-                </Button>
+                <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {isOpen ? "Chiudi" : "Espandi"}
+                    </span>
+                    <Button variant="outline" size="icon" className="h-8 w-8 rounded-full border-muted-foreground/20">
+                        {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </Button>
+                </div>
             </CardHeader>
 
             {isOpen && (
                 <CardContent className="p-0">
-                    <div className="divide-y divide-border">
-                        {SECTIONS.map((section) => (
-                            <div key={section.id} className="p-6">
-                                <div className="flex items-center gap-2 mb-4">
-                                    <div className={cn("p-1.5 rounded-md", section.bgClass)}>
+                    <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x border-b">
+                        {SECTIONS.map((section, idx) => (
+                            <div key={section.id} className={cn(
+                                "p-0 flex flex-col",
+                                // Add borders to simulate a unified grid if needed, or just let them stay separate
+                                "border-b last:border-b-0"
+                            )}>
+                                <div className="flex items-center gap-2 px-6 py-4 bg-muted/10 border-b">
+                                    <div className={cn("p-1 rounded-md", section.bgClass)}>
                                         <section.icon className={cn("h-4 w-4", section.colorClass)} />
                                     </div>
-                                    <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">
+                                    <h3 className="text-xs font-bold text-foreground uppercase tracking-widest">
                                         {section.id}
                                     </h3>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                    {section.fields.map((field) => (
-                                        <div
-                                            key={field.key as string}
-                                            className={cn(
-                                                field.fullWidth ? "col-span-full" : "col-span-1"
-                                            )}
-                                        >
-                                            <FieldCell
-                                                field={field}
-                                                value={(caseDetail as any)[field.key] ?? (field.key === "client_name" ? caseDetail.client_name : null)}
-                                                isEditing={editingKey === field.key}
-                                                onStartEdit={() => setEditingKey(field.key as string)}
-                                                onSave={(val) => handleSave(field.key as string, val)}
-                                                onCancel={() => setEditingKey(null)}
-                                            />
-                                        </div>
-                                    ))}
-                                </div>
+                                <Table className="border-0">
+                                    <TableBody>
+                                        {section.fields.map((field) => (
+                                            <TableRow key={field.key as string} className="group/row hover:bg-transparent border-b last:border-0 border-muted/30">
+                                                <TableCell className="bg-muted/5 font-semibold text-muted-foreground w-1/3 min-w-[140px] py-2 px-6 border-r border-muted/30 text-[10px] uppercase tracking-wider select-none">
+                                                    {field.label}
+                                                </TableCell>
+                                                <TableCell className="p-0">
+                                                    <FieldCell
+                                                        field={field}
+                                                        value={(caseDetail as any)[field.key] ?? (field.key === "client_name" ? caseDetail.client_name : null)}
+                                                        isEditing={editingKey === field.key}
+                                                        onStartEdit={() => setEditingKey(field.key as string)}
+                                                        onSave={(val) => handleSave(field.key as string, val)}
+                                                        onCancel={() => setEditingKey(null)}
+                                                    />
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
                             </div>
                         ))}
                     </div>
