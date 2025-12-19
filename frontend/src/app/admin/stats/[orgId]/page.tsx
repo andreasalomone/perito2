@@ -29,7 +29,7 @@ export default function OrgStatsPage() {
             if (!token) throw new Error("No token available");
             return api.admin.getOrgStats(token, orgId);
         },
-        { revalidateOnFocus: false }
+        { revalidateOnFocus: true }
     );
 
     // Redirect if not logged in

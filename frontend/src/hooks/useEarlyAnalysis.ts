@@ -32,7 +32,7 @@ export function useDocumentAnalysis(caseId: string | undefined, shouldPoll: bool
             return api.cases.getDocumentAnalysis(token, caseId!);
         },
         {
-            revalidateOnFocus: false, // Disabled to reduce API calls on tab switch
+            revalidateOnFocus: true, // Disabled to reduce API calls on tab switch
             refreshInterval: shouldPoll ? 5000 : 0, // Only poll when processing
             keepPreviousData: true,
         }
@@ -106,7 +106,7 @@ export function usePreliminaryReport(caseId: string | undefined, shouldPoll: boo
             return api.cases.getPreliminaryReport(token, caseId!);
         },
         {
-            revalidateOnFocus: false, // Disabled to reduce API calls on tab switch
+            revalidateOnFocus: true, // Disabled to reduce API calls on tab switch
             refreshInterval: shouldPoll ? 5000 : 0, // Only poll when processing
             keepPreviousData: true,
         }

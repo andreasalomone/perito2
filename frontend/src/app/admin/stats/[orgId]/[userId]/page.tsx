@@ -27,7 +27,7 @@ export default function UserStatsPage() {
             if (!token) throw new Error("No token available");
             return api.admin.getUserStats(token, orgId, userId);
         },
-        { revalidateOnFocus: false }
+        { revalidateOnFocus: true }
     );
 
     // Redirect if not logged in
