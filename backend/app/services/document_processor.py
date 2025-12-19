@@ -927,6 +927,12 @@ def process_eml_file(
 
     # Extract email body
     text_content, email_metadata = _extract_eml_body(mail)
+
+    # Prepend sender to content for LLM context
+    sender = email_metadata.get("sender")
+    if sender:
+        text_content = f"From: {sender}\n\n{text_content}"
+
     all_parts.append(
         {
             "type": "text",
