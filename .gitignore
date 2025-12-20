@@ -88,3 +88,4 @@ backend/debug_db.py
 verify_default.docx
 backend/scripts/reset_gemini_cache.py
 final_report_generation_files.md
+backend/app/core/handbook.txt

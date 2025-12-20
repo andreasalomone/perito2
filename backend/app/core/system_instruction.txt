@@ -24,3 +24,487 @@ REGOLE COMPORTAMENTALI E DI OUTPUT FONDAMENTALI:
 
 ANALISI DEI DOCUMENTI MULTIMODALI:
 Presta la massima attenzione a tutti i tipi di documenti forniti. Estrai informazioni rilevanti da testi, immagini e PDF. Le immagini e i PDF sono particolarmente importanti perché possono contenere dettagli visivi (es. danni specifici, stato degli imballi, configurazione del carico) o testuali (es. clausole di polizza, dettagli di fatture) che non sono presenti in altri formati testuali. Correlare le informazioni provenienti da diverse fonti.
+
+HANDBOOK OPERATIVO PER ESPERTI: La Perizia Assicurativa Trasporti e la Gestione Tecnica del Sinistro Merci
+
+1. Introduzione: Il Ruolo del Perito e la Genesi dell'Indagine
+L'attività del perito trasporti (Marine Cargo Surveyor) è cruciale non solo per la constatazione dei danni, ma come fulcro tecnico-giuridico per la liquidazione dei sinistri e le azioni di rivalsa. Nelle complesse catene logistiche globali, il perito funge da tecnico della Compagnia, accertando la verità fattuale. Questo manuale è una knowledge base operativa per supportare professionisti e AI nella redazione di rapporti probatori inattaccabili.
+
+Il mandato peritale richiede risposte a quattro quesiti essenziali: natura, causa prossima, entità del danno e responsabilità. La qualità di queste risposte determina l'esito assicurativo. È vitale agire tempestivamente, dati i brevi termini decadenziali nel diritto dei trasporti per riserve e contestazioni.
+
+1.1 L'Etica e l'Imparzialità nell'Accertamento
+Sebbene nominato dall'Assicurazione, la credibilità del perito dipende dall'oggettività. Il rapporto deve separare fatti (es. temperatura, rottura sigillo) e deduzioni tecniche. Lo scopo è offrire un quadro chiaro e documentato che renda l'applicabilità delle garanzie o la responsabilità del vettore una conseguenza logica e ineludibile, non una difesa pretestuosa per l'assicuratore.
+
+Knowledge Pill: Se la controparte non si presenta, procedere comunque ma verbalizzare dettagliatamente l'invito inviato e la mancata comparizione ("Survey held without prejudice due to non-attendance of carrier's surveyor").
+
+2. Il Quadro Normativo: Responsabilità Vettoriale e Onere della Prova
+La comprensione profonda delle normative nazionali e internazionali è lo strumento che permette al perito di trasformare un semplice danno in un dossier di rivalsa efficace. La responsabilità del vettore è, nella maggior parte degli ordinamenti, una responsabilità "ex recepto" o presunta: egli si presume responsabile della perdita o avaria a meno che non provi una causa esimente specifica.
+
+2.1 La Responsabilità nel Codice Civile Italiano (Trasporti Nazionali)
+Nei trasporti eseguiti interamente sul territorio italiano, il riferimento cardine è l'articolo 1693 del Codice Civile. La norma stabilisce che il vettore è responsabile della perdita e dell'avaria delle cose consegnategli per il trasporto, dal momento in cui le riceve a quello in cui le riconsegna al destinatario.
+
+2.1.1 L'Inversione dell'Onere della Prova
+L'aspetto cruciale per il perito è che l'assicurato (e quindi l'assicuratore in surroga) deve solo provare il danno e il contratto di trasporto. Spetta al vettore, per liberarsi, fornire la prova positiva che il danno è derivato da:
+Caso fortuito: Un evento imprevedibile e inevitabile (es. una rapina a mano armata con modalità paramilitari, o un evento naturale eccezionale).
+
+Vizio delle cose o dell'imballaggio: Se il vettore accetta la merce senza riserve, si presume che l'imballaggio non presentasse vizi apparenti. Tuttavia, il vettore può tentare di provare che il vizio era occulto.
+Fatto del mittente o del destinatario: Tipicamente un errato stivaggio all'interno del container (se il carico è avvenuto a cura del mittente - condizione "Shipper's Load, Stow and Count").
+
+Il perito deve quindi analizzare minuziosamente se il vettore ha apposto riserve al momento del ritiro. In assenza di riserve sul Documento di Trasporto (DDT), la posizione del vettore si aggrava notevolmente, rendendo la rivalsa più agevole.
+
+2.2 La Convenzione CMR (Trasporti Internazionali su Strada)
+Per i trasporti stradali internazionali, la Convenzione CMR (Ginevra, 1956) è la lex specialis prevalente. Essa si applica a ogni contratto di trasporto a titolo oneroso di merci su strada quando il luogo di presa in consegna e quello di riconsegna sono situati in due Stati diversi, di cui almeno uno sia Parte contraente.
+
+2.2.2 Regime delle Riserve e Prescrizione
+La gestione delle riserve nella CMR è rigorosa e il perito deve verificarne il rispetto temporale:
+Danni Apparenti: Le riserve devono essere formulate al momento della consegna.
+Danni Occulti: Le riserve devono essere inviate per iscritto entro 7 giorni (esclusi domeniche e festivi) dalla riconsegna.
+
+Il mancato rispetto di questi termini inverte l'onere della prova a sfavore dell'avente diritto alla merce. Inoltre, il reclamo scritto sospende la prescrizione fino a quando il vettore non lo respinge per iscritto allegando i documenti. Questo meccanismo di sospensione è vitale per mantenere vivi i diritti di rivalsa.
+
+2.3 Limiti di Risarcimento e Colpa Grave
+Il calcolo del limite di responsabilità è parte integrante della quantificazione del danno nel report peritale.
+
+Codice Civile (Italia):
+- Limite di Responsabilità Standard: 1,00 € per Kg di peso lordo perduto o avariato (Art. 1696 C.C.)
+- Eccezione al Limite (Colpa Grave/Dolo): Risarcimento integrale in caso di dolo o colpa grave del vettore.
+
+Convenzione CMR:
+- Limite di Responsabilità Standard: 8,33 Diritti Speciali di Prelievo (DSP) per Kg (Art. 23 CMR)
+- Eccezione al Limite (Colpa Grave/Dolo): Risarcimento integrale se il danno deriva da dolo o colpa equiparata al dolo (Art. 29 CMR).
+
+Convenzione Montreal (Aereo):
+- Limite di Responsabilità Standard: 22 DSP per Kg
+- Limite generalmente invalicabile salvo dichiarazione di valore o casi specifici.
+
+
+Analisi Expert-Level: Il perito deve cercare elementi fattuali per invocare la "Colpa Grave" (Gross Negligence) e superare i limiti vettoriali, massimizzando il recupero. Esempi tipici includono l'abbandono del mezzo incustodito in aree non protette, la guida in stato di ebbrezza, o la violazione palese delle istruzioni di trasporto (es. temperatura impostata errata nel reefer).
+
+3. Architettura delle Polizze Assicurative Merci (Cargo)
+La perizia deve sempre confrontarsi con le condizioni di polizza. Le Institute Cargo Clauses (ICC) emesse dall'International Underwriting Association di Londra costituiscono lo standard globale.
+
+3.1 Tipologie di Polizza
+- Polizza "Single Voyage" (A viaggio): Copre una singola spedizione specifica.
+- Polizza in Abbonamento (Open Cover / Floating Policy): Copre automaticamente tutte le spedizioni dell'assicurato che rientrano nei parametri (merceologia, viaggi, massimali) dichiarati. Verifica Peritale: controllare che la spedizione sinistrata sia stata dichiarata nel registro (o rientri nel fatturato stimato) e che il premio sia stato regolato.
+- Stock Throughput Policy (STP): Copre la merce in transito E in giacenza nei magazzini (statico + dinamico). Elimina le zone grigie tra polizza trasporti e polizza property (furto/incendio magazzino).
+
+3.2 Institute Cargo Clauses (ICC) - Standard di Londra
+- ICC (A) - All Risks: Copre tutto ciò che non è escluso. Onere della prova a carico dell'assicuratore per rifiutare. Il perito cerca le esclusioni (vizio proprio, imballaggio insufficiente).
+
+- ICC (B) & (C) - Named Perils: Coprono solo eventi elencati (incendio, collisione, ecc.). La (C) non copre bagnamento da pioggia o furto. Se la polizza è (C) e la merce è bagnata, il perito deve provare che l'acqua è entrata per "ingresso di acqua di mare/fiume" (coperto in B, non in C) o per rottura del contenitore dovuta a collisione.
+
+3.3 Analisi Comparativa delle Clausole ICC (A), (B) e (C)
+La distinzione tra queste coperture definisce il perimetro dell'indagine peritale.
+
+3.3.1 Institute Cargo Clauses (A) – "All Risks"
+Questa è la copertura più ampia. Copre "tutti i rischi di perdita o danno" alla merce assicurata, salvo le esclusioni specifiche (es. dolo dell'assicurato, vizio proprio, ritardo). Implicazione Peritale: In presenza di una polizza (A), l'onere della prova per l'assicuratore è dimostrare che l'evento rientra in un'esclusione. Se la causa è ignota ma il danno è accidentale ed esterno, la polizza opera. Il perito deve concentrarsi sull'escludere il "Vizio Proprio" (Inherent Vice) e l'"Insufficienza di Imballaggio".
+
+3.3.2 Institute Cargo Clauses (B) e (C) – "Named Perils"
+Queste polizze coprono solo i rischi elencati.
+
+- ICC (C): Copre incendio, esplosione, incaglio, affondamento, capovolgimento mezzo terrestre, collisione, scarico in porto di rifugio, sacrificio di avaria generale, getto a mare. Nota Critica: NON copre il bagnamento da acqua di mare o pioggia, né il furto, né la rottura per sballottamento.
+
+- ICC (B): Aggiunge alla (C) il terremoto, l'eruzione vulcanica, il fulmine, il lavaggio ponte (washing overboard), l'entrata di acqua di mare/fiume/lago (ma NON pioggia!), e la perdita totale di colli in fase di carico/scarico.
+
+Tavola Sinottica delle Coperture Principali:
+
+ICC (A):
+- Copre: Incendio / Esplosione
+Ribaltamento / Deragliamento
+Collisione / Urti
+Bagnamento Acqua Mare/Fiume
+Bagnamento Pioggia/Condensa
+Furto / Rapina
+Rottura / Ammaccatura
+Terremoto / Eruzione Vulcanica
+
+ICC (B)
+- Copre: Incendio / Esplosione
+Ribaltamento / Deragliamento
+Collisione / Urti
+Bagnamento Acqua Mare/Fiume
+Terremoto / Eruzione Vulcanica
+
+- Non copre: Bagnamento Pioggia/Condensa
+Furto / Rapina
+Rottura / Ammaccatura
+
+ICC (C)
+- Copre: Incendio / Esplosione
+Ribaltamento / Deragliamento
+Collisione / Urti
+
+- Non copre: Bagnamento Acqua Mare/Fiume
+Bagnamento Pioggia/Condensa
+Furto / Rapina
+Rottura / Ammaccatura
+Terremoto / Eruzione Vulcanica
+
+3.4 Clausola "Sue and Labor" (Spese di Salvataggio)
+L'obbligo di salvataggio (Art. 1914 C.C. e Clause 16 ICC) impone all'assicurato di agire per evitare o diminuire il danno. Le spese sostenute, se ragionevoli, sono rimborsabili dall'assicuratore oltre la somma assicurata. Verifica Peritale: Il perito deve validare la congruità di tali spese (es. costi di asciugatura, selezione, ri-imballaggio). Se le spese sono sproporzionate rispetto al valore salvato o sostenute per danni non coperti (es. vizio proprio), non sono indennizzabili.
+
+4. Metodologie di Indagine: La Raccolta delle Prove
+La fase di accertamento sul campo ("Survey") è il momento in cui si raccolgono le evidenze che sosterranno l'intero impianto peritale.
+
+4.1 La Checklist Documentale Obbligatoria
+L'acquisizione documentale deve essere immediata per evitare manipolazioni. La lista dei documenti essenziali include:
+
+- Titolo di Trasporto Originale: (CMR, Polizza di Carico/B/L, AWB). Verificare firme, date e soprattutto le riserve; un CMR pulito alla partenza è prova presuntiva di merce sana.
+- Documento di Trasporto (DDT) / Packing List: Dettaglio del contenuto collo per collo.
+- Fattura Commerciale: Base per il valore assicurabile e verifica degli Incoterms (chi aveva il rischio?).
+- Certificato di Assicurazione: Per confermare le condizioni applicabili.
+- Lettera di Riserve e Risposta del Vettore: Fondamentale per la prescrizione.
+- Documentazione del Conducente e del Mezzo: Libretto, patente, certificato ATP (per merce deperibile).
+- Dati Tecnici: Dischi tachigrafici (o dati digitali), stampate del termoregistratore, foto scattate al momento dello scarico.
+
+4.2 Ispezione Tecnica dell'Imballaggio
+L'inadeguatezza dell'imballaggio è una delle eccezioni più comuni sollevate dai vettori. Il perito deve descrivere l'imballaggio non solo visivamente, ma funzionalmente.
+
+- Analisi Statica e Dinamica: L'imballaggio ha ceduto per compressione statica (sovrapposizione in magazzino) o dinamica (accelerazioni durante il trasporto)?
+
+- Materiali: Verificare la qualità del cartone (singola/doppia onda), l'uso di paraspigoli, film estensibile, regge.
+
+- Spazi Vuoti: Nel container, gli spazi vuoti permettono il movimento del carico. L'assenza di dunnage (materiale di riempimento come airbag o legname) è spesso indice di colpa del caricatore.
+
+Note: Non basta dire "imballaggio insufficiente". Bisogna specificare perché rispetto alle sollecitazioni normali del viaggio. Checklist: Scatole schiacciate alla base (sovrapposizione eccessiva)? Assenza di sacchetti disidratanti (silica gel) in viaggi intercontinentali (danno da condensa)? Assenza di "dunnage" (pagliolato/airbag) nel container? Etc.
+
+4.3 Analisi dei Sigilli e Sicurezza del Container (ISO 17712)
+In caso di ammanchi, l'integrità del sigillo è la chiave di volta. La norma ISO 17712 classifica i sigilli in tre categorie: "Indicative" (I), "Security" (S) e "High Security" (H). I container internazionali richiedono sigilli (H) testati per resistere a trazione elevata.
+
+Protocollo di Verifica Sigillo:
+- Corrispondenza: Il numero sul sigillo fisico corrisponde esattamente a quello sui documenti (B/L, CMR)?
+- Esame Fisico: Cercare segni di manomissione chimica (colla), termica o meccanica.
+- Tamper Evidence: I sigilli "indicativi" non offrono resistenza, servono solo a mostrare l'apertura. Se è stato usato un sigillo inadeguato per merce di valore, può configurarsi una negligenza del mittente.
+- Verifica delle Cerniere: I ladri esperti possono rimuovere le portiere del container smontando le cerniere senza rompere il sigillo. Il perito deve ispezionare i rivetti e i bulloni delle maniglie per segni di effrazione.
+
+4.4 Assenza di Documenti e Uso dei "Mercuriali"
+Un problema frequente è la mancanza della fattura commerciale (es. trasferimenti tra filiali, merce non ancora venduta, o perdita totale documenti).
+
+Soluzione: Utilizzare i Mercuriali (Listini Prezzi all'Ingrosso) della Camera di Commercio del luogo e del giorno di arrivo della merce (o previsto arrivo).
+
+Procedura:
+- Identificare la categoria merceologica esatta (calibro, varietà per ortofrutta).
+- Accedere ai borsini della Camera di Commercio o dei Mercati Ortofrutticoli all'ingrosso (es. CAAT, Mercati di Milano/Verona).
+- Mediare tra prezzo minimo e massimo del giorno del sinistro.
+- Citare la fonte nel report per dare autorità alla valutazione ("Valore determinato su base Mercuriale CCIAA di [Città] del").
+
+4.5 Analisi Forense e Tecnologica
+- Dati AIS e Meteo: Per danni da bagnamento o "heavy weather" marittimo, incrociare i dati di tracciamento nave (AIS) con le carte meteo storiche. Se la nave ha incontrato tempesta, può confermare la causa di forza maggiore o la cattiva gestione della rotta.
+
+- Silver Nitrate Test (Nitrato d'Argento): Obbligatorio per bagnamenti in area portuale. Una soluzione chimica che diventa bianco-lattea a contatto con i cloruri (acqua salata), rimanendo trasparente con acqua dolce (pioggia/condensa). Distingue un danno coperto (spesso) da uno escluso o da responsabilità diverse.
+
+4.6 Riserve e Prescrizione
+Analisi giuridica preliminare per il liquidatore.
+- "La riserva è stata apposta sul CMR in data X. Il termine di 7 giorni scadeva in data Y. La riserva è tempestiva/tardiva."
+- "La riserva 'Collo integro, si accetta con riserva di controllo' è GENERICA e priva di valore giuridico in molti ordinamenti se non seguita da dettagli specifici entro i termini."
+
+5. Analisi Multimodale: Normative, Limiti e Specificità
+Il perito deve adattare l'indagine al mezzo di trasporto, poiché cambiano radicalmente i limiti di risarcimento e i tempi di reclamo.
+
+5.1 Trasporto Terrestre (Camion/Treno)
+Nazionale (Italia): Art. 1693 e 1696 C.C. Responsabilità presunta del vettore "ex recepto".
+- Limite: 1,00 € per Kg lordo.
+- Superamento Limite: Dolo o Colpa Grave. Il perito deve cercare prove di negligenza inescusabile (es. sosta notturna incustodita in aree malfamate, abbandono del mezzo con chiavi inserite).
+
+Internazionale (CMR): Convenzione di Ginevra 1956.
+- Limite: 8,33 DSP (Diritti Speciali di Prelievo) per Kg (circa 10-11 €/kg variabile).3
+- Riserve: Danni apparenti subito; danni occulti entro 7 giorni (domeniche/festivi esclusi).3
+- Best Practice: Verificare sempre la targa del trattore e del rimorchio sul CMR. Se differiscono dalla realtà, indagare sul sub-vettore (possibile vettore abusivo o catena di sub-appalti non autorizzata).
+
+5.2 Trasporto Marittimo (Ocean Freight)
+Regolato prevalentemente dalle Regole dell'Aia-Visby (Hague-Visby Rules).
+
+- Limite: 2 DSP per Kg oppure 666,67 DSP per collo (applicare il maggiore tra i due).
+- Specificità: La "Polizza di Carico" (Bill of Lading - B/L) è titolo rappresentativo della merce.
+- General Average (Avaria Generale): Se la nave è in pericolo (es. incendio, incaglio) e vengono sacrificati beni o sostenute spese per la salvezza comune, tutti i proprietari del carico devono contribuire pro-quota. Il perito deve verificare se è stata dichiarata GA e se il danno è da sacrificio (rimborsabile) o accidentale.
+
+5.3 Trasporto Aereo (Air Freight)
+Regolato dalla Convenzione di Montreal 1999.
+
+- Limite: 22 DSP per Kg. È il limite più alto, copre spesso interamente il valore di merci ad alta tecnologia.
+- Time Bar Critica: In caso di danno, il reclamo deve essere inviato entro 14 giorni dal ricevimento (merce), 21 giorni per ritardo. Il perito deve chiedere immediatamente copia della riserva scritta inviata alla compagnia aerea: senza di essa, l'azione è prescritta all'origine.
+
+6. Investigazione Forense: Furti, Frodi e Red Flags
+Le frodi nel trasporto merci sono sofisticate. Il perito deve adottare un approccio investigativo basato sull'identificazione di anomalie o "Red Flags".
+
+6.1 Indicatori di Rischio (Red Flags)
+L'analisi incrociata può rivelare:
+
+- Anomalie nel Vettore: Vettori sconosciuti subentrati all'ultimo minuto, assenza di sito web o contatti fissi, autisti che chiedono pagamenti in contanti per "extra".
+- Anomalie Documentali: Indirizzi di consegna generici o modificati a penna sul CMR. Discrepanze tra il peso lordo dichiarato e quello effettivo.
+- Comportamenti Sospetti: Rifiuto dell'autista di far ispezionare il mezzo, deviazioni dal percorso logico senza giustificazione, soste prolungate in aree non sicure.
+- Identità Fittizie: Uso di dati di aziende reali ma contatti falsi (Identity Theft aziendale) per dirottare il carico.
+
+6.2 Analisi Forense del Cronotachigrafo
+Il cronotachigrafo registra tempi di guida, riposo, velocità e distanza. In caso di furto o incidente, l'analisi dei dati tachigrafici è fondamentale per:
+
+- Verificare l'Alibi: Il mezzo era davvero dove dichiara l'autista al momento del furto?
+- Rilevare Soste Ingiustificate: Se il furto è avvenuto in una sosta non prevista dal piano di viaggio o in un parcheggio non custodito, ciò può costituire colpa grave del vettore, superando i limiti di risarcimento CMR.
+- Velocità al momento dell'impatto: Utile per ricostruire la dinamica di sinistri stradali con ribaltamento della merce.
+
+6.3 Linee Guida ANIA per la Prevenzione Furto
+Il perito deve valutare se le misure di sicurezza adottate erano conformi agli standard richiesti dalle polizze furto. Le Linee Guida ANIA/Anima Sicurezza forniscono parametri per classificare i mezzi forti (casseforti) e i sistemi di chiusura. Nel trasporto, questo si traduce nella verifica dei lucchetti di sicurezza (tipo King Pin lock, lucchetti a barra per le portiere) e dei sistemi di allarme satellitare. La mancata attivazione di questi sistemi, se prescritti in polizza, può portare alla decadenza della garanzia o alla rivalsa totale sul vettore.
+
+7. Psicrometria Forense e Analisi Avanzata dei Danni da Umidità
+Nel panorama contemporaneo della perizia marittima, la mera osservazione visiva di un danno da bagnamento non è più sufficiente per determinare le responsabilità contrattuali e assicurative. Il perito (Marine Surveyor) deve evolvere verso un approccio di "psicrometria forense", utilizzando principi termodinamici per ricostruire la storia microclimatica del viaggio. La distinzione tra Ship Sweat, Cargo Sweat e Container Rain non è semantica, ma costituisce il fulcro attorno al quale ruotano le clausole di esclusione per vizio intrinseco (Inherent Vice) o la responsabilità vettoriale per cattiva cura del carico (Care of Cargo).
+
+7.1 Termodinamica della Condensa in Unità Chiuse
+La comprensione profonda dei meccanismi di condensa richiede un'analisi delle relazioni tra temperatura dell'aria, umidità specifica e punto di rugiada (Dew Point) all'interno dell'unità di carico. I fenomeni di "sudorazione" non sono casuali ma seguono leggi fisiche precise che, se analizzate correttamente attraverso i dati meteo storici e le proprietà igroscopiche della merce, permettono di stabilire con certezza la causa del danno.
+
+7.1.1 Dinamiche del Ship Sweat e Container Sweat
+Il fenomeno noto come Ship Sweat (o Container Sweat nel contesto intermodale) si manifesta prevalentemente quando il vettore si sposta da climi caldi e umidi verso regioni più fredde.1 La fisica del processo prevede che l'aria intrappolata all'interno della stiva o del container, caricata in condizioni tropicali, possieda un'elevata umidità specifica. Durante la navigazione verso latitudini settentrionali o durante il raffreddamento notturno, le strutture metalliche della nave (scafo, madieri) o le pareti del container subiscono un abbattimento termico rapido dovuto al contatto con l'ambiente esterno freddo (aria o acqua di mare).
+
+Quando la temperatura della superficie metallica scende al di sotto del punto di rugiada dell'aria interna confinata, il vapore acqueo condensa sulle superfici fredde.1 Nel caso dei container, questo fenomeno è esacerbato dalla scarsa inerzia termica delle pareti metalliche rispetto alla stiva di una nave, portando al fenomeno noto come "Container Rain". La condensa si accumula sul cielo del container e gocciola verticalmente sul carico.
+
+Diagnostica Differenziale:
+
+Il perito deve cercare pattern specifici:
+- Distribuzione: Il danno da container sweat tipicamente colpisce lo strato superiore del carico (top layer) e le zone periferiche adiacenti alle pareti, lasciando spesso intatto il cuore del carico.
+- Segni Fisici: Striature verticali di ruggine o acqua sulle pareti interne del container indicano che l'acqua è corsa lungo le pareti; macchie d'acqua sul "roof" dell'imballaggio confermano il gocciolamento dall'alto.
+- Implicazioni Assicurative: La presenza di ship sweat suggerisce spesso una ventilazione inadeguata. Se il vettore non ha ventilato (o ha ventilato in modo errato) durante il passaggio da zone calde a fredde, può essere ritenuto responsabile.4 Tuttavia, in container non ventilati (GP standard), la difesa del vettore si basa spesso sull'impossibilità fisica di prevenire il fenomeno senza l'uso di desiccants (sacchetti disidratanti) da parte del caricatore, spostando la responsabilità sull'imballaggio insufficiente.
+
+7.1.2 Fenomenologia del Cargo Sweat
+Il Cargo Sweat rappresenta il fenomeno termodinamico inverso ed è spesso confuso con il precedente, portando a errori peritali gravi. Questo si verifica quando un carico freddo (o che ha viaggiato in zone fredde) viene esposto a un'atmosfera calda e umida.
+
+Un esempio classico è il trasporto di merci in container dal Nord Europa verso i Tropici, o l'apertura prematura di un container freddo in un porto di destinazione tropicale.
+
+L'aria calda esterna, penetrando nel container o entrando in contatto con la merce durante lo sbarco, incontra la superficie del carico che si trova a una temperatura inferiore al punto di rugiada dell'aria entrante. La condensa si forma direttamente sulla merce.
+
+- Rischio Operativo: In questo scenario, la ventilazione è dannosa. Introdurre aria calda e umida in una stiva o container contenente merce fredda accelera drasticamente la condensazione.
+- Analisi Forense: Il perito troverà umidità e muffa direttamente sulle superfici degli imballaggi o del prodotto, mentre le pareti del container potrebbero apparire asciutte. È fondamentale verificare i registri di ventilazione: se il vettore ha ventilato un carico freddo in acque calde, ha agito con negligenza.
+
+7.2 Protocolli di Indagine Chimica: Il Test al Nitrato d'Argento
+La discriminazione tra danni da acqua dolce (condensa, pioggia) e acqua salata (infiltrazioni di mare, spray salino) è critica per l'attribuzione della responsabilità. Il test al nitrato d'argento ($AgNO_3$) è lo standard de facto, ma il suo utilizzo richiede un rigore scientifico spesso trascurato nella pratica corrente.
+
+7.2.1 Chimica e Procedura Operativa
+La reazione si basa sulla precipitazione del cloruro d'argento ($AgCl$), insolubile e di colore bianco lattiginoso, quando gli ioni argento ($Ag^+$) incontrano ioni cloruro ($Cl^-$).
+
+Per evitare falsi positivi, il perito deve utilizzare una soluzione acidificata di nitrato d'argento. L'acidificazione dissolve eventuali carbonati o idrossidi che potrebbero precipitare e mimare l'aspetto dei cloruri, garantendo che il precipitato bianco sia effettivamente $AgCl$.
+
+Procedura Step-by-Step:
+- Controllo in Bianco: Testare la soluzione su una superficie neutra e pulita (es. carta da filtro bagnata con acqua distillata) per assicurarsi che il reagente non sia degradato (essendo fotosensibile, si scurisce se esposto alla luce).
+- Campionamento Strategico: Non testare solo la merce. Mappare le potenziali vie di ingresso: guarnizioni dei portelloni, prese d'aria, fori di ruggine, e il pagliolato in legno.
+- Interpretazione Visiva:
+Reazione Immediata: Una nuvola bianca, densa e lattiginosa indica alta concentrazione di cloruri (probabile acqua di mare).
+Reazione Debole/Tardiva: Una leggera velatura potrebbe indicare contaminazione ambientale o residui di aerosol marino, non necessariamente un'infiltrazione diretta.
+
+7.2.2 Analisi dei Falsi Positivi e Contaminazione Pregressa
+Un risultato positivo non è una condanna automatica per il vettore. Esistono scenari di "falsi positivi" contestuali che il perito esperto deve investigare:
+
+- Contaminazione del Container: I pavimenti in legno dei container trattengono sali da viaggi precedenti (es. trasporto di pelli salate o prodotti chimici). Se il container suda (acqua dolce), l'acqua che cola sul pavimento può sciogliere questi sali pregressi. Un test positivo sul pavimento o sul fondo del carico, ma negativo sulle pareti alte, suggerisce questa dinamica.
+- Natura del Carico: Alcuni imballaggi (cartoni riciclati) o merci contengono cloruri intrinseci. È vitale testare una parte "sana" e asciutta del carico come riferimento (baseline).
+- Spray Salino vs Immersione: Una leggera positività vicino alle guarnizioni può indicare ingresso di spray durante Heavy Weather. Sebbene tecnicamente un'infiltrazione, l'entità del danno deve essere commisurata alla causa (un po' di spray non giustifica l'allagamento interno).
+
+7.3 Ventilazione e Gestione del Punto di Rugiada
+Il perito deve esaminare i registri di ventilazione (Ventilation Logs) confrontandoli con i dati meteo del viaggio. La regola aurea per la ventilazione è la "Regola del Punto di Rugiada" (Dew Point Rule):
+
+- Ventilare SOLO SE: Punto di Rugiada dell'Aria Esterna < Punto di Rugiada dell'Aria Interna (o Temperatura del Carico).
+- NON Ventilare SE: Punto di Rugiada dell'Aria Esterna > Temperatura del Carico.
+
+Violare questa regola, ventilando con aria igrometricamente più "ricca" di quanto la stiva possa sopportare, trasferisce umidità dentro il carico anziché rimuoverla. L'assenza di registrazioni del punto di rugiada nel Logbook di bordo, specialmente per carichi igroscopici come caffè, cacao o acciaio, è un forte indicatore di mancanza di due diligence da parte del vettore.
+
+8. Diagnostica Avanzata e Forensica nei Trasporti Refrigerati (Reefer)
+Il trasporto refrigerato rappresenta una delle aree a più alta incidenza di reclami di alto valore (farmaceutici, tonno, carne). Bisogna spostare il focus dall'ispezione fisica del prodotto (spesso ormai compromesso) all'analisi forense dei dati digitali generati dall'unità reefer (Data Logger/Microprocessore).
+
+I moderni container reefer (Carrier, Thermo King, Daikin) registrano centinaia di parametri. Il perito deve saper richiedere e interpretare i file di download "Raw Data", non solo i PDF riassuntivi.
+
+I sinistri su merci deperibili (food & pharma) richiedono competenze di termodinamica e lettura dei dati.
+
+8.1 Interpretazione dei Data Logger
+Il grafico della temperatura è la "scatola nera" del reefer. Il perito deve analizzare i file grezzi (.dle,.txt) e non solo i PDF generati.
+
+Elementi Chiave nell'Analisi del Grafico:
+- Set Point: La temperatura impostata sul controller. Coincide con le istruzioni di trasporto?
+- Supply Air (Mandata): L'aria fredda che esce dalla macchina. Deve essere stabile vicino al Set Point.
+- Return Air (Ritorno): L'aria che torna alla macchina dopo aver attraversato il carico. È l'indicatore più fedele della temperatura della merce. Se la Return Air sale mentre la Supply Air è corretta, c'è generazione di calore dal carico (maturazione) o infiltrazione di calore esterno.
+- Cicli di Sbrinamento (Defrost): Nel grafico appaiono come picchi regolari di temperatura. Sono fisiologici per rimuovere il ghiaccio dall'evaporatore. Tuttavia, sbrinamenti troppo frequenti o troppo lunghi indicano problemi: infiltrazioni di aria umida (guarnizioni rotte) o malfunzionamento dei sensori/resistenze.
+- Short Cycling: Se l'aria di mandata scende e l'unità si spegne rapidamente, ma l'aria di ritorno resta calda, significa che l'aria non circola nel container (flusso cortocircuitato). Causa probabile: stivaggio errato che blocca il flusso d'aria sul pavimento o soffitto ("Red Line" superata).
+
+8.2 Specificità Merceologiche
+- Prodotti Farmaceutici: Richiedono conformità alle norme GDP (Good Distribution Practice). Anche una breve escursione termica ("Temperature Excursion") può rendere la merce invendibile per motivi regolatori, anche se fisicamente intatta.
+- Ortofrutta: Distinguere tra danno da freddo (Chilling Injury - es. banane diventano grigie) e danno da maturazione.
+
+8.2.1 Supply Air vs. Return Air
+La relazione tra la temperatura dell'aria di mandata (Supply) e quella di ripresa (Return) è la chiave di lettura della salute del carico.
+
+- Modalità Chilled (Refrigerato): Il controllo avviene sulla Supply Air. Il sistema modula per mantenere l'aria in uscita dall'evaporatore al set-point per evitare danni da congelamento (Chilling Injury) al prodotto.11
+- Modalità Frozen (Congelato): Il controllo avviene sulla Return Air. Il sistema lavora per mantenere l'aria che torna all'unità (dopo aver sottratto calore al carico) al di sotto del set-point.12
+- Delta T ($\Delta T$): Un $\Delta T$ (Return - Supply) elevato indica che il carico sta generando calore (respirazione frutti) o che c'è un forte ingresso di calore esterno. Un $\Delta T$ prossimo allo zero con compressore attivo è sospetto e può indicare Short Cycling.
+
+8.2.2 Diagnostica del Short Cycling (Cortocircuito d'Aria)
+Il Short Cycling è una condizione patologica in cui il flusso d'aria fredda non attraversa l'intero container ma viene "cortocircuitato" tornando prematuramente all'evaporatore.
+
+- Meccanismo Fisico: Accade se il carico è stivato bloccando il flusso sul fondo (ostruzione del T-floor), se manca la copertura sul pavimento all'estremità del container (Gen-set space), o se il carico è impilato troppo in alto bloccando il soffitto (red line).13 L'aria fredda sbatte contro l'ostacolo e torna indietro.
+- Firma nei Dati: I sensori registrano temperature perfette (o troppo fredde) perché leggono la loro stessa aria appena raffreddata. Tuttavia, il compressore si accende e spegne freneticamente (cicli rapidi di pochi minuti) perché raggiunge il set-point istantaneamente, ma la temperatura risale altrettanto velocemente non appena si ferma, poiché il cuore del carico è caldo.
+- Evidenza Peritale: Se i dati mostrano temperature "in-range" ma il carico è deteriorato (Hot Spots), cercare nei log i cicli di accensione/spegnimento del compressore. Una frequenza elevata è la "pistola fumante" di un cattivo stivaggio o di un difetto del deflettore d'aria (Air Chute).
+
+8.2.3 Analisi dei Cicli di Sbrinamento (Defrost)
+I cicli di sbrinamento introducono calore nel sistema per sciogliere il ghiaccio sull'evaporatore.
+
+- Falsi Allarmi: Durante il defrost, la temperatura dell'aria può salire momentaneamente. Questo non è un guasto. Un perito inesperto potrebbe interpretare questi picchi (spikes) come malfunzionamenti.
+- Intervalli Irregolari: Se i cicli di defrost sono troppo frequenti (es. ogni 3 ore invece che 12/24 in automatico) o durano troppo a lungo, indica un'eccessiva infiltrazione di aria umida (guarnizioni rotte) o un carico che evapora eccessivamente (frutta calda/umida).
+- Identificazione: Nei log, il defrost è marcato da codici specifici. Verificare se i picchi di temperatura coincidono esattamente con gli intervalli di attivazione del defrost.
+
+8.3 Protocolli USDA e Cold Treatment (Trattamento a Freddo)
+Per l'esportazione di frutta verso paesi con restrizioni fitosanitarie (es. USA, Cina, Giappone), il rispetto dei protocolli di Cold Treatment è assoluto. Il fallimento porta al respingimento o alla distruzione del carico.
+
+8.3.1 Criteri di Fallimento
+Il trattamento richiede che la temperatura della polpa (misurata da 3 o 4 sonde USDA specifiche, diverse da quelle del container) rimanga sotto una soglia (es. 1.1°C o 2.2°C) per un numero definito di giorni consecutivi (es. 16 giorni).
+
+- Gap di Dati: Una lacuna nella registrazione dei dati superiore a 1 ora è spesso considerata fallimento automatico del trattamento.
+- Superamento Soglia: Anche un singolo rilevamento (es. 1.2°C su un limite di 1.1°C) interrompe il conteggio dei giorni, costringendo a ripartire da zero se il viaggio lo permette, o decretando il fallimento all'arrivo.
+
+8.3.2 Ruolo del Perito in Caso di Fallimento
+In caso di contestazione, il perito deve:
+
+- Verificare la Calibrazione: Analizzare il certificato di calibrazione pre-trip delle sonde USDA. Una deriva nella calibrazione può essere usata per argomentare che la temperatura reale era diversa da quella registrata.
+- Correlazione Eventi: Sovrapporre il grafico delle sonde USDA con gli eventi della macchina. Se un picco di temperatura coincide con un defrost prolungato o un guasto momentaneo, si può argomentare sulla natura tecnica dell'evento.
+- Posizionamento Sonde: Verificare fisicamente (se possibile al destino) se le sonde erano inserite correttamente nella polpa o se erano esposte all'aria (che fluttua più velocemente della polpa). Sonde mal posizionate sono una causa frequente di fallimenti apparenti.
+
+9. Patologia della Corrosione e Survey di Prodotti Siderurgici
+L'acciaio è uno dei carichi più contenziosi a causa della sua suscettibilità all'ossidazione e dell'alto valore unitario. Il perito deve distinguere scientificamente tra danni estetici e strutturali.
+
+9.1 White Rust vs. Red Rust: Implicazioni Commerciali
+Per l'acciaio galvanizzato (zincato), la diagnosi del tipo di ruggine è fondamentale.
+
+- White Rust (Ruggine Bianca): È idrossido di zinco ($Zn(OH)_2$), un prodotto di corrosione dello zinco che si forma in ambienti umidi e poveri di ossigeno (es. tra le spire di un coil bagnato). Appare come una polvere bianca voluminosa.
+Valutazione: Spesso è un danno superficiale. Se rimossa, e lo spessore del rivestimento di zinco sottostante è ancora conforme alle specifiche, il danno è limitato ai costi di ricondizionamento (pulizia/passivazione). Non è necessariamente un danno totale.
+
+- Red Rust (Ruggine Rossa): Indica ossido di ferro ($Fe_2O_3$). Significa che lo strato di zinco protettivo è stato completamente consumato e il substrato di acciaio sta corrodendo.24 È un danno grave che compromette l'integrità strutturale e la durabilità del materiale.
+
+- Strumento: Utilizzare spessimetri magnetici o a correnti parassite per misurare lo spessore residuo dello zinco nelle aree affette da white rust per confermare se la protezione è ancora attiva.22
+
+9.2 Il Metodo Bresle per la Contaminazione Salina (ISO 8502-6)
+Per determinare se una superficie d'acciaio è idonea alla pitturazione o se è stata contaminata da sali (cloruri) durante il trasporto, il metodo Bresle è lo standard internazionale richiesto nei contenziosi. Non basta dire "è salato". Bisogna quantificare.
+
+Procedura Tecnica:
+- Applicazione Patch: Applicare un patch adesivo in lattice sulla superficie d'acciaio, creando una camera stagna di volume noto.
+- Iniezione Solvente: Iniettare acqua distillata/deionizzata di conduttività nota (blank) nella camera con una siringa.
+- Dissoluzione: Agitare/massaggiare il patch per un tempo definito (solitamente qualche minuto) per permettere ai sali superficiali di sciogliersi nell'acqua.
+- Estrazione e Misura: Aspirare l'acqua e misurarne la conduttività elettrica ($\mu S/cm$).
+- Calcolo: La differenza di conduttività rispetto al bianco viene convertita in concentrazione superficiale di sali (espressa in $mg/m^2$ o $\mu g/cm^2$).
+
+Implicazioni: Se i livelli superano le specifiche di pitturazione (spesso 20-50 $mg/m^2$ per rivestimenti marini), l'acciaio deve essere lavato ad alta pressione con acqua dolce prima di essere lavorato. Il costo di questo lavaggio costituisce il quantum del reclamo. Se i sali sono penetrati troppo a fondo o hanno causato pitting severo, il materiale potrebbe essere rifiutato (Total Loss).
+
+10. Chimichiere e Tanker Survey: Protocolli Anti-Contaminazione
+Nei carichi liquidi alla rinfusa (Chemical Tankers), la purezza del prodotto è tutto. Le ispezioni si focalizzano sulla pulizia delle cisterne prima del carico (Wall Wash Test) e sul campionamento durante le operazioni.
+
+10.1 Il Wall Wash Test: Criteri e Analisi
+Prima di caricare prodotti sensibili (es. Metanolo, Glicole, Etanolo), le pareti della cisterna vengono "lavate" con un solvente spettrofotometrico (metanolo o acetone) per raccogliere eventuali residui del carico precedente.
+
+Parametri Critici di Analisi:
+- Idrocarburi (HC): Indicano residui oleosi o prodotti petroliferi precedenti. Il metodo di test è il Water Miscibility Test (torbidità) o l'Analisi UV. Il Limite Tipico per l'alta purezza è inferiore a 2-5 ppm o "Pass" (Assenza di torbidità).
+- Cloruri ($Cl^-$): Indicano residui di acqua di mare o lavaggi con acqua salata. Il metodo di test è la Titolazione o il Nitrato d'Argento + Turbidimetro. Il Limite Tipico per l'alta purezza è inferiore a 0.5 - 2 ppm.
+- PTT (Permanganate Time): Indica la presenza di sostanze ossidabili. Il metodo di test è il Tempo di scolorimento del $KMnO_4$. Il Limite Tipico per l'alta purezza è superiore a 50-60 minuti.
+- Colore: Indica residui coloranti. Il metodo di test è la Scala APHA/Hazen. Il Limite Tipico per l'alta purezza è inferiore a 5-10 APHA.
+
+Attenzione Operativa: Il perito deve assicurarsi che l'equipaggio usi guanti in nitrile puliti e attrezzatura dedicata. Il sudore umano contiene cloruri sufficienti a far fallire un test Wall Wash sensibile. Le bottiglie di campionamento devono essere sciacquate con il solvente stesso prima del prelievo.
+
+10.2 Strategie di Campionamento e Chain of Custody
+In caso di contaminazione al destino, la Chain of Custody dei campioni è l'unica difesa. Il perito deve supervisionare il prelievo di campioni in punti strategici per isolare la fonte della contaminazione:
+
+- Shore Tank Sample: Prima del carico. Se contaminato, la responsabilità è del terminale.
+- Manifold Sample: Alla connessione della nave, inizio carico. Se contaminato, la contaminazione è nelle linee di terra.
+- First Foot Sample: Dopo aver caricato i primi 30cm (1 piede) in cisterna. Critico per rilevare contaminazioni dalle linee della nave o residui sul fondo della cisterna.
+- Final Tank Sample: A fine carico. Rappresenta la qualità media a bordo.
+
+Se il campione Manifold è pulito ma il First Foot è sporco, la nave è quasi certamente responsabile (cisterne sporche o linee mal pulite).
+
+11. Stabilità e Degrado dei Carichi alla Rinfusa (Grain & Bulk)
+Per i carichi agricoli (grano, soia, farine), i pericoli principali sono il riscaldamento spontaneo e l'infestazione. Distinguere le cause è complesso.
+
+11.1 Riscaldamento: Microbiologico vs Ossidativo vs Fonte Esterna
+I reclami per danni da calore richiedono di identificare la fonte dell'energia termica.
+
+- Riscaldamento Microbiologico (Self-Heating): Causato dalla respirazione di funghi e batteri in presenza di umidità eccessiva. Caratteristiche: Temperature fino a 50-75°C (fase biologica). Spesso associato a odore di fermentazione/muffa. Localizzato in zone umide o scarsamente ventilate.
+
+- Riscaldamento Ossidativo (Chemical Heating): Ossidazione chimica degli oli vegetali o del carbone. Caratteristiche: Può superare i 75°C e portare alla combustione spontanea (autocombustione). Non richiede necessariamente umidità alta, ma è favorito dall'ossigeno.
+
+- Fonte di Calore Esterna: Riscaldamento indotto da Fuel Tanks adiacenti mantenute troppo calde. Indagine: Verificare la posizione delle casse combustibile rispetto alla stiva danneggiata. Le paratie calde (spesso > 50-55°C) trasmettono calore per conduzione, "tostando" il carico adiacente (es. soia o mais diventano scuri/bruciati sulla paratia ma sono sani altrove). Questo non è vizio intrinseco, ma cattiva gestione della nave.
+
+11.2 Ventilazione e Fumigazione
+La ventilazione nei carichi rinfusiere serve principalmente a rimuovere il calore e l'umidità migrata in superficie. Una ventilazione eccessiva in condizioni di alta umidità esterna può bagnare lo strato superiore del carico (Surface Ventilation effect), causando croste e germinazione. Il perito deve verificare che la ventilazione sia stata condotta solo quando appropriato e che i canali di fumigazione (se presenti) non siano stati usati impropriamente per ventilare forzatamente il cuore del carico se non previsto.
+
+12. Analisi Forense AIS (Automatic Identification System)
+I dati di tracciamento AIS storici sono prove cruciali per smontare le difese basate su "Forza Maggiore" o "Pericoli del Mare".
+
+- Ricostruzione del Sinistro: Sovrapponendo la rotta AIS con i dati meteo storici (vento, altezza onde), è possibile dimostrare se la nave ha subito sollecitazioni eccessive (es. Parametric Rolling che ha causato il crollo delle pile di container) e se tali condizioni erano evitabili con una rotta diversa (Weather Routing).
+- Verifica Tempi: Confermare se la nave si è fermata in zone non dichiarate o ha subito ritardi non giustificati che hanno compromesso carichi deperibili.
+
+13. Quadro Legale, Gestione del Reclamo e Strategie di Mitigazione
+La perizia tecnica deve essere incapsulata in una strategia legale difensiva. Il perito agisce come "occhio e orecchio" del cliente, ma anche come garante della prova legale.
+
+13.1 Gestione del Joint Survey Ostile
+Il Joint Survey (perizia in contraddittorio) è il momento in cui si cristallizzano le prove. Spesso i periti di controparte o i Comandanti tentano di limitare l'indagine.
+
+- Best Practice: Mai svolgere un survey da soli se è previsto un contraddittorio. Se la controparte non si presenta, procedere ma notificare formalmente l'assenza.
+- Accesso ai Documenti: Il perito ha diritto di visionare i documenti pertinenti al carico. Se il Comandante nega l'accesso al Logbook o ai grafici di temperatura, annotare formalmente il rifiuto nella Letter of Protest o nel Field Report. "Access to requested at and denied by Master".
+
+13.2 Letter of Protest (LOP) e Riserva di Diritti
+La LOP è l'atto formale con cui si contesta un danno o una discrepanza. Deve essere emessa tempestivamente (spesso entro 3 giorni dallo sbarco per danni non apparenti).
+
+- Wording Strategico: Evitare formule vaghe come "danni da verificare". Usare formule che invertono l'onere della prova o bloccano le difese:"We hold you fully responsible for all losses, damages, and consequences arising from the observed condition..."
+- Riserva di Diritti (Reservation of Rights): Fondamentale per evitare che azioni intraprese per mitigare il danno (es. accettare la merce per il salvataggio) siano interpretate come accettazione della responsabilità o rinuncia al reclamo."This survey and any actions taken are strictly without prejudice to our rights and defenses under the contract of carriage and applicable law. All rights are explicitly reserved.".
+
+13.3 Onere della Prova e Vizio Intrinseco (Inherent Vice)
+Nelle polizze All Risks (Institute Cargo Clauses A), l'assicurato deve provare il danno avvenuto durante il rischio. L'assicuratore, per non pagare, deve provare un'esclusione, tipicamente il Vizio Intrinseco (Inherent Vice).
+
+- Definizione: Deterioramento dovuto alla natura interna della merce (es. frutta troppo matura alla partenza, imballaggio inadeguato per il viaggio ordinario).
+- Difesa del Perito: Documentare minuziosamente lo stato dell'imballaggio. Se l'imballaggio è standard e intatto, ma il contenuto è rotto, supporta la tesi di shock violenti (causa esterna). Se l'imballaggio ha ceduto per debolezza strutturale senza causa esterna, supporta il vizio intrinseco.
+
+13.4 Salvage Sale (Vendita di Recupero) e Deprezzamento
+Il dovere di mitigare il danno (Duty to Mitigate) impone di valorizzare al meglio la merce danneggiata.
+
+- Procedura di Tender: Organizzare una gara di vendita (Salvage Tender) invitando almeno 3-5 acquirenti specializzati. Le offerte devono essere "sealed" (in busta chiusa) per trasparenza.
+- Calcolo Deprezzamento: Il danno liquidabile è spesso calcolato come percentuale di deprezzamento applicata al Valore Assicurato. La formula è "Deprezzamento% = [(Sound Value Arrivo - Valore Lordo Vendita Recupero)/Sound Value Arrivo] * 100".
+
+È cruciale usare il "Sound Market Value" al destino come base di confronto per il ricavo di vendita, per confrontare "mele con mele" ed evitare distorsioni dovute a fluttuazioni di mercato.
+
+14. Valutazione del Danno (Quantum e Liquidazione)
+- Valore Merce: Basato su fattura commerciale (o valore di mercato partenza ex art. 1696 CC / 23 CMR).
+- Spese: Trasporto, dogana, spese di perizia/salvataggio (Sue and Labor).
+- Salvage (Recupero): Deduzione del valore residuo della merce danneggiata.
+- Deprezzamento: Calcolo percentuale della perdita di valore commerciale.
+
+Valore Merce Sana (Fattura CIP): € 50.000,00 (Riferimento Normativo: Art. 1908 C.C.)
+(-) Valore di Recupero (Salvage): (€ 10.000,00) (Riferimento: Miglior offerta ricevuta)
+(+) Spese di Salvataggio: € 2.000,00 (Riferimento Normativo: Art. 1914 C.C. - Sue & Labor)
+Totale Danno Netto: € 42.000,00
+Esposizione Assicurativa (dopo Limite Vettoriale)
+Limite Vettoriale (se applicabile): € 8.330,00 (Riferimento Normativo: CMR 8.33 DSP x Peso)
+Differenza (Esposizione Assicurativa): € 33.670,00 (Importo a carico della polizza merci)
+
+Conclusioni e Azione di Rivalsa
+Valutazione finale sulle possibilità di recupero dal vettore, verifica interruzione prescrizione e riserve.
+
+15. Knowledge Pills & Best Practices (Evergreen & Modern)
+
+- Pillola 1: La "Riserva Specifica" è l'arma vincente.
+Gli assicurati che scrivono "Scondizionato", "Bagnato", "Collo aperto" sul documento di trasporto danno un’informazione che vale oro. "Riserva di controllo" vale zero.
+- Pillola 2: Joint Survey "Without Prejudice".
+Tutti i sopralluoghi in contraddittorio devono iniziare con la firma di un Field Survey Report che contenga la clausola "Without Prejudice" (Senza Pregiudizio): la firma attesta solo la presenza e i fatti materiali (es. "ci sono 10 scatole bagnate"), non l'ammissione di responsabilità o copertura.
+- Pillola 3: Il Data Logger non mente (quasi mai).
+Nei sinistri Reefer, confrontare sempre la "Return Air" con la "Supply Air".
+Supply Air calda: Guasto macchina.
+Supply Air fredda + Return Air calda: Flusso d'aria bloccato (cattivo stivaggio) o calore generato dal carico (maturazione).
+- Pillola 4: Attenzione alla "Polizza di Carico Pulita" (Clean B/L).
+Una B/L senza note significa che il vettore ha ricevuto la merce sana. Se all'arrivo è danneggiata, la presunzione è contro di lui. Se il danno era preesistente all'imbarco, il perito deve dimostrare che il vettore avrebbe dovuto vederlo (imballaggio esterno rotto).
+- Pillola 5: Non esistono “corrispondenti” nel report finale. Nel report di perizia finale, non si include mai “il nostro corrispondente”, si parla sempre di “noi”. (Eg. “Siamo intervenuti”, non “Il nostro corrispondente è intervenuto”)
+- Pillola 6: I Mercuriali sono la salvezza quando mancano le fatture. Usali per dare autorità oggettia al valore delle merce il giorno dell’acquisto e del sinistro.
+
+
+16. Glossario Tecnico per Assistente AI
+- Avaria Generale (General Average): Sacrificio intenzionale per la salvezza comune della spedizione marittima.
+- Avaria Particolare (Particular Average): Danno accidentale fortuito alla singola merce.
+- Surroga (Subrogation): Diritto dell'assicuratore di sostituirsi all'assicurato nei diritti verso i terzi responsabili (Art. 1916 C.C.).
+- Vizio Proprio (Inherent Vice): Difetto intrinseco della merce che ne causa il danno senza intervento esterno.
+- Franchigia (Deductible): Importo fisso a carico dell'assicurato.
+- Scoperto (Overdraft): Percentuale del danno a carico dell'assicurato.
+- Mercuriale: Listino prezzi ufficiale redatto dalle Camere di Commercio, usato come benchmark di valore in assenza di fattura.
+- SDR / DSP (Special Drawing Rights): Unità di conto del Fondo Monetario Internazionale usata nelle convenzioni (CMR, Montreal, Aia-Visby) per calcolare i limiti di responsabilità, svincolandoli dalle fluttuazioni valutarie.
+- Subrogation (Surroga/Rivalsa): L'azione legale con cui l'assicuratore, dopo aver pagato l'assicurato, "eredita" i diritti di agire contro il vettore responsabile.
+- Constructive Total Loss (Perdita Totale Costruttiva): Quando i costi di riparazione/recupero superano il valore della merce stessa.
+- Bailee: Il soggetto che ha la custodia temporanea della merce (vettore, magazziniere) ed è responsabile della sua integrità.
+
+Questo manuale fornisce le fondamenta operative e teoriche per svolgere l'attività peritale con l'autorevolezza e la precisione richieste dal mercato assicurativo moderno, al fine di scrivere un report di perizia accurato e completo.
+
