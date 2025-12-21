@@ -36,6 +36,15 @@
   --color-input: oklch(0.922 0 0);
   --color-ring: oklch(0.87 0 0);
 
+  --color-canvas: oklch(0.96 0.01 240);
+  /* Desktop background */
+  --color-system-blue: oklch(0.55 0.22 260);
+  /* #007AFF */
+  --color-system-green: oklch(0.63 0.2 143);
+  /* #34C759 */
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  --radius-window: 18px;
+
   --radius-lg: 0.75rem;
   --radius-md: calc(0.75rem - 2px);
   --radius-sm: calc(0.75rem - 4px);
@@ -124,6 +133,8 @@
   --color-background: oklch(0.13 0.02 260);
   /* Deep blue-tinted gray */
   --color-foreground: oklch(0.985 0 0);
+
+  --color-canvas: oklch(0.1 0 0);
 
   --color-card: oklch(0.15 0.02 260);
   /* Surface 100 */
@@ -230,6 +241,14 @@
   }
 }
 
+@utility shadow-mac-window {
+  box-shadow: 0px 0px 0px 1px rgba(0, 0, 0, 0.04), 0px 24px 48px -12px rgba(0, 0, 0, 0.15);
+}
+
+@utility glass-sidebar {
+  @apply bg-card/60 backdrop-blur-2xl border-r border-black/5;
+}
+
 @layer base {
 
   *,
@@ -304,12 +323,14 @@
   --color-color-3: var(----color-3);
   --color-color-2: var(----color-2);
   --color-color-1: var(----color-1);
+
   @keyframes rainbow {
-  0% {
-    background-position: 0%;
+    0% {
+      background-position: 0%;
     }
-  100% {
-    background-position: 200%;
+
+    100% {
+      background-position: 200%;
     }
   }
 }

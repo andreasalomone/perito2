@@ -52,14 +52,14 @@ export function DashboardLayoutClient({
                     Contatta l'amministratore per richiedere l'accesso.
                 </p>
                 <Button variant="outline" onClick={() => logout()}>
-                    Torna alla Login
+                    Torna al Login
                 </Button>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-muted/30 flex flex-col md:flex-row">
+        <div className="min-h-screen md:h-screen bg-canvas flex flex-col md:flex-row md:overflow-hidden">
             {/* Mobile Header */}
             <div className="md:hidden flex items-center justify-between p-4 bg-card border-b border-border sticky top-0 z-20">
                 <div className="flex items-center gap-2">
