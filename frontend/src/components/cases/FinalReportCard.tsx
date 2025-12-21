@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { FileText, Loader2, Edit, Download, BrainCircuit, CheckCircle, AlertCircle } from "lucide-react";
+import { FileText, Loader2, Edit, Download, CheckCircle, AlertCircle } from "lucide-react";
 import { ExpandableScreen, ExpandableScreenTrigger, ExpandableScreenContent } from "@/components/ui/expandable-screen";
 import { CaseDetail, ReportVersion } from "@/types";
 import { MarkdownContent } from "@/components/ui/markdown-content";
@@ -146,10 +146,7 @@ export function FinalReportCard({
                                                     Generazione...
                                                 </>
                                             ) : (
-                                                <>
-                                                    <BrainCircuit className="h-4 w-4 mr-2" />
-                                                    Genera Report
-                                                </>
+                                                "Genera Report"
                                             )}
                                         </Button>
                                     </>
@@ -237,7 +234,7 @@ export function FinalReportCard({
                             {/* Main Content Area */}
                             <div className="flex-1 overflow-auto p-8 max-w-4xl mx-auto w-full">
                                 {displayContent ? (
-                                    <div className="prose prose-slate dark:prose-invert max-w-none bg-white dark:bg-zinc-900 p-8 rounded-xl shadow-sm min-h-[500px]">
+                                    <div className="prose prose-slate dark:prose-invert max-w-none bg-white dark:bg-zinc-900 p-8 rounded-2xl shadow-sm min-h-[500px]">
                                         <MarkdownContent content={displayContent} />
                                     </div>
                                 ) : (

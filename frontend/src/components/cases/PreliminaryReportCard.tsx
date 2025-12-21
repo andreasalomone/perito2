@@ -188,7 +188,7 @@ export function PreliminaryReportCard({
 
                                 {/* Content */}
                                 <div ref={scrollRef} className="flex-1 overflow-y-auto p-8 md:p-12 bg-muted/10 relative">
-                                    <div className="bg-background shadow-sm border rounded-xl p-8 md:p-12 min-h-full max-w-4xl mx-auto">
+                                    <div className="bg-background shadow-sm border rounded-2xl p-8 md:p-12 min-h-full max-w-4xl mx-auto">
                                         <MarkdownContent
                                             content={report.content}
                                             variant="report"

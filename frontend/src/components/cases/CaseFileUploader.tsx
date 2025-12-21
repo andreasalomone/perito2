@@ -279,7 +279,7 @@ export function CaseFileUploader({ caseId, onUploadComplete, trigger }: CaseFile
                             exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
                             layout
                             className={cn(
-                                "relative overflow-hidden rounded-xl border bg-card p-3 shadow-sm",
+                                "relative overflow-hidden rounded-2xl border bg-card p-3 shadow-sm",
                                 item.status === "error" ? "border-destructive/50" : "border-border/50"
                             )}
                         >

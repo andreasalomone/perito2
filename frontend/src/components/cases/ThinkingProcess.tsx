@@ -42,7 +42,7 @@ export function ThinkingProcess({ thoughts, state, className }: Readonly<Thinkin
 
     return (
         <div className={cn(
-            "w-full rounded-xl border overflow-hidden transition-all duration-300 ease-in-out",
+            "w-full rounded-2xl border overflow-hidden transition-all duration-300 ease-in-out",
             "bg-gradient-to-br from-purple-50/50 to-violet-50/30 dark:from-purple-950/20 dark:to-violet-950/10",
             "border-purple-200/50 dark:border-purple-800/30",
             "shadow-sm",

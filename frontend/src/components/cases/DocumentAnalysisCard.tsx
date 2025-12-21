@@ -219,7 +219,7 @@ export function DocumentAnalysisCard({
                                     {/* Analysis Breakdown Grid */}
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         {/* Received Docs */}
-                                        <div className="bg-green-50/50 dark:bg-green-900/10 p-5 rounded-xl border border-green-200/50 dark:border-green-800/20">
+                                        <div className="bg-green-50/50 dark:bg-green-900/10 p-5 rounded-2xl border border-green-200/50 dark:border-green-800/20">
                                             <h4 className="text-sm uppercase tracking-wide font-bold text-green-700 dark:text-green-400 mb-4 flex items-center gap-2">
                                                 <CheckCircle2 className="h-4 w-4" />
                                                 Documenti Rilevati ({analysis.received_docs.length})
@@ -235,7 +235,7 @@ export function DocumentAnalysisCard({
                                         </div>
 
                                         {/* Missing Docs */}
-                                        <div className="bg-red-50/50 dark:bg-red-900/10 p-5 rounded-xl border border-red-200/50 dark:border-red-800/20">
+                                        <div className="bg-red-50/50 dark:bg-red-900/10 p-5 rounded-2xl border border-red-200/50 dark:border-red-800/20">
                                             <h4 className="text-sm uppercase tracking-wide font-bold text-red-700 dark:text-red-400 mb-4 flex items-center gap-2">
                                                 <AlertCircle className="h-4 w-4" />
                                                 Documenti Mancanti

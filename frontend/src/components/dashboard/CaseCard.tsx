@@ -2,10 +2,9 @@
 
 import { memo, useRef, useCallback, useState, useEffect } from "react";
 import Link from "next/link";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardHeader, CardContent, CardFooter } from "@/components/ui/card";
 import { BadgeWithDot } from "@/components/ui/base/badges/badges";
-import { Calendar, Building2, Pen } from "lucide-react";
+import { Calendar, Building2, Umbrella } from "lucide-react";
 import { CaseSummary } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -54,7 +53,10 @@ export const CaseCard = memo(function CaseCard({ caseItem: c, index }: CaseCardP
             <Card
                 ref={cardRef}
                 onMouseMove={handleMouseMove}
-                className="overflow-hidden transition-all hover:shadow-md hover:border-primary/20 group relative h-full cursor-pointer"
+                className={cn(
+                    "transition-all hover:shadow-md hover:border-primary/20 group h-full cursor-pointer",
+                    c.status === "CLOSED" && "opacity-70 grayscale-[20%]"
+                )}
                 style={{
                     // Use CSS custom properties for GPU-accelerated animations
                     "--x": `${mousePos.x}px`,
@@ -68,22 +70,34 @@ export const CaseCard = memo(function CaseCard({ caseItem: c, index }: CaseCardP
                     }}
                     aria-hidden="true"
                 />
-                {/* Status badge - top right */}
-                <Badge
-                    variant={c.status === "OPEN" ? "default" : "outline"}
-                    className={cn(
-                        "absolute top-4 right-4 z-20",
-                        c.status === "CLOSED" && "border-green-500 text-green-600 bg-green-50 dark:bg-green-950 dark:text-green-400"
-                    )}
-                >
-                    {c.status.toUpperCase()}
-                </Badge>
+                {/* Header with status dot + ref code + date */}
+                <CardHeader className="flex-row items-center justify-between space-y-0 px-5 py-3 border-b border-border bg-card-header">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                        {/* Status Dot */}
+                        <span
+                            className={cn(
+                                "h-2.5 w-2.5 rounded-full shrink-0",
+                                c.status === "OPEN" && "bg-green-500",
+                                c.status === "CLOSED" && "bg-foreground",
+                                c.status === "GENERATING" && "bg-orange-500 animate-pulse",
+                                c.status === "ERROR" && "bg-red-500"
+                            )}
+                            aria-label={`Status: ${c.status}`}
+                        />
+                        <h3 className="font-bold text-lg text-primary group-hover:text-primary/80 transition-colors truncate">
+                            {c.reference_code}
+                        </h3>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground shrink-0 ml-3">
+                        <Calendar className="h-3.5 w-3.5" />
+                        <span>{new Date(c.created_at).toLocaleDateString("it-IT", {
+                            day: 'numeric', month: 'short', year: 'numeric'
+                        })}</span>
+                    </div>
+                </CardHeader>
 
-                <div className="p-6 flex flex-col h-full gap-3 relative z-10">
-                    <h3 className="font-semibold text-lg group-hover:text-primary transition-colors pr-20">
-                        {c.reference_code}
-                    </h3>
-
+                {/* Card content */}
+                <CardContent className="p-5 flex flex-col flex-1 gap-3">
                     <div className="space-y-2 text-sm text-muted-foreground mt-auto">
                         <div className="flex items-center gap-2">
                             {c.client_logo_url ? (
@@ -99,28 +113,22 @@ export const CaseCard = memo(function CaseCard({ caseItem: c, index }: CaseCardP
                         </div>
                         {/* Assicurato Badge */}
                         <div className="flex items-center gap-2">
-                            <Pen className="h-3.5 w-3.5 text-muted-foreground" />
+                            <Umbrella className="h-3.5 w-3.5 text-muted-foreground" />
                             <span className="font-medium text-muted-foreground">
                                 {c.assicurato_display || c.assicurato || "Assicurato non specificato"}
                             </span>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <Calendar className="h-3.5 w-3.5" />
-                            <span>{new Date(c.created_at).toLocaleDateString("it-IT", {
-                                day: 'numeric', month: 'short', year: 'numeric'
-                            })}</span>
-                        </div>
-
-                        {/* Creator Badge */}
-                        {(c.creator_name || c.creator_email) && (
-                            <div className="flex justify-start pt-1">
-                                <BadgeWithDot type="modern" color="purple" size="sm">
-                                    {c.creator_name || c.creator_email}
-                                </BadgeWithDot>
-                            </div>
-                        )}
                     </div>
-                </div>
+                </CardContent>
+
+                {/* Footer with creator */}
+                {(c.creator_name || c.creator_email) && (
+                    <CardFooter className="px-5 py-3 border-t border-transparent">
+                        <BadgeWithDot type="modern" color="purple" size="sm">
+                            {c.creator_name || c.creator_email}
+                        </BadgeWithDot>
+                    </CardFooter>
+                )}
             </Card>
         </Link>
     );

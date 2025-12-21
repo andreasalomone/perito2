@@ -2,13 +2,12 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { useRouter, usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ShieldCheck, Menu, X } from "lucide-react";
-import { Sidebar } from "@/components/dashboard/Sidebar";
-import { useSidebar } from "@/hooks/use-sidebar";
-import { cn } from "@/lib/utils";
-import { motion } from "framer-motion";
+import { ShieldCheck, LayoutDashboard, FilePlus, LogOut, User as UserIcon, Users } from "lucide-react";
+import { Sidebar, SidebarBody, SidebarLink, useSidebar } from "@/components/ui/aceternity-sidebar";
+import { ModeToggle } from "@/components/primitives";
+import { motion } from "motion/react";
 
 export function DashboardLayoutClient({
     children,
@@ -18,7 +17,7 @@ export function DashboardLayoutClient({
     const { user, dbUser, loading, logout } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
-    const { isOpen, setIsOpen, toggle } = useSidebar();
+    const [open, setOpen] = useState(false);
 
     useEffect(() => {
         if (!loading && !user) {
@@ -28,8 +27,8 @@ export function DashboardLayoutClient({
 
     // Close mobile menu on route change
     useEffect(() => {
-        setIsOpen(false);
-    }, [pathname, setIsOpen]);
+        setOpen(false);
+    }, [pathname]);
 
     if (loading) {
         return <div className="min-h-screen flex items-center justify-center bg-background text-muted-foreground">Caricamento...</div>;
@@ -58,60 +57,99 @@ export function DashboardLayoutClient({
         );
     }
 
+    const navLinks = [
+        { href: "/dashboard", label: "I Miei Report", icon: <LayoutDashboard className="h-5 w-5 shrink-0" /> },
+        { href: "/dashboard/clienti", label: "Clienti", icon: <Users className="h-5 w-5 shrink-0" /> },
+        { href: "/dashboard/create", label: "Nuova Perizia", icon: <FilePlus className="h-5 w-5 shrink-0" /> },
+        { href: "/dashboard/profile", label: "Profilo", icon: <UserIcon className="h-5 w-5 shrink-0" /> },
+    ];
+
     return (
         <div className="min-h-screen md:h-screen bg-canvas flex flex-col md:flex-row md:overflow-hidden">
-            {/* Mobile Header */}
-            <div className="md:hidden flex items-center justify-between p-4 bg-card border-b border-border sticky top-0 z-20">
-                <div className="flex items-center gap-2">
-                    <div className="bg-primary text-primary-foreground p-1 rounded">
-                        <ShieldCheck className="h-5 w-5" />
-                    </div>
-                    <img src="/myperito-black.svg" alt="MyPerito" className="h-5 dark:invert" />
-                </div>
-                <Button variant="ghost" size="icon" onClick={toggle} aria-label={isOpen ? "Chiudi menu" : "Apri menu"}>
-                    {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-                </Button>
-            </div>
+            <Sidebar open={open} setOpen={setOpen}>
+                <SidebarBody className="justify-between gap-10">
+                    <div className="flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
+                        {/* Logo */}
+                        {open ? <Logo /> : <LogoIcon />}
 
-            {/* Mobile Sidebar Overlay */}
-            {isOpen && (
-                <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm md:hidden" onClick={() => setIsOpen(false)}>
-                    <div className="fixed inset-y-0 left-0 w-64 bg-card border-r border-border shadow-lg flex flex-col animate-in slide-in-from-left duration-200 noise-surface" onClick={e => e.stopPropagation()}>
-                        <Sidebar
-                            user={user}
-                            dbUser={dbUser}
-                            logout={logout}
-                            pathname={pathname}
-                            onItemClick={() => setIsOpen(false)}
+                        {/* Navigation */}
+                        <div className="mt-8 flex flex-col gap-1">
+                            {navLinks.map((link) => (
+                                <SidebarLink
+                                    key={link.href}
+                                    link={link}
+                                    active={pathname === link.href}
+                                />
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="flex flex-col gap-2">
+                        <div className="px-3">
+                            <ModeToggle />
+                        </div>
+
+                        {/* Email */}
+                        <motion.div
+                            animate={{
+                                display: open ? "block" : "none",
+                                opacity: open ? 1 : 0,
+                            }}
+                            className="px-3 py-2"
+                        >
+                            <p className="text-xs text-muted-foreground truncate" title={dbUser?.email || user?.email || ""}>
+                                {dbUser?.email || user?.email}
+                            </p>
+                        </motion.div>
+
+                        {/* Logout */}
+                        <SidebarLink
+                            link={{
+                                label: "Esci",
+                                href: "#",
+                                icon: <LogOut className="h-5 w-5 shrink-0 text-destructive" />,
+                                onClick: () => logout(),
+                            }}
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
                         />
                     </div>
-                </div>
-            )}
-
-            {/* Desktop Sidebar */}
-            <aside
-                className={cn(
-                    "bg-card/50 backdrop-blur-xl border-r border-white/5 hidden md:flex flex-col h-screen sticky top-0 transition-all duration-300 noise-surface",
-                    isOpen ? "w-64" : "w-20"
-                )}
-                onMouseEnter={() => setIsOpen(true)}
-                onMouseLeave={() => setIsOpen(false)}
-            >
-                <Sidebar
-                    user={user}
-                    dbUser={dbUser}
-                    logout={logout}
-                    pathname={pathname}
-                    collapsed={!isOpen}
-                />
-            </aside>
+                </SidebarBody>
+            </Sidebar>
 
             {/* Main Content */}
-            <motion.main layout className="flex-1 p-4 md:p-8 overflow-y-auto">
+            <main className="flex-1 p-4 md:p-8 overflow-y-auto">
                 <div className="max-w-5xl mx-auto">
                     {children}
                 </div>
-            </motion.main>
+            </main>
         </div>
     );
 }
+
+const Logo = () => {
+    return (
+        <div className="flex items-center gap-2 py-1">
+            <div className="bg-primary text-primary-foreground p-1 rounded shrink-0">
+                <img src="/perito-logo-black.svg" alt="Perito Logo" className="h-5 w-5 invert" />
+            </div>
+            <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="overflow-hidden"
+            >
+                <img src="/myperito-black.svg" alt="MyPerito" className="h-5 dark:invert" />
+            </motion.div>
+        </div>
+    );
+};
+
+const LogoIcon = () => {
+    return (
+        <div className="flex items-center py-1">
+            <div className="bg-primary text-primary-foreground p-1 rounded">
+                <img src="/perito-logo-black.svg" alt="Perito Logo" className="h-5 w-5 invert" />
+            </div>
+        </div>
+    );
+};

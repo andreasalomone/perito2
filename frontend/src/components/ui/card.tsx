@@ -9,7 +9,7 @@ const Card = React.forwardRef<
     <div
         ref={ref}
         className={cn(
-            "relative overflow-hidden rounded-xl noise-surface",
+            "relative overflow-hidden rounded-2xl noise-surface",
             "bg-sidebar/50 backdrop-blur-xl",         // Translucent material
             "border border-white/5",                  // Subtle physical edge
             "shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]", // Top "light catch" (Bezel)

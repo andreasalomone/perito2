@@ -11,9 +11,7 @@ import {
     TableRow,
 } from "@/components/ui/table";
 
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
-import { Building2, Pen, User } from "lucide-react";
+import { Building2, User } from "lucide-react";
 
 interface CaseTableViewProps {
     cases: CaseSummary[];
@@ -31,7 +29,6 @@ export function CaseTableView({ cases }: CaseTableViewProps) {
                             <TableHead className="w-[150px] sticky top-0 bg-background/95 backdrop-blur z-20">Rif. Pratica</TableHead>
                             <TableHead className="min-w-[200px] sticky top-0 bg-background/95 backdrop-blur z-20">Cliente</TableHead>
                             <TableHead className="min-w-[200px] sticky top-0 bg-background/95 backdrop-blur z-20">Assicurato</TableHead>
-                            <TableHead className="w-[120px] sticky top-0 bg-background/95 backdrop-blur z-20">Stato</TableHead>
                             <TableHead className="w-[150px] sticky top-0 bg-background/95 backdrop-blur z-20">Data Creazione</TableHead>
                             <TableHead className="min-w-[180px] sticky top-0 bg-background/95 backdrop-blur z-20">Creato da</TableHead>
                         </TableRow>
@@ -71,23 +68,9 @@ export function CaseTableView({ cases }: CaseTableViewProps) {
                                     </div>
                                 </TableCell>
                                 <TableCell>
-                                    <div className="flex items-center gap-2">
-                                        <Pen className="h-4 w-4 text-muted-foreground" />
-                                        <span>
-                                            {c.assicurato_display || c.assicurato || "N/D"}
-                                        </span>
-                                    </div>
-                                </TableCell>
-                                <TableCell>
-                                    <Badge
-                                        variant={c.status === "OPEN" ? "default" : "outline"}
-                                        className={cn(
-                                            "text-xs px-2 py-0.5",
-                                            c.status === "CLOSED" && "border-green-500 text-green-600 bg-green-50 dark:bg-green-950 dark:text-green-400"
-                                        )}
-                                    >
-                                        {c.status}
-                                    </Badge>
+                                    <span>
+                                        {c.assicurato_display || c.assicurato || "N/D"}
+                                    </span>
                                 </TableCell>
                                 <TableCell className="text-muted-foreground">
                                     {new Date(c.created_at).toLocaleDateString("it-IT", {
