@@ -1,17 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { handleApiError } from "@/lib/error";
 import { api } from "@/lib/api";
-import { ClientCombobox } from "@/components/ui/combobox-client";
-import { AssicuratoCombobox } from "@/components/ui/combobox-assicurato";
+import { SearchableCombobox } from "@/components/ui/searchable-combobox";
+import { Client } from "@/types";
+
+// Type for assicurato API response
+interface Assicurato {
+    id: string;
+    name: string;
+}
 
 export default function CreateCasePage() {
     const { getToken } = useAuth();
@@ -20,6 +27,19 @@ export default function CreateCasePage() {
     const [clientName, setClientName] = useState("");
     const [assicuratoName, setAssicuratoName] = useState("");
     const [loading, setLoading] = useState(false);
+
+    // Memoized fetch functions to prevent re-renders
+    const fetchClients = useCallback(async (query: string, limit: number) => {
+        const token = await getToken();
+        if (!token) return [];
+        return api.clients.list(token, { q: query, limit });
+    }, [getToken]);
+
+    const fetchAssicurati = useCallback(async (query: string, limit: number) => {
+        const token = await getToken();
+        if (!token) return [];
+        return api.assicurati.list(token, { q: query, limit });
+    }, [getToken]);
 
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -60,16 +80,12 @@ export default function CreateCasePage() {
     return (
         <div className="max-w-md mx-auto mt-10 p-4">
             <Card>
-                <CardHeader>
-                    <CardTitle>Nuovo Sinistro</CardTitle>
-                    <CardDescription>Apri un nuovo sinistro per iniziare a lavorare.</CardDescription>
-                </CardHeader>
                 <CardContent>
                     <form onSubmit={handleCreate} className="space-y-4">
                         <div className="space-y-2">
-                            <label htmlFor="refCode" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                                Riferimento <span className="text-red-500">*</span>
-                            </label>
+                            <Label htmlFor="refCode">
+                                Riferimento <span className="text-destructive">*</span>
+                            </Label>
                             <Input
                                 id="refCode"
                                 value={refCode}
@@ -78,36 +94,36 @@ export default function CreateCasePage() {
                                 placeholder="Es. Sinistro 2024/001"
                                 disabled={loading}
                             />
-                            <p className="text-[0.8rem] text-muted-foreground">
-                                Codice univoco per identificare la pratica.
-                            </p>
                         </div>
                         <div className="space-y-2">
-                            <label htmlFor="clientName" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                                Cliente (Opzionale)
-                            </label>
-                            {/* Replaced simple Input with Smart Autocomplete */}
-                            <ClientCombobox
+                            <Label htmlFor="clientName">Cliente</Label>
+                            <SearchableCombobox<Client>
                                 value={clientName}
                                 onChange={setClientName}
                                 disabled={loading}
+                                fetchFn={fetchClients}
+                                getItemId={(c) => c.id}
+                                getItemLabel={(c) => c.name}
+                                placeholder="Seleziona cliente..."
+                                searchPlaceholder="Cerca cliente..."
+                                emptyMessage="Nessun cliente trovato."
+                                groupHeading="Clienti Esistenti"
                             />
-                            <p className="text-[0.8rem] text-muted-foreground">
-                                Cerca un cliente esistente o digitane uno nuovo per crearlo.
-                            </p>
                         </div>
                         <div className="space-y-2">
-                            <label htmlFor="assicuratoName" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                                Assicurato (Opzionale)
-                            </label>
-                            <AssicuratoCombobox
+                            <Label htmlFor="assicuratoName">Assicurato</Label>
+                            <SearchableCombobox<Assicurato>
                                 value={assicuratoName}
                                 onChange={setAssicuratoName}
                                 disabled={loading}
+                                fetchFn={fetchAssicurati}
+                                getItemId={(a) => a.id}
+                                getItemLabel={(a) => a.name}
+                                placeholder="Seleziona assicurato..."
+                                searchPlaceholder="Cerca assicurato..."
+                                emptyMessage="Nessun assicurato trovato."
+                                groupHeading="Assicurati Esistenti"
                             />
-                            <p className="text-[0.8rem] text-muted-foreground">
-                                Cerca un assicurato esistente o digitane uno nuovo per crearlo.
-                            </p>
                         </div>
                         <Button type="submit" className="w-full" disabled={loading}>
                             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}

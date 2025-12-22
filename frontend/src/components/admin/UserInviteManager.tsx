@@ -121,7 +121,7 @@ export default function UserInviteManager({ selectedOrgId }: Props) {
                             ) : invites.length === 0 ? (
                                 <p className="text-sm text-muted-foreground">No users whitelisted yet</p>
                             ) : (
-                                <ul className="space-y-2 max-h-[400px] overflow-y-auto list-none" role="list">
+                                <ul className="space-y-2 max-h-96 overflow-y-auto list-none" role="list">
                                     {invites.map((invite) => (
                                         <li
                                             key={invite.id}

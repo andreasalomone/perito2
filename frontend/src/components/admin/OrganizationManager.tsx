@@ -86,7 +86,7 @@ export default function OrganizationManager({ onSelectOrganization }: Props) {
                     ) : organizations.length === 0 ? (
                         <p className="text-sm text-muted-foreground">No organizations yet</p>
                     ) : (
-                        <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                        <div className="space-y-2 max-h-96 overflow-y-auto">
                             {organizations.map((org) => (
                                 <button
                                     key={org.id}

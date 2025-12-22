@@ -84,7 +84,7 @@ export const CaseCard = memo(function CaseCard({ caseItem: c, index }: CaseCardP
                             )}
                             aria-label={`Status: ${c.status}`}
                         />
-                        <h3 className="font-bold text-lg text-primary group-hover:text-primary/80 transition-colors truncate">
+                        <h3 className="font-bold text-lg text-foreground group-hover:text-foreground/80 transition-colors truncate">
                             {c.reference_code}
                         </h3>
                     </div>

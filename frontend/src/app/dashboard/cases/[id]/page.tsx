@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useConfig } from "@/context/ConfigContext";
@@ -12,10 +12,10 @@ import axios from "axios";
 import { toast } from "sonner";
 import { handleApiError } from "@/lib/error";
 import { TemplateType } from "@/components/cases/VersionItem";
-import confetti from "canvas-confetti";
+import { useConfettiOnTransition, useConfettiOnStreamState } from "@/components/ui/confetti";
 
 import { useCaseDetail } from "@/hooks/useCaseDetail";
-import { useDocumentAnalysis, usePreliminaryReport, usePreliminaryReportStream, useFinalReportStream, StreamState } from "@/hooks/useEarlyAnalysis";
+import { useDocumentAnalysis, usePreliminaryReport, usePreliminaryReportStream, useFinalReportStream } from "@/hooks/useEarlyAnalysis";
 import { api } from "@/lib/api";
 import { mutate as globalMutate } from 'swr';
 
@@ -51,65 +51,13 @@ export default function CaseWorkspace() {
     // Streaming hook for final report
     const finalReportStreamHook = useFinalReportStream(caseId);
 
-    // --- Confetti Celebration Logic ---
-    // Refs to track previous states and prevent duplicate confetti
-    const prevDocAnalysisGenerating = useRef<boolean | null>(null);
-    const prevPreliminaryState = useRef<StreamState | null>(null);
-    const prevFinalReportState = useRef<StreamState | null>(null);
-
-    // Confetti trigger function with celebration effect
-    const triggerConfetti = useCallback(() => {
-        // First burst from left
-        confetti({
-            particleCount: 100,
-            spread: 70,
-            origin: { x: 0.2, y: 0.6 },
-            colors: ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899'],
-        });
-        // Second burst from right (slightly delayed)
-        setTimeout(() => {
-            confetti({
-                particleCount: 100,
-                spread: 70,
-                origin: { x: 0.8, y: 0.6 },
-                colors: ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899'],
-            });
-        }, 150);
-    }, []);
-
-    // Confetti for Document Analysis completion
-    useEffect(() => {
-        // Only fire when transitioning from generating (true) to not generating (false)
-        // AND there's an analysis result (success, not initial load)
-        if (
-            prevDocAnalysisGenerating.current === true &&
-            documentAnalysisHook.isGenerating === false &&
-            documentAnalysisHook.analysis // Ensure we have results (successful generation)
-        ) {
-            triggerConfetti();
-        }
-        prevDocAnalysisGenerating.current = documentAnalysisHook.isGenerating;
-    }, [documentAnalysisHook.isGenerating, documentAnalysisHook.analysis, triggerConfetti]);
-
-    // Confetti for Preliminary Report stream completion
-    useEffect(() => {
-        // Only fire when transitioning from active state to "done"
-        const wasActive = prevPreliminaryState.current === "thinking" || prevPreliminaryState.current === "streaming";
-        if (wasActive && preliminaryStreamHook.state === "done") {
-            triggerConfetti();
-        }
-        prevPreliminaryState.current = preliminaryStreamHook.state;
-    }, [preliminaryStreamHook.state, triggerConfetti]);
-
-    // Confetti for Final Report stream completion
-    useEffect(() => {
-        // Only fire when transitioning from active state to "done"
-        const wasActive = prevFinalReportState.current === "thinking" || prevFinalReportState.current === "streaming";
-        if (wasActive && finalReportStreamHook.state === "done") {
-            triggerConfetti();
-        }
-        prevFinalReportState.current = finalReportStreamHook.state;
-    }, [finalReportStreamHook.state, triggerConfetti]);
+    // --- Confetti Celebration Logic (using extracted hooks) ---
+    useConfettiOnTransition(
+        documentAnalysisHook.isGenerating,
+        !!documentAnalysisHook.analysis
+    );
+    useConfettiOnStreamState(preliminaryStreamHook.state);
+    useConfettiOnStreamState(finalReportStreamHook.state);
 
     // Refresh data when streaming completes
     useEffect(() => {
@@ -359,7 +307,7 @@ export default function CaseWorkspace() {
             </div>
 
             {/* Main: Consolidated Workflow (Ingestion -> Analysis -> Final Report) */}
-            <main className="min-h-[500px]">
+            <main className="min-h-content">
                 {currentStep === 'ERROR' ? (
                     <ErrorStateOverlay
                         caseData={caseData}

@@ -17,7 +17,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import {
     Table,
@@ -218,7 +217,7 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
                 )}
             </div>
             <div className="opacity-0 group-hover/cell:opacity-100 transition-opacity ml-2">
-                <span className="text-[10px] text-primary/50 uppercase font-bold">Modifica</span>
+                <span className="text-2xs text-primary/50 uppercase font-bold">Modifica</span>
             </div>
         </div>
     );
@@ -265,7 +264,7 @@ export default function CaseDetailsPanel({ caseDetail, onUpdate }: Props) {
     return (
         <Card className="border shadow-md overflow-hidden bg-background">
             <CardHeader
-                className="bg-muted/30 border-b flex flex-row items-center justify-between py-5 px-6 cursor-pointer hover:bg-muted/50 transition-all group"
+                className="flex flex-row items-center justify-between py-5 px-6 cursor-pointer hover:bg-muted/50 transition-all group"
                 onClick={() => setIsOpen(!isOpen)}
             >
                 <div className="flex items-center gap-4">
@@ -294,14 +293,14 @@ export default function CaseDetailsPanel({ caseDetail, onUpdate }: Props) {
 
             {isOpen && (
                 <CardContent className="p-0">
-                    <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x border-b">
+                    <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x">
                         {SECTIONS.map((section, idx) => (
                             <div key={section.id} className={cn(
                                 "p-0 flex flex-col",
                                 // Add borders to simulate a unified grid if needed, or just let them stay separate
-                                "border-b last:border-b-0"
+                                "last:border-b-0"
                             )}>
-                                <div className="flex items-center gap-2 px-6 py-4 bg-muted/10 border-b">
+                                <div className="flex items-center gap-2 px-6 py-4 bg-muted/10">
                                     <div className={cn("p-1 rounded-md", section.bgClass)}>
                                         <section.icon className={cn("h-4 w-4", section.colorClass)} />
                                     </div>
@@ -313,8 +312,8 @@ export default function CaseDetailsPanel({ caseDetail, onUpdate }: Props) {
                                 <Table className="border-0">
                                     <TableBody>
                                         {section.fields.map((field) => (
-                                            <TableRow key={field.key as string} className="group/row hover:bg-transparent border-b last:border-0 border-muted/30">
-                                                <TableCell className="bg-muted/5 font-semibold text-muted-foreground w-1/3 min-w-[140px] py-2 px-6 border-r border-muted/30 text-[10px] uppercase tracking-wider select-none">
+                                            <TableRow key={field.key as string} className="group/row hover:bg-transparent last:border-0 border-muted/30">
+                                                <TableCell className="bg-muted/5 font-semibold text-muted-foreground w-1/3 min-w-[140px] py-2 px-6 border-r border-muted/30 text-2xs uppercase tracking-wider select-none">
                                                     {field.label}
                                                 </TableCell>
                                                 <TableCell className="p-0">

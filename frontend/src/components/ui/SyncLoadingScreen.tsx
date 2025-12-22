@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { LiquidGlassCard } from "@/components/kokonutui/liquid-glass-card";
+import { Card } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 
 const MESSAGES = [
@@ -27,8 +27,8 @@ export function SyncLoadingScreen() {
         <div className="relative flex items-center justify-center min-h-screen overflow-hidden bg-background">
             {/* Premium Background Elements */}
             <div className="absolute inset-0 z-0">
-                <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-500/10 blur-[120px] rounded-full animate-pulse" />
-                <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-indigo-500/10 blur-[120px] rounded-full animate-pulse [animation-delay:2s]" />
+                <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/10 blur-[120px] rounded-full animate-pulse" />
+                <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-accent/10 blur-[120px] rounded-full animate-pulse [animation-delay:2s]" />
                 <div className="noise-bg opacity-[0.02]" />
             </div>
 
@@ -38,14 +38,14 @@ export function SyncLoadingScreen() {
                 transition={{ duration: 0.8, ease: "easeOut" }}
                 className="relative z-10 w-full max-w-sm px-4"
             >
-                <LiquidGlassCard glassSize="lg" className="border-border/50 bg-card/30 shadow-2xl backdrop-blur-md">
-                    <div className="flex flex-col items-center py-6 text-center">
+                <Card className="border-border/50 bg-card/80 shadow-2xl backdrop-blur-md p-8">
+                    <div className="flex flex-col items-center text-center">
                         <div className="relative mb-8">
                             {/* Outer Glow */}
                             <motion.div
                                 animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.6, 0.3] }}
                                 transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
-                                className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full"
+                                className="absolute inset-0 bg-primary/20 blur-xl rounded-full"
                             />
 
                             <div className="relative flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/5 border border-primary/10 shadow-inner">
@@ -72,16 +72,16 @@ export function SyncLoadingScreen() {
                             initial={{ width: 0 }}
                             animate={{ width: "100%" }}
                             transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                            className="mt-8 h-[2px] w-full bg-muted overflow-hidden relative"
+                            className="mt-8 h-0.5 w-full bg-muted overflow-hidden relative"
                         >
                             <motion.div
                                 animate={{ x: ["-100%", "100%"] }}
                                 transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
-                                className="absolute inset-0 bg-gradient-to-r from-transparent via-primary to-transparent w-[50%]"
+                                className="absolute inset-0 bg-gradient-to-r from-transparent via-primary to-transparent w-1/2"
                             />
                         </motion.div>
                     </div>
-                </LiquidGlassCard>
+                </Card>
             </motion.div>
         </div>
     );

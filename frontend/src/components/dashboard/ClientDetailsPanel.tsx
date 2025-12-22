@@ -13,6 +13,7 @@ import {
     User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -101,11 +102,9 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
                 <label className="block text-xs font-semibold text-blue-600 mb-1 uppercase tracking-wide">
                     {field.label}
                 </label>
-                <input
+                <Input
                     autoFocus
-                    className={cn(
-                        "block w-full rounded-md border-2 border-primary shadow-sm focus:border-primary focus:ring-primary sm:text-sm p-2 bg-background text-foreground h-10"
-                    )}
+                    className="ring-1 ring-primary"
                     type={field.type || "text"}
                     value={tempValue}
                     onChange={(e) => setTempValue(e.target.value)}

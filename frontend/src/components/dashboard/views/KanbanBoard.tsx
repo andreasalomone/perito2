@@ -8,14 +8,14 @@ interface KanbanBoardProps {
 }
 
 const COLUMNS: { id: CaseStatusType; label: string; headerBg: string; textColor: string; badgeBg: string }[] = [
-    { id: "OPEN", label: "Aperti", headerBg: "bg-gradient-to-br from-blue-500/20 via-blue-500/10 to-blue-400/5", textColor: "text-blue-600 dark:text-blue-400", badgeBg: "bg-blue-500/20 text-blue-700 dark:text-blue-300" },
-    { id: "CLOSED", label: "Chiusi", headerBg: "bg-gradient-to-br from-green-500/20 via-green-500/10 to-emerald-400/5", textColor: "text-green-600 dark:text-green-400", badgeBg: "bg-green-500/20 text-green-700 dark:text-green-300" },
-    { id: "ERROR", label: "Errori / Attenzione", headerBg: "bg-gradient-to-br from-red-500/20 via-red-500/10 to-rose-400/5", textColor: "text-red-600 dark:text-red-400", badgeBg: "bg-red-500/20 text-red-700 dark:text-red-300" },
+    { id: "OPEN", label: "Aperti", headerBg: "bg-primary/10", textColor: "text-primary", badgeBg: "bg-primary/20 text-primary" },
+    { id: "CLOSED", label: "Chiusi", headerBg: "bg-system-green/10", textColor: "text-system-green", badgeBg: "bg-system-green/20 text-system-green" },
+    { id: "ERROR", label: "Errori / Attenzione", headerBg: "bg-destructive/10", textColor: "text-destructive", badgeBg: "bg-destructive/20 text-destructive" },
 ];
 
 export function KanbanBoard({ cases }: KanbanBoardProps) {
     return (
-        <div className="grid grid-cols-3 gap-4 pb-4 h-[calc(100vh-250px)] min-h-[500px]">
+        <div className="grid grid-cols-3 gap-4 pb-4 h-[calc(100vh-250px)] min-h-content">
             {COLUMNS.map((col) => {
                 const colCases = cases.filter(c => c.status === col.id);
 

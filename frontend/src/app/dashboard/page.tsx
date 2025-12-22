@@ -180,7 +180,7 @@ export default function DashboardPage() {
                 </Toggle>
             </div>
 
-            <div className="min-h-[500px] animate-in fade-in slide-in-from-bottom-2 duration-500">
+            <div className="min-h-content animate-in fade-in slide-in-from-bottom-2 duration-500">
                 {renderContent()}
             </div>
         </div>

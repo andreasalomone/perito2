@@ -82,7 +82,7 @@ export function ThinkingProcess({ thoughts, state, className }: Readonly<Thinkin
                 <div className="flex items-center gap-2">
                     <Badge
                         variant="secondary"
-                        className="text-[10px] h-5 font-mono bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 border-0"
+                        className="text-2xs h-5 font-mono bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 border-0"
                     >
                         {thoughts.length > 0 ? `${(thoughts.length / 1000).toFixed(1)}k caratteri` : "0 caratteri"}
                     </Badge>

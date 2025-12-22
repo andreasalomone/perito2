@@ -4,6 +4,7 @@ import { useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { UploadCloud, FileText, CheckCircle2, XCircle, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
 import { useAuth } from "@/context/AuthContext";
 import { useConfig } from "@/context/ConfigContext";
 import axios from "axios";
@@ -192,7 +193,7 @@ export function CaseFileUploader({ caseId, onUploadComplete, trigger }: CaseFile
     if (trigger) {
         return (
             <div onClick={() => inputRef.current?.click()} className="cursor-pointer">
-                <input
+                <Input
                     ref={inputRef}
                     type="file"
                     multiple
@@ -233,7 +234,7 @@ export function CaseFileUploader({ caseId, onUploadComplete, trigger }: CaseFile
                 }}
                 whileTap={{ scale: 0.98 }}
             >
-                <input
+                <Input
                     ref={inputRef}
                     type="file"
                     multiple

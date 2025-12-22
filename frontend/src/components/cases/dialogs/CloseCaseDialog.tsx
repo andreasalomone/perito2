@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { ReportVersion } from "@/types";
@@ -57,7 +58,7 @@ export function CloseCaseDialog({
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-            <DialogContent className="sm:max-w-[500px]">
+            <DialogContent className="sm:max-w-lg">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <CheckCircle2 className="h-5 w-5 text-green-600" />
@@ -117,7 +118,7 @@ export function CloseCaseDialog({
                                 )}
                             </div>
                         </div>
-                        <input
+                        <Input
                             type="file"
                             ref={fileInputRef}
                             onChange={handleFileSelect}

@@ -134,7 +134,7 @@ export function ClientDialog({ client, trigger, open, onOpenChange, onSuccess }:
     return (
         <Dialog open={show} onOpenChange={setShow}>
             {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
-            <DialogContent className="sm:max-w-[425px]">
+            <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                     <DialogTitle>{isEdit ? "Modifica Cliente" : "Nuovo Cliente"}</DialogTitle>
                     <DialogDescription>

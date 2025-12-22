@@ -26,7 +26,7 @@ export function NotesDialog({ isOpen, onClose, initialNotes, onSave }: NotesDial
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="sm:max-w-[500px]">
+            <DialogContent className="sm:max-w-lg">
                 <DialogHeader>
                     <DialogTitle>Istruzioni Aggiuntive</DialogTitle>
                     <DialogDescription>
