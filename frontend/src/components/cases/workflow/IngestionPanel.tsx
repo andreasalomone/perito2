@@ -8,7 +8,7 @@ import { DocumentItem } from "@/components/cases/DocumentItem";
 import { DocumentAnalysisCard } from "@/components/cases/DocumentAnalysisCard";
 import { PreliminaryReportCard } from "@/components/cases/PreliminaryReportCard";
 import { FinalReportCard } from "@/components/cases/FinalReportCard";
-import CaseDetailsPanel from "@/components/cases/CaseDetailsPanel";
+
 import { TemplateType } from "@/components/cases/VersionItem";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
@@ -218,11 +218,7 @@ export function IngestionPanel({
                 </CardContent>
             </Card>
 
-            {/* Case Details Panel - Collapsible case metadata editor */}
-            <CaseDetailsPanel
-                caseDetail={caseData}
-                onUpdate={onCaseUpdate}
-            />
+            {/* Case Details Panel moved to parent page layout */}
 
             {/* Early Analysis Section - Always render to prevent CLS */}
             <div className="grid md:grid-cols-2 gap-4 min-h-[200px]">

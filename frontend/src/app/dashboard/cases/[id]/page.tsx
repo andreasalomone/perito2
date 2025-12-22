@@ -23,6 +23,7 @@ import {
     ErrorStateOverlay,
     IngestionPanel,
 } from "@/components/cases/workflow";
+import CaseDetailsPanel from "@/components/cases/CaseDetailsPanel";
 
 export default function CaseWorkspace() {
     const { id } = useParams();
@@ -276,7 +277,7 @@ export default function CaseWorkspace() {
     // --- Main Render ---
 
     return (
-        <div className="max-w-6xl mx-auto p-4 space-y-6">
+        <div className="max-w-[95%] mx-auto p-4 space-y-6">
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
@@ -315,39 +316,51 @@ export default function CaseWorkspace() {
                         onRetryGeneration={() => finalReportStreamHook.generateStream("italian")} // Simple retry
                     />
                 ) : (
-                    <IngestionPanel
-                        caseData={caseData}
-                        caseId={caseId as string}
-                        onUpload={async () => {
-                            await mutate();
-                        }}
-                        onRemoveDocument={handleDeleteDocument}
-                        documentAnalysis={documentAnalysisHook}
-                        preliminaryReport={preliminaryReportHook}
-                        isProcessingDocs={isProcessingDocs ?? false}
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                        {/* Left Column: Ingestion & Reports */}
+                        <div className="space-y-6">
+                            <IngestionPanel
+                                caseData={caseData}
+                                caseId={caseId as string}
+                                onUpload={async () => {
+                                    await mutate();
+                                }}
+                                onRemoveDocument={handleDeleteDocument}
+                                documentAnalysis={documentAnalysisHook}
+                                preliminaryReport={preliminaryReportHook}
+                                isProcessingDocs={isProcessingDocs ?? false}
 
-                        // Streaming Props (Preliminary)
-                        preliminaryStreamState={preliminaryStreamHook.state}
-                        preliminaryStreamedThoughts={preliminaryStreamHook.thoughts}
-                        preliminaryStreamedContent={preliminaryStreamHook.content}
-                        onPreliminaryGenerateStream={preliminaryStreamHook.generateStream}
+                                // Streaming Props (Preliminary)
+                                preliminaryStreamState={preliminaryStreamHook.state}
+                                preliminaryStreamedThoughts={preliminaryStreamHook.thoughts}
+                                preliminaryStreamedContent={preliminaryStreamHook.content}
+                                onPreliminaryGenerateStream={preliminaryStreamHook.generateStream}
 
-                        // Streaming Props (Final Report)
-                        onGenerateFinalReport={finalReportStreamHook.generateStream}
-                        finalReportStreamState={finalReportStreamHook.state}
-                        finalReportStreamedThoughts={finalReportStreamHook.thoughts}
-                        finalReportStreamedContent={finalReportStreamHook.content}
+                                // Streaming Props (Final Report)
+                                onGenerateFinalReport={finalReportStreamHook.generateStream}
+                                finalReportStreamState={finalReportStreamHook.state}
+                                finalReportStreamedThoughts={finalReportStreamHook.thoughts}
+                                finalReportStreamedContent={finalReportStreamHook.content}
 
-                        // Actions
-                        onUpdateNotes={handleUpdateNotes}
-                        onDownloadFinalReport={handleDownload}
-                        onFinalizeCase={handleFinalize}
-                        onConfirmDocs={handleConfirmDocs}
-                        onOpenInDocs={handleOpenInDocs}
+                                // Actions
+                                onUpdateNotes={handleUpdateNotes}
+                                onDownloadFinalReport={handleDownload}
+                                onFinalizeCase={handleFinalize}
+                                onConfirmDocs={handleConfirmDocs}
+                                onOpenInDocs={handleOpenInDocs}
+                                onCaseUpdate={(updated) => mutate(updated, false)}
+                            />
+                        </div>
 
-                        // Case Details Panel
-                        onCaseUpdate={(updated) => mutate(updated, false)}
-                    />
+                        {/* Right Column: Case Details */}
+                        <div>
+                            <CaseDetailsPanel
+                                caseDetail={caseData}
+                                onUpdate={(updated) => mutate(updated, false)}
+                                defaultOpen={true}
+                            />
+                        </div>
+                    </div>
                 )}
             </main>
 

@@ -2,8 +2,10 @@
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { FileText, Loader2, Edit, Download, CheckCircle, AlertCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { ExpandableScreen, ExpandableScreenTrigger, ExpandableScreenContent } from "@/components/ui/expandable-screen";
 import { CaseDetail, ReportVersion } from "@/types";
 import { MarkdownContent } from "@/components/ui/markdown-content";
@@ -86,42 +88,28 @@ export function FinalReportCard({
         <>
             <ExpandableScreen>
                 <Card className="overflow-hidden">
-                    {/* TRIGGER / COLLAPSED STATE */}
-                    <div className="p-8">
-                        <div className="flex items-start justify-between">
-                            {/* Left: Title & Status */}
-                            <div className="space-y-1.5">
+                    {/* LEADER: Title + Controls (Top), Description (Bottom) */}
+                    <CardHeader className="pb-4">
+                        <div className="flex items-center justify-between">
+                            {/* Left: Icon + Title */}
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 bg-emerald-500/10 rounded-lg">
+                                    <FileText className="h-5 w-5 text-emerald-600" />
+                                </div>
                                 <div className="flex items-center gap-3">
-                                    <div className="p-2.5 bg-emerald-500/10 rounded-lg">
-                                        <FileText className="h-5 w-5 text-emerald-600" />
-                                    </div>
-                                    <h3 className="text-xl font-semibold">Report Finale</h3>
+                                    <CardTitle className="text-xl">Report Finale</CardTitle>
                                     {isFinal && <Badge variant="success">Finalizzato</Badge>}
                                     {activeDraft && !isFinal && <Badge variant="secondary">In Modifica su Docs</Badge>}
                                 </div>
-                                <p className="text-sm text-muted-foreground max-w-xl">
-                                    Genera, revisiona e finalizza la perizia completa.
-                                    {hasReport ? ` Ultima versione: v${latestVersion.version_number}` : " Nessun report generato."}
-                                </p>
                             </div>
 
-                            {/* Right: Actions (Collapsed) */}
-                            <div className="flex items-center gap-4">
-                                {/* Show generation controls only when no report exists or while generating */}
+                            {/* Right: Actions */}
+                            <div className="flex items-center gap-3">
                                 {(!hasReport || showGeneratingState) && (
                                     <>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => setShowNotesDialog(true)}
-                                        >
-                                            <Edit className="h-4 w-4 mr-2" />
-                                            {caseData.note ? "Modifica Info" : "Aggiungi Info"}
-                                        </Button>
-
-                                        <div className="min-w-[150px]">
+                                        <div className="w-[140px]">
                                             <Select value={language} onValueChange={setLanguage} disabled={showGeneratingState}>
-                                                <SelectTrigger>
+                                                <SelectTrigger className="h-9">
                                                     <SelectValue />
                                                 </SelectTrigger>
                                                 <SelectContent>
@@ -139,6 +127,7 @@ export function FinalReportCard({
                                             disabled={showGeneratingState}
                                             variant="brand"
                                             size="default"
+                                            className="shadow-sm"
                                         >
                                             {showGeneratingState ? (
                                                 <>
@@ -146,16 +135,18 @@ export function FinalReportCard({
                                                     Generazione...
                                                 </>
                                             ) : (
-                                                "Genera Report"
+                                                <>
+                                                    <FileText className="h-4 w-4 mr-2" />
+                                                    Genera Report
+                                                </>
                                             )}
                                         </Button>
                                     </>
                                 )}
 
-                                {/* Show "Vedi Report" as main CTA when report exists and not generating */}
                                 {hasReport && !showGeneratingState && (
                                     <ExpandableScreenTrigger>
-                                        <Button variant="brand" size="default">
+                                        <Button variant="brand" size="default" className="shadow-sm">
                                             <FileText className="h-4 w-4 mr-2" />
                                             Vedi Report
                                         </Button>
@@ -164,6 +155,42 @@ export function FinalReportCard({
                             </div>
                         </div>
 
+                        {/* Description: Full Width below Header Row */}
+                        <CardDescription className="text-base mt-2 max-w-none">
+                            Genera, revisiona e finalizza la perizia completa.
+                        </CardDescription>
+                    </CardHeader>
+
+                    {/* CONTENT: Status + Notes Button */}
+                    <CardContent className="pt-0 pb-6">
+                        <div className="flex items-center gap-6 p-4 bg-muted/30 rounded-lg border border-border/50 w-full">
+                            {/* Status Label Block */}
+                            <div className="flex items-center gap-3">
+                                <Label className="text-sm text-muted-foreground font-normal cursor-default">
+                                    Versione Attuale:
+                                </Label>
+                                <Label className={cn(
+                                    "text-sm font-medium cursor-default",
+                                    hasReport ? "text-primary" : "text-muted-foreground/70 italic"
+                                )}>
+                                    {hasReport && latestVersion ? `v${latestVersion.version_number}` : "Nessun report generato"}
+                                </Label>
+                            </div>
+
+                            {/* Separator */}
+                            <div className="h-4 w-px bg-border/60" />
+
+                            {/* Notes Button */}
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setShowNotesDialog(true)}
+                                className="text-muted-foreground hover:text-foreground h-8 -ml-2"
+                            >
+                                <Edit className="h-3.5 w-3.5 mr-2" />
+                                {caseData.note ? "Modifica Note" : "Aggiungi Note"}
+                            </Button>
+                        </div>
 
                         {/* ERROR STATE */}
                         {streamError && (
@@ -173,17 +200,17 @@ export function FinalReportCard({
                             </div>
                         )}
 
-
-                        {/* GENERATING STATE (Visible in collapsed view too if generating) */}
+                        {/* GENERATING STATE VISUALIZATION */}
                         {showGeneratingState && (
-                            <div className="mt-8 border-t pt-8 animate-in fade-in zoom-in-95 duration-300">
+                            <div className="mt-6 pt-6 border-t animate-in fade-in zoom-in-95 duration-300">
                                 <ThinkingProcess
                                     thoughts={streamedThoughts}
                                     state={streamState === "thinking" ? "thinking" : "done"}
                                 />
                             </div>
                         )}
-                    </div>
+                    </CardContent>
+
 
                     {/* EXPANDED CONTENT */}
                     <ExpandableScreenContent>

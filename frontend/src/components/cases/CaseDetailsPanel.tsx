@@ -23,11 +23,12 @@ import {
     TableBody,
     TableCell,
     TableRow,
-} from "@/components/ui/table";
+} from "@/components/ui/casedetails-table";
 
 type Props = {
     caseDetail: CaseDetail;
     onUpdate: (updatedCase: CaseDetail) => void;
+    defaultOpen?: boolean;
 };
 
 // --- Field Configuration ---
@@ -164,7 +165,7 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
 
     if (isEditing) {
         return (
-            <div className="p-1 px-4">
+            <div className="pt-0 pb-2 px-4">
                 {field.type === "textarea" ? (
                     <Textarea
                         autoFocus
@@ -192,7 +193,7 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
 
     if (field.readOnly) {
         return (
-            <div className="px-4 py-2.5 text-sm font-medium text-foreground min-h-[40px] flex items-center">
+            <div className="px-4 pt-0 pb-3 text-sm font-medium text-foreground min-h-[30px] flex items-center">
                 {formatValue(value)}
             </div>
         );
@@ -202,7 +203,7 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
         <div
             onClick={onStartEdit}
             className={cn(
-                "px-4 py-2.5 cursor-pointer transition-colors duration-200 min-h-[40px] flex items-center group/cell",
+                "px-4 pt-0 pb-3 cursor-pointer transition-colors duration-200 min-h-[30px] flex items-center group/cell",
                 "text-sm font-medium text-foreground hover:bg-primary/5"
             )}
         >
@@ -224,10 +225,10 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
 };
 
 
-export default function CaseDetailsPanel({ caseDetail, onUpdate }: Props) {
+export default function CaseDetailsPanel({ caseDetail, onUpdate, defaultOpen }: Props) {
     const { getToken } = useAuth();
     const [editingKey, setEditingKey] = useState<string | null>(null);
-    const [isOpen, setIsOpen] = useState(false); // Default: collapsed
+    const [isOpen, setIsOpen] = useState(defaultOpen ?? false); // Default from prop or collapsed
 
     const handleSave = async (key: string, newVal: string | number | null) => {
         // Optimistic check
@@ -320,7 +321,7 @@ export default function CaseDetailsPanel({ caseDetail, onUpdate }: Props) {
                                             <TableBody>
                                                 {section.fields.map((field) => (
                                                     <TableRow key={field.key as string} className="group/row hover:bg-transparent last:border-0 border-muted/30">
-                                                        <TableCell className="bg-muted/5 font-semibold text-muted-foreground w-1/3 min-w-[140px] py-2 px-6 border-r border-muted/30 text-2xs uppercase tracking-wider select-none">
+                                                        <TableCell className="bg-transparent font-medium text-muted-foreground w-full py-1 pt-3 px-4 text-[11px] uppercase tracking-wider select-none border-none">
                                                             {field.label}
                                                         </TableCell>
                                                         <TableCell className="p-0">
