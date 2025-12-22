@@ -104,10 +104,10 @@ export function FinalReportCard({
                             </div>
 
                             {/* Right: Actions */}
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2">
                                 {(!hasReport || showGeneratingState) && (
                                     <>
-                                        <div className="w-[140px]">
+                                        <div className="w-[100px]">
                                             <Select value={language} onValueChange={setLanguage} disabled={showGeneratingState}>
                                                 <SelectTrigger className="h-9">
                                                     <SelectValue />
@@ -214,9 +214,11 @@ export function FinalReportCard({
 
                     {/* EXPANDED CONTENT */}
                     <ExpandableScreenContent>
-                        <div className="flex flex-col h-full bg-muted">
-                            {/* Toolbar */}
-                            <div className="bg-card border-b px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+                        {/* OUTER WRAPPER: Needs h-full to fill screen, overflow-hidden to prevent double scrollbars */}
+                        <div className="flex flex-col h-full bg-muted/10 overflow-hidden">
+
+                            {/* HEADER: flex-none ensures it never shrinks. z-10 ensures it stays above content. */}
+                            <div className="flex-none bg-background border-b px-6 py-4 flex items-center justify-between shadow-sm z-10">
                                 <div className="flex items-center gap-2 ml-12">
                                     <h4 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">
                                         Anteprima Report {latestVersion ? `(v${latestVersion.version_number})` : ""}
@@ -258,19 +260,23 @@ export function FinalReportCard({
                                 </div>
                             </div>
 
-                            {/* Main Content Area */}
-                            <div className="flex-1 overflow-auto p-8 max-w-4xl mx-auto w-full">
-                                {displayContent ? (
-                                    <div className="prose dark:prose-invert max-w-none bg-card p-8 rounded-2xl shadow-sm min-h-content">
-                                        <MarkdownContent content={displayContent} />
-                                    </div>
-                                ) : (
-                                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground min-h-[300px]">
-                                        <FileText className="h-12 w-12 mb-4 opacity-20" />
-                                        <p>Nessun contenuto disponibile.</p>
-                                    </div>
-                                )}
+                            {/* CONTENT AREA: flex-1 takes all remaining height. overflow-y-auto makes ONLY this part scroll. */}
+                            <div className="flex-1 overflow-y-auto w-full">
+                                <div className="p-8 max-w-5xl mx-auto">
+                                    {displayContent ? (
+                                        <div className="prose prose-sm md:prose-base dark:prose-invert max-w-none bg-card p-8 md:p-12 rounded-2xl shadow-sm border border-border/40">
+                                            <MarkdownContent content={displayContent} />
+                                        </div>
+                                    ) : (
+                                        /* Empty State */
+                                        <div className="flex flex-col items-center justify-center h-full text-muted-foreground min-h-[300px]">
+                                            <FileText className="h-16 w-16 mb-4 opacity-20" />
+                                            <p>Nessun contenuto disponibile</p>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
+
                         </div>
                     </ExpandableScreenContent>
                 </Card>
