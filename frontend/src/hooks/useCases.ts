@@ -8,6 +8,7 @@ export function useCases(params: {
     client_id?: string;
     status?: string;
     scope?: string;
+    year?: number;
 } = {}) {
     const { user, getToken } = useAuth();
 

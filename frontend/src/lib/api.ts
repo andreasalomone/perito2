@@ -105,6 +105,7 @@ export const api = {
             client_id?: string;
             status?: string;
             scope?: string;
+            year?: number;
         } = {}) =>
             fetchWithValidation<CaseSummary[]>(
                 `${getBaseUrl()}/api/v1/cases/`,

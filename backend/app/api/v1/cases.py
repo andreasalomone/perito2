@@ -50,6 +50,7 @@ def list_cases(
     client_id: Optional[UUID] = Query(None),
     status: Optional[CaseStatus] = Query(None),
     scope: str = Query("all", pattern="^(all|mine)$"),
+    year: Optional[int] = Query(None, ge=2000, le=2100, description="Filter by creation year"),
 ) -> List[Case]:
     """
     Fetches cases with RLS and Soft Delete filtering.
@@ -107,6 +108,11 @@ def list_cases(
     # 3. Filter by Status
     if status:
         stmt = stmt.where(Case.status == status)
+
+    # 4. Filter by Year
+    if year:
+        from sqlalchemy import extract
+        stmt = stmt.where(extract('year', Case.created_at) == year)
 
     return list(db.scalars(stmt.offset(skip).limit(limit)).all())
 
