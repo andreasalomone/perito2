@@ -25,6 +25,7 @@ node_modules/
 # IDEs
 .idea/
 .vscode/
+.agent/
 
 # Misc
 .DS_Store
@@ -89,3 +90,5 @@ verify_default.docx
 backend/scripts/reset_gemini_cache.py
 final_report_generation_files.md
 backend/app/core/handbook.txt
+frontend/src/hooks/hooks-guide.md
+.agent/rules/master-guide.md
