@@ -46,6 +46,7 @@ interface IngestionPanelProps {
     finalReportStreamState?: StreamState;
     finalReportStreamedThoughts?: string;
     finalReportStreamedContent?: string;
+    finalReportStreamError?: string | null;
     onGenerateFinalReport: (language: string, extraInstructions?: string) => void;
     onUpdateNotes: (notes: string) => void;
     onDownloadFinalReport: (version: ReportVersion, template: TemplateType) => Promise<void>;
@@ -81,6 +82,7 @@ export function IngestionPanel({
     finalReportStreamState,
     finalReportStreamedThoughts,
     finalReportStreamedContent,
+    finalReportStreamError,
     onGenerateFinalReport,
     onUpdateNotes,
     onDownloadFinalReport,
@@ -331,6 +333,7 @@ export function IngestionPanel({
                 streamState={finalReportStreamState}
                 streamedThoughts={finalReportStreamedThoughts}
                 streamedContent={finalReportStreamedContent}
+                streamError={finalReportStreamError}
             />
         </div>
     );

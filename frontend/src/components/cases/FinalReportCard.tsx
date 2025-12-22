@@ -51,14 +51,33 @@ export function FinalReportCard({
     streamedContent = "",
     streamError = null,
 }: Readonly<FinalReportCardProps>) {
+    // Type-safe language configuration
+    type Language = "italian" | "english" | "spanish" | "german" | "french";
+
+    const LANGUAGE_OPTIONS: { value: Language; label: string }[] = [
+        { value: "italian", label: "Italiano" },
+        { value: "english", label: "Inglese" },
+        { value: "spanish", label: "Spagnolo" },
+        { value: "german", label: "Tedesco" },
+        { value: "french", label: "Francese" },
+    ];
+
     // State
-    const [language, setLanguage] = useState("italian");
+    const [language, setLanguage] = useState<Language>("italian");
 
     // Dialog States
     const [showNotesDialog, setShowNotesDialog] = useState(false);
     const [showDownloadDialog, setShowDownloadDialog] = useState(false);
     const [showEditDialog, setShowEditDialog] = useState(false);
     const [showCloseDialog, setShowCloseDialog] = useState(false);
+    const [isClosing, setIsClosing] = useState(false);
+
+    // Helper: Map StreamState to ThinkingProcess state
+    const getThinkingState = (): "idle" | "thinking" | "done" => {
+        if (streamState === "thinking" || streamState === "streaming") return "thinking";
+        if (streamState === "idle") return "idle";
+        return "done";
+    };
 
     // Derived Data - ONLY consider non-preliminary reports for FinalReportCard
     // source values: 'preliminary' (Early Analysis), 'final' (AI report), 'human' (finalized), or null (legacy)
@@ -67,7 +86,7 @@ export function FinalReportCard({
     );
     const latestVersion = useMemo(() => {
         if (!versions.length) return undefined;
-        return [...versions].sort((a, b) => b.version_number - a.version_number)[0];
+        return [...versions].sort((a, b) => (b.version_number ?? 0) - (a.version_number ?? 0))[0];
     }, [versions]);
     const hasReport = !!latestVersion;
     const isFinal = caseData.status === "CLOSED" || latestVersion?.is_final;
@@ -75,7 +94,10 @@ export function FinalReportCard({
 
     // Determines if we are in "Generating" visual state
     // Either backend status says generating OR frontend streaming is active
-    const showGeneratingState = isGenerating || (streamingEnabled && (streamState === "thinking" || streamState === "streaming"));
+    // Error state should cancel "generating" UI so user can retry
+    const showGeneratingState = !streamError && (
+        isGenerating || (streamingEnabled && (streamState === "thinking" || streamState === "streaming"))
+    );
 
     // Content to show: Streamed content (if available/generating) OR Latest Version content
     const displayContent = (showGeneratingState && streamedContent) ? streamedContent : (latestVersion?.ai_raw_output || "");
@@ -108,16 +130,16 @@ export function FinalReportCard({
                                 {(!hasReport || showGeneratingState) && (
                                     <>
                                         <div className="w-[100px]">
-                                            <Select value={language} onValueChange={setLanguage} disabled={showGeneratingState}>
+                                            <Select value={language} onValueChange={(v) => setLanguage(v as Language)} disabled={showGeneratingState}>
                                                 <SelectTrigger className="h-9">
                                                     <SelectValue />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="italian">Italiano</SelectItem>
-                                                    <SelectItem value="english">Inglese</SelectItem>
-                                                    <SelectItem value="spanish">Spagnolo</SelectItem>
-                                                    <SelectItem value="german">Tedesco</SelectItem>
-                                                    <SelectItem value="french">Francese</SelectItem>
+                                                    {LANGUAGE_OPTIONS.map((opt) => (
+                                                        <SelectItem key={opt.value} value={opt.value}>
+                                                            {opt.label}
+                                                        </SelectItem>
+                                                    ))}
                                                 </SelectContent>
                                             </Select>
                                         </div>
@@ -205,7 +227,7 @@ export function FinalReportCard({
                             <div className="mt-6 pt-6 border-t animate-in fade-in zoom-in-95 duration-300">
                                 <ThinkingProcess
                                     thoughts={streamedThoughts}
-                                    state={streamState === "thinking" ? "thinking" : "done"}
+                                    state={getThinkingState()}
                                 />
                             </div>
                         )}
@@ -312,9 +334,23 @@ export function FinalReportCard({
                 isOpen={showCloseDialog}
                 onClose={() => setShowCloseDialog(false)}
                 activeDraft={activeDraft}
-                onFinalize={onFinalize}
-                onConfirmDocs={onConfirmDocs}
-                isLoading={false} // Loading handled by parent via isGenerating usually, but close logic is separate
+                onFinalize={async (file) => {
+                    setIsClosing(true);
+                    try {
+                        await onFinalize(file);
+                    } finally {
+                        setIsClosing(false);
+                    }
+                }}
+                onConfirmDocs={async (versionId) => {
+                    setIsClosing(true);
+                    try {
+                        await onConfirmDocs(versionId);
+                    } finally {
+                        setIsClosing(false);
+                    }
+                }}
+                isLoading={isClosing}
             />
         </>
     );

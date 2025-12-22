@@ -341,6 +341,7 @@ export default function CaseWorkspace() {
                                 finalReportStreamState={finalReportStreamHook.state}
                                 finalReportStreamedThoughts={finalReportStreamHook.thoughts}
                                 finalReportStreamedContent={finalReportStreamHook.content}
+                                finalReportStreamError={finalReportStreamHook.error}
 
                                 // Actions
                                 onUpdateNotes={handleUpdateNotes}
