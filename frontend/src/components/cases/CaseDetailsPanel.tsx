@@ -293,43 +293,52 @@ export default function CaseDetailsPanel({ caseDetail, onUpdate }: Props) {
 
             {isOpen && (
                 <CardContent className="p-0">
-                    <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x ">
-                        {SECTIONS.map((section, idx) => (
-                            <div key={section.id} className={cn(
-                                "p-0 flex flex-col",
-                                // Add borders to simulate a unified grid if needed, or just let them stay separate
-                                "last:border-b-0"
-                            )}>
-                                <div className="flex items-center gap-2 px-6 py-4 bg-muted/10">
-                                    <div className={cn("p-1 rounded-md", section.bgClass)}>
-                                        <section.icon className={cn("h-4 w-4", section.colorClass)} />
-                                    </div>
-                                    <h3 className="text-xs font-bold text-foreground uppercase tracking-widest">
-                                        {section.id}
-                                    </h3>
-                                </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2">
+                        {[
+                            { id: "left-col", sections: ["Dati Generali", "Merci e Trasporti", "Luogo e Lavorazione", "Note"] },
+                            { id: "right-col", sections: ["Parti Coinvolte", "Economici"] }
+                        ].map((column, colIdx) => (
+                            <div
+                                key={column.id}
+                                className={cn(
+                                    "flex flex-col divide-y bg-transparent",
+                                    colIdx === 0 ? "md:border-r border-border" : "border-t md:border-t-0 border-border"
+                                )}
+                            >
+                                {column.sections.map(id => SECTIONS.find(s => s.id === id)).filter((s): s is typeof SECTIONS[0] => !!s).map((section) => (
+                                    <div key={section.id} className="flex flex-col">
+                                        <div className="flex items-center gap-2 px-6 py-4 bg-muted/10">
+                                            <div className={cn("p-1 rounded-md", section.bgClass)}>
+                                                <section.icon className={cn("h-4 w-4", section.colorClass)} />
+                                            </div>
+                                            <h3 className="text-xs font-bold text-foreground uppercase tracking-widest">
+                                                {section.id}
+                                            </h3>
+                                        </div>
 
-                                <Table className="border-0">
-                                    <TableBody>
-                                        {section.fields.map((field) => (
-                                            <TableRow key={field.key as string} className="group/row hover:bg-transparent last:border-0 border-muted/30">
-                                                <TableCell className="bg-muted/5 font-semibold text-muted-foreground w-1/3 min-w-[140px] py-2 px-6 border-r border-muted/30 text-2xs uppercase tracking-wider select-none">
-                                                    {field.label}
-                                                </TableCell>
-                                                <TableCell className="p-0">
-                                                    <FieldCell
-                                                        field={field}
-                                                        value={(caseDetail as any)[field.key] ?? (field.key === "client_name" ? caseDetail.client_name : null)}
-                                                        isEditing={editingKey === field.key}
-                                                        onStartEdit={() => setEditingKey(field.key as string)}
-                                                        onSave={(val) => handleSave(field.key as string, val)}
-                                                        onCancel={() => setEditingKey(null)}
-                                                    />
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
+                                        <Table className="border-0">
+                                            <TableBody>
+                                                {section.fields.map((field) => (
+                                                    <TableRow key={field.key as string} className="group/row hover:bg-transparent last:border-0 border-muted/30">
+                                                        <TableCell className="bg-muted/5 font-semibold text-muted-foreground w-1/3 min-w-[140px] py-2 px-6 border-r border-muted/30 text-2xs uppercase tracking-wider select-none">
+                                                            {field.label}
+                                                        </TableCell>
+                                                        <TableCell className="p-0">
+                                                            <FieldCell
+                                                                field={field}
+                                                                value={(caseDetail as any)[field.key] ?? (field.key === "client_name" ? caseDetail.client_name : null)}
+                                                                isEditing={editingKey === field.key}
+                                                                onStartEdit={() => setEditingKey(field.key as string)}
+                                                                onSave={(val) => handleSave(field.key as string, val)}
+                                                                onCancel={() => setEditingKey(null)}
+                                                            />
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                ))}
                             </div>
                         ))}
                     </div>
