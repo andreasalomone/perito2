@@ -264,7 +264,7 @@ export default function CaseDetailsPanel({ caseDetail, onUpdate }: Props) {
     return (
         <Card className="border shadow-md overflow-hidden bg-background">
             <CardHeader
-                className="flex flex-row items-center justify-between py-5 px-6 cursor-pointer hover:bg-muted/50 transition-all group"
+                className="flex flex-row items-center justify-between py-5 px-6 cursor-pointer transition-all group"
                 onClick={() => setIsOpen(!isOpen)}
             >
                 <div className="flex items-center gap-4">
@@ -273,10 +273,10 @@ export default function CaseDetailsPanel({ caseDetail, onUpdate }: Props) {
                     </div>
                     <div>
                         <CardTitle className="text-xl font-bold tracking-tight text-foreground">
-                            Dettagli Pratica
+                            Dati Generali
                         </CardTitle>
                         <p className="text-sm text-muted-foreground mt-0.5">
-                            Gestisci tutte le informazioni strutturate del caso.
+                            Gestisci le informazioni strutturate del caso.
                         </p>
                     </div>
                 </div>
@@ -293,7 +293,7 @@ export default function CaseDetailsPanel({ caseDetail, onUpdate }: Props) {
 
             {isOpen && (
                 <CardContent className="p-0">
-                    <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x">
+                    <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x ">
                         {SECTIONS.map((section, idx) => (
                             <div key={section.id} className={cn(
                                 "p-0 flex flex-col",
