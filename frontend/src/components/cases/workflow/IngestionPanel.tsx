@@ -148,7 +148,7 @@ export function IngestionPanel({
     return (
         <div className="space-y-6">
             {/* Unified Ingestion Card */}
-            <Card className="border-2 border-dashed bg-muted/5">
+            <Card className="border">
                 <CardHeader className="pb-4">
                     <div className="flex items-center justify-between">
                         <div>
@@ -159,7 +159,7 @@ export function IngestionPanel({
                             <CardDescription className="mt-1">
                                 {documents.length > 0
                                     ? `${documents.length} documenti caricati. Carica altri file se necessario.`
-                                    : "Carica i documenti del caso per iniziare l'analisi."}
+                                    : "Carica i documenti del sinistro per iniziare l'analisi."}
                             </CardDescription>
                         </div>
                         {documents.length > 0 && (
@@ -180,9 +180,9 @@ export function IngestionPanel({
                                     <div className="p-4 rounded-full bg-background shadow-sm mb-4">
                                         <UploadCloud className="h-8 w-8 text-primary" />
                                     </div>
-                                    <h3 className="font-semibold text-lg mb-1">Carica file del caso</h3>
+                                    <h3 className="font-semibold text-lg mb-1">Carica file del sinistro</h3>
                                     <p className="text-sm text-muted-foreground text-center max-w-sm mb-4">
-                                        Supporta PDF, DOCX, Immagini, EML.
+                                        Supporta PDF, DOCX, XLSX, Immagini, e EML.
                                     </p>
                                     <Button variant="default">Seleziona File</Button>
                                 </div>
