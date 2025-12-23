@@ -8,7 +8,7 @@ import React, {
     useEffect,
     useId,
 } from "react";
-import { AnimatePresence, motion, MotionConfig } from "framer-motion";
+import { AnimatePresence, motion, MotionConfig } from "motion/react";
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
 import { createPortal } from "react-dom";

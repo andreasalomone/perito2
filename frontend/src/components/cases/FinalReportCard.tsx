@@ -131,7 +131,7 @@ export function FinalReportCard({
                                     <>
                                         <div className="w-[100px]">
                                             <Select value={language} onValueChange={(v) => setLanguage(v as Language)} disabled={showGeneratingState}>
-                                                <SelectTrigger className="h-9">
+                                                <SelectTrigger className="h-8">
                                                     <SelectValue />
                                                 </SelectTrigger>
                                                 <SelectContent>

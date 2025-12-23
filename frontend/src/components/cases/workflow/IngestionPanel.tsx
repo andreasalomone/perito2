@@ -16,7 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Upload, UploadCloud, AlertCircle, Loader2 } from "lucide-react";
-import { AnimatePresence } from "framer-motion";
+import { AnimatePresence } from "motion/react";
 import { StaggerList, StaggerItem } from "@/components/primitives/motion/StaggerList";
 import { FadeIn } from "@/components/primitives/motion/FadeIn";
 import { ReportGeneratingSkeleton } from "@/components/cases/ReportGeneratingSkeleton";

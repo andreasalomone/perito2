@@ -14,7 +14,7 @@ import {
   TargetAndTransition,
   useMotionValue,
   useSpring,
-} from "framer-motion"
+} from "motion/react"
 import useMeasure from "react-use-measure"
 
 import { cn } from "@/lib/utils"

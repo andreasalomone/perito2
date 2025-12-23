@@ -4,7 +4,7 @@ import { memo, useState } from "react";
 import { ReportVersion } from "@/types";
 import { Button } from "@/components/ui/button";
 import { FileText, Download } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 
 export type TemplateType = "default" | "bn" | "salomone";
 

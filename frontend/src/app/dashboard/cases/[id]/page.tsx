@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useConfig } from "@/context/ConfigContext";
@@ -24,6 +24,7 @@ import {
     IngestionPanel,
 } from "@/components/cases/workflow";
 import CaseDetailsPanel from "@/components/cases/CaseDetailsPanel";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 export default function CaseWorkspace() {
     const { id } = useParams();
@@ -31,6 +32,9 @@ export default function CaseWorkspace() {
     const { getToken } = useAuth();
     const { apiUrl } = useConfig();
     const caseId = Array.isArray(id) ? id[0] : id;
+
+    // Delete confirmation dialog state
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
 
 
@@ -140,7 +144,6 @@ export default function CaseWorkspace() {
     const handleDeleteCase = useCallback(async () => {
         if (!caseId) return;
         const id = caseId as string;
-        if (!confirm("Sei sicuro di voler eliminare questo caso e tutti i documenti associati?")) return;
 
         try {
             const token = await getToken();
@@ -154,6 +157,7 @@ export default function CaseWorkspace() {
             router.push("/dashboard");
         } catch (error) {
             handleApiError(error, "Errore durante l'eliminazione");
+            throw error; // Re-throw to keep dialog open on error
         }
     }, [caseId, getToken, router]);
 
@@ -298,7 +302,7 @@ export default function CaseWorkspace() {
                     <Button
                         size="sm"
                         variant="ghost"
-                        onClick={handleDeleteCase}
+                        onClick={() => setShowDeleteDialog(true)}
                         className="text-destructive hover:text-destructive hover:bg-destructive/10"
                         title="Elimina caso"
                     >
@@ -365,6 +369,17 @@ export default function CaseWorkspace() {
                 )}
             </main>
 
+            {/* Delete Case Confirmation Dialog */}
+            <ConfirmDialog
+                isOpen={showDeleteDialog}
+                onClose={() => setShowDeleteDialog(false)}
+                onConfirm={handleDeleteCase}
+                title="Elimina Caso"
+                description="Sei sicuro di voler eliminare questo caso e tutti i documenti associati? Questa azione non può essere annullata."
+                confirmText="Elimina"
+                cancelText="Annulla"
+                variant="danger"
+            />
         </div >
     );
 }

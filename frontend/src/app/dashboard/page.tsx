@@ -15,6 +15,7 @@ import { ClientGroupedList } from "@/components/dashboard/views/ClientGroupedLis
 import { AssicuratoGroupedList } from "@/components/dashboard/views/AssicuratoGroupedList";
 import { Toggle } from "@/components/ui/toggle";
 import { CaseTableView } from "@/components/dashboard/views/CaseTableView";
+import { useDebounce } from "@/hooks/useDebounce";
 
 export default function DashboardPage() {
     const [viewMode, setViewMode] = useState<ViewMode>("grid");
@@ -26,9 +27,12 @@ export default function DashboardPage() {
     const searchParams = useSearchParams();
     const clientIdParam = searchParams.get("client_id");
 
+    // Debounce search to reduce API calls during typing
+    const debouncedSearch = useDebounce(searchQuery, 300);
+
     // Pass search params to hook
     const { cases, isLoading, isError, mutate } = useCases({
-        search: searchQuery,
+        search: debouncedSearch,
         scope: scope,
         client_id: clientIdParam || undefined
     });
