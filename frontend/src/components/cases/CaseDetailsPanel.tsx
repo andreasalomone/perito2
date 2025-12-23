@@ -118,6 +118,12 @@ const SECTIONS = [
     }
 ];
 
+// Column layout configuration - extracted to prevent inline object creation on each render
+const COLUMN_CONFIG = [
+    { id: "left-col", sections: ["Dati Generali", "Merci e Trasporti", "Luogo e Lavorazione", "Note"] },
+    { id: "right-col", sections: ["Parti Coinvolte", "Economici"] }
+] as const;
+
 // --- Subcomponent: FieldCell ---
 
 interface FieldCellProps {
@@ -201,10 +207,19 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
 
     return (
         <div
+            role="button"
+            tabIndex={0}
+            aria-label={`Modifica ${field.label}`}
             onClick={onStartEdit}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onStartEdit();
+                }
+            }}
             className={cn(
                 "px-4 pt-0 pb-3 cursor-pointer transition-colors duration-200 min-h-[30px] flex items-center group/cell",
-                "text-sm font-medium text-foreground hover:bg-primary/5"
+                "text-sm font-medium text-foreground hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
             )}
         >
             <div className={cn(
@@ -266,7 +281,17 @@ export default function CaseDetailsPanel({ caseDetail, onUpdate, defaultOpen }: 
         <Card className="border shadow-md overflow-hidden bg-background">
             <CardHeader
                 className="flex flex-row items-center justify-between py-5 px-6 cursor-pointer transition-all group"
+                role="button"
+                tabIndex={0}
+                aria-expanded={isOpen}
+                aria-controls="case-details-content"
                 onClick={() => setIsOpen(!isOpen)}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setIsOpen(!isOpen);
+                    }
+                }}
             >
                 <div className="flex items-center gap-4">
                     <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
@@ -286,19 +311,16 @@ export default function CaseDetailsPanel({ caseDetail, onUpdate, defaultOpen }: 
                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         {isOpen ? "Chiudi" : "Espandi"}
                     </span>
-                    <Button variant="outline" size="icon" className="h-8 w-8 rounded-full border-muted-foreground/20">
+                    <Button variant="outline" size="icon" className="h-8 w-8 rounded-full border-muted-foreground/20" aria-hidden="true" tabIndex={-1}>
                         {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     </Button>
                 </div>
             </CardHeader>
 
             {isOpen && (
-                <CardContent className="p-0">
+                <CardContent id="case-details-content" className="p-0">
                     <div className="grid grid-cols-1 md:grid-cols-2">
-                        {[
-                            { id: "left-col", sections: ["Dati Generali", "Merci e Trasporti", "Luogo e Lavorazione", "Note"] },
-                            { id: "right-col", sections: ["Parti Coinvolte", "Economici"] }
-                        ].map((column, colIdx) => (
+                        {COLUMN_CONFIG.map((column, colIdx) => (
                             <div
                                 key={column.id}
                                 className={cn(

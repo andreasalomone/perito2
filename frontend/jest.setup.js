@@ -1,17 +1,19 @@
 import '@testing-library/jest-dom'
-import { TextEncoder, TextDecoder } from 'util'
+import { TextEncoder, TextDecoder } from 'node:util'
+import React from 'react'
+import nextRouterMock from 'next-router-mock'
 
 // Mock environment variables for tests
 process.env.API_URL = process.env.API_URL || 'https://api.test.local';
 
 // Mock Next.js router
-jest.mock('next/navigation', () => require('next-router-mock'))
+jest.mock('next/navigation', () => nextRouterMock)
 
 // Mock framer-motion to avoid animation issues in tests
 jest.mock('framer-motion', () => ({
     motion: {
-        div: ({ children, ...props }) => require('react').createElement('div', props, children),
-        main: ({ children, ...props }) => require('react').createElement('main', props, children),
+        div: (props) => React.createElement('div', props),
+        main: (props) => React.createElement('main', props),
     },
     AnimatePresence: ({ children }) => children,
 }))
@@ -19,12 +21,12 @@ jest.mock('framer-motion', () => ({
 // Mock react-markdown (ESM-only module that Jest cannot parse)
 jest.mock('react-markdown', () => {
     return function ReactMarkdown({ children }) {
-        return require('react').createElement('div', { 'data-testid': 'markdown' }, children);
+        return React.createElement('div', { 'data-testid': 'markdown' }, children);
     };
 })
 
-global.TextEncoder = TextEncoder
-global.TextDecoder = TextDecoder
+globalThis.TextEncoder = TextEncoder
+globalThis.TextDecoder = TextDecoder
 
 // Mock document.hidden for visibility API tests
 Object.defineProperty(document, 'hidden', {
@@ -32,13 +34,13 @@ Object.defineProperty(document, 'hidden', {
     value: false,
 });
 
-global.fetch = jest.fn(() =>
+globalThis.fetch = jest.fn(() =>
     Promise.resolve({
         json: () => Promise.resolve({}),
     })
 )
 
-global.Response = class Response {
+globalThis.Response = class Response {
     constructor(body, init) {
         this.body = body
         this.status = init?.status || 200
@@ -47,5 +49,5 @@ global.Response = class Response {
     json() { return Promise.resolve({}) }
 }
 
-global.Request = class Request { }
-global.Headers = class Headers { }
+globalThis.Request = class Request { }
+globalThis.Headers = class Headers { }

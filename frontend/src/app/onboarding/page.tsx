@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import axios from "axios";
 
 export default function OnboardingPage() {
-    const { user, dbUser, syncError, getToken, logout } = useAuth();
+    const { dbUser, syncError, getToken, logout } = useAuth();
     const { apiUrl } = useConfig();
     const router = useRouter();
 

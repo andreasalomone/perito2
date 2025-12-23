@@ -50,6 +50,7 @@ export default function CaseWorkspace() {
     // Early Analysis hooks - poll only when documents are processing
     const documentAnalysisHook = useDocumentAnalysis(caseId, isProcessingDocs ?? false);
     const preliminaryReportHook = usePreliminaryReport(caseId, isProcessingDocs ?? false);
+    const { mutate: mutatePreliminary } = preliminaryReportHook;
 
     // Streaming hook for preliminary report (chain of thought visibility)
     const preliminaryStreamHook = usePreliminaryReportStream(caseId);
@@ -73,9 +74,10 @@ export default function CaseWorkspace() {
 
     useEffect(() => {
         if (preliminaryStreamHook.state === "done") {
-            preliminaryReportHook.mutate(); // Refresh preliminary report data
+            mutatePreliminary(); // Refresh preliminary report data
         }
-    }, [preliminaryStreamHook.state, preliminaryReportHook.mutate]);
+    }, [preliminaryStreamHook.state, mutatePreliminary]);
+
 
     // Redirect CLOSED/finalized cases to summary page
     useEffect(() => {

@@ -1,7 +1,7 @@
 "use client";
-import { createContext, useContext, useEffect, useState, useRef } from "react";
+import { createContext, useContext, useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { onAuthStateChanged, User, signInWithPopup, signOut, Auth, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
-import { initFirebase, googleProvider, getFirebaseAuth } from "@/lib/firebase";
+import { initFirebase, googleProvider } from "@/lib/firebase";
 import { DBUser } from "@/types";
 import axios from "axios";
 import { useConfig } from "@/context/ConfigContext";
@@ -28,7 +28,7 @@ interface AuthProviderProps {
     firebaseConfig: Record<string, string | undefined>;
 }
 
-export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
+export function AuthProvider({ children, firebaseConfig }: Readonly<AuthProviderProps>) {
     const { apiUrl } = useConfig();
     const [user, setUser] = useState<User | null>(null);
     const [dbUser, setDbUser] = useState<DBUser | null>(null);
@@ -116,31 +116,31 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
         return () => unsubscribe();
     }, [firebaseConfig, apiUrl]);
 
-    const login = async () => {
+    const login = useCallback(async () => {
         if (authRef.current) {
             await signInWithPopup(authRef.current, googleProvider);
         }
-    };
+    }, []);
 
-    const signupWithEmail = async (email: string, password: string) => {
+    const signupWithEmail = useCallback(async (email: string, password: string) => {
         if (authRef.current) {
             await createUserWithEmailAndPassword(authRef.current, email, password);
         }
-    };
+    }, []);
 
-    const loginWithEmail = async (email: string, password: string) => {
+    const loginWithEmail = useCallback(async (email: string, password: string) => {
         if (authRef.current) {
             await signInWithEmailAndPassword(authRef.current, email, password);
         }
-    };
+    }, []);
 
-    const resetPassword = async (email: string) => {
+    const resetPassword = useCallback(async (email: string) => {
         if (authRef.current) {
             await sendPasswordResetEmail(authRef.current, email);
         }
-    };
+    }, []);
 
-    const logout = async () => {
+    const logout = useCallback(async () => {
         if (authRef.current) {
             await signOut(authRef.current);
             document.cookie = "auth_session=; path=/; max-age=0; SameSite=Lax";
@@ -148,12 +148,21 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
             setDbUser(null);
             setSyncError(null);
         }
-    };
+    }, []);
 
-    const getToken = async (): Promise<string> => {
+    const getToken = useCallback(async (): Promise<string> => {
         if (!user) throw new Error("Not authenticated");
         return user.getIdToken();
-    };
+    }, [user]);
+
+    const isProfileComplete = dbUser?.is_profile_complete ?? false;
+
+    // Memoize context value to prevent unnecessary re-renders of consumers
+    // Must be called before early returns to comply with Rules of Hooks
+    const value = useMemo(() => ({
+        user, dbUser, loading, isProfileComplete, syncError,
+        login, signupWithEmail, loginWithEmail, resetPassword, logout, getToken
+    }), [user, dbUser, loading, isProfileComplete, syncError, login, signupWithEmail, loginWithEmail, resetPassword, logout, getToken]);
 
     // PREVENT "ZOMBIE REQUESTS":
     // Do not render children until we know the Backend DB knows who we are.
@@ -178,13 +187,8 @@ export function AuthProvider({ children, firebaseConfig }: AuthProviderProps) {
         </div>;
     }
 
-    const isProfileComplete = dbUser?.is_profile_complete ?? false;
-
     return (
-        <AuthContext.Provider value={{
-            user, dbUser, loading, isProfileComplete, syncError,
-            login, signupWithEmail, loginWithEmail, resetPassword, logout, getToken
-        }}>
+        <AuthContext.Provider value={value}>
             {children}
         </AuthContext.Provider>
     );

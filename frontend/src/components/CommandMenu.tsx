@@ -11,7 +11,7 @@ import {
     CommandSeparator,
 } from "@/components/ui/command"
 import { useRouter } from "next/navigation"
-import { FileText, Plus, LayoutDashboard, Settings, Sun, Moon, Laptop } from "lucide-react"
+import { Plus, LayoutDashboard, Settings, Sun, Moon, Laptop } from "lucide-react"
 import { useTheme } from "next-themes"
 
 export function CommandMenu() {

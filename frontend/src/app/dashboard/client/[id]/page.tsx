@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Building2, RefreshCw, ChevronRight } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { CaseCard } from "@/components/dashboard/CaseCard";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
@@ -14,7 +15,6 @@ import { useAuth } from "@/context/AuthContext";
 import { useState } from "react";
 import { toast } from "sonner";
 import ClientDetailsPanel from "@/components/dashboard/ClientDetailsPanel";
-import { ClientDetail } from "@/types";
 
 
 export default function ClientDetailPage() {
@@ -35,7 +35,7 @@ export default function ClientDetailPage() {
             toast.success("Arricchimento avviato", {
                 description: "I dati verranno aggiornati a breve.",
             });
-        } catch (e) {
+        } catch {
             toast.error("Errore", {
                 description: "Impossibile avviare l'arricchimento.",
             });
@@ -44,7 +44,7 @@ export default function ClientDetailPage() {
         }
     };
 
-    const handleEditSuccess = (updatedClient: ClientDetail) => {
+    const handleEditSuccess = () => {
         toast.success("Cliente aggiornato", {
             description: "I dati sono stati salvati con successo.",
         });
@@ -77,7 +77,7 @@ export default function ClientDetailPage() {
                 <div className="flex items-start justify-between gap-4">
                     <div className="flex items-center gap-4">
                         {client.logo_url ? (
-                            <img src={client.logo_url} className="h-16 w-16 rounded-full bg-white object-contain p-2 border shadow-sm" />
+                            <Image src={client.logo_url} alt={`${client.name} logo`} width={64} height={64} className="h-16 w-16 rounded-full bg-white object-contain p-2 border shadow-sm" unoptimized />
                         ) : (
                             <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center border shadow-sm">
                                 <Building2 className="h-8 w-8 text-muted-foreground" />

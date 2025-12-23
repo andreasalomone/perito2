@@ -4,13 +4,11 @@ import { useCallback, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useConfig } from "@/context/ConfigContext";
-import { ReportVersion } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle, Download, AlertCircle, RefreshCw, ArrowLeft } from "lucide-react";
 import axios from "axios";
-import { toast } from "sonner";
 import { handleApiError } from "@/lib/error";
 import { TemplateType } from "@/components/cases/VersionItem";
 import CaseDetailsPanel from "@/components/cases/CaseDetailsPanel";
@@ -37,7 +35,6 @@ export default function CaseSummaryPage() {
         isLoading,
         isError,
         mutate,
-        currentStep,
     } = useCaseDetail(caseId);
 
     // If case is not closed/finalized, redirect back to workflow

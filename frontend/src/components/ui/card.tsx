@@ -11,7 +11,7 @@ function Card({
         <div
             data-slot="card"
             data-size={size}
-            className={cn("ring-foreground/10 bg-card text-card-foreground overflow-hidden rounded-xl text-sm ring-1 group/card flex flex-col py-4", className)}
+            className={cn("ring-foreground/10 bg-card text-card-foreground overflow-hidden rounded-xl text-sm ring-1 group/card flex flex-col", className)}
             {...props}
         />
     )
@@ -22,7 +22,7 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
         <div
             data-slot="card-header"
             className={cn(
-                "flex flex-col gap-1.5 px-4 -mt-4 pt-4 group-data-[size=sm]/card:px-3",
+                "flex flex-col gap-2 p-4 group-data-[size=sm]/card:p-3 group-data-[size=sm]/card:gap-1.5",
                 className
             )}
             {...props}
@@ -67,7 +67,7 @@ function CardContent({ className, ...props }: React.ComponentProps<"div">) {
     return (
         <div
             data-slot="card-content"
-            className={cn("px-4 group-data-[size=sm]/card:px-3", className)}
+            className={cn("px-4 pb-4 group-data-[size=sm]/card:px-3 group-data-[size=sm]/card:pb-3", className)}
             {...props}
         />
     )
@@ -77,7 +77,7 @@ function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
     return (
         <div
             data-slot="card-footer"
-            className={cn("rounded-b-xl p-4 group-data-[size=sm]/card:p-3 flex items-center", className)}
+            className={cn("rounded-b-xl p-4 pt-0 group-data-[size=sm]/card:p-3 group-data-[size=sm]/card:pt-0 flex items-center", className)}
             {...props}
         />
     )

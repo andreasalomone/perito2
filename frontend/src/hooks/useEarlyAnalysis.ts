@@ -164,14 +164,26 @@ interface StreamingResult {
     error: string | null;
 }
 
+interface StreamingConfig {
+    /** Endpoint path template - use {caseId} as placeholder */
+    endpoint: string;
+    /** Success toast message */
+    successMessage: string;
+    /** Optional request body factory */
+    getBody?: (...args: any[]) => object | undefined;
+}
+
 /**
- * Hook for streaming Preliminary Report with visible AI reasoning.
- *
- * Uses the streaming endpoint to show "chain of thought" in real-time.
+ * Generic hook for streaming AI report generation.
+ * Handles NDJSON parsing, state management, abort cleanup, and error handling.
  *
  * @param caseId - The case ID to generate report for
+ * @param config - Streaming configuration (endpoint, messages, body factory)
  */
-export function usePreliminaryReportStream(caseId: string | undefined) {
+function useStreamingReport<TArgs extends any[] = []>(
+    caseId: string | undefined,
+    config: StreamingConfig
+) {
     const { getToken } = useAuth();
     const [result, setResult] = useState<StreamingResult>({
         thoughts: "",
@@ -199,7 +211,7 @@ export function usePreliminaryReportStream(caseId: string | undefined) {
         });
     }, []);
 
-    const generateStream = useCallback(async () => {
+    const generateStream = useCallback(async (...args: TArgs) => {
         if (!caseId) return;
 
         // Track if any error events were received during streaming
@@ -222,14 +234,18 @@ export function usePreliminaryReportStream(caseId: string | undefined) {
             abortControllerRef.current = new AbortController();
 
             const baseUrl = getApiUrl()?.replace(/\/$/, "") || "";
+            const endpoint = config.endpoint.replace("{caseId}", caseId);
+            const body = config.getBody?.(...args);
+
             const response = await fetch(
-                `${baseUrl}/api/v1/cases/${caseId}/preliminary/stream`,
+                `${baseUrl}${endpoint}`,
                 {
                     method: "POST",
                     headers: {
                         "Authorization": `Bearer ${token}`,
                         "Content-Type": "application/json",
                     },
+                    ...(body && { body: JSON.stringify(body) }),
                     signal: abortControllerRef.current.signal,
                 }
             );
@@ -297,7 +313,7 @@ export function usePreliminaryReportStream(caseId: string | undefined) {
                 }
             }
 
-            // Process any remaining buffer - check for both done AND error events
+            // Process any remaining buffer
             if (buffer.trim()) {
                 try {
                     const event = JSON.parse(buffer);
@@ -315,7 +331,7 @@ export function usePreliminaryReportStream(caseId: string | undefined) {
 
             // Only show success toast if no errors occurred during streaming
             if (!hasErrored) {
-                toast.success("Report preliminare generato");
+                toast.success(config.successMessage);
             }
 
         } catch (err: any) {
@@ -331,7 +347,7 @@ export function usePreliminaryReportStream(caseId: string | undefined) {
             }));
             toast.error(message);
         }
-    }, [caseId, getToken]);
+    }, [caseId, getToken, config]);
 
     return {
         ...result,
@@ -342,176 +358,31 @@ export function usePreliminaryReportStream(caseId: string | undefined) {
 }
 
 /**
- * Hook for streaming Final Report.
- * Targeting: /api/v1/cases/{caseId}/final-report/stream
+ * Hook for streaming Preliminary Report with visible AI reasoning.
+ * Uses the streaming endpoint to show "chain of thought" in real-time.
+ *
+ * @param caseId - The case ID to generate report for
  */
-export function useFinalReportStream(caseId: string | undefined) {
-    const { getToken } = useAuth();
-    const [result, setResult] = useState<StreamingResult>({
-        thoughts: "",
-        content: "",
-        state: "idle",
-        error: null,
+export function usePreliminaryReportStream(caseId: string | undefined) {
+    return useStreamingReport(caseId, {
+        endpoint: "/api/v1/cases/{caseId}/preliminary/stream",
+        successMessage: "Report preliminare generato",
     });
-
-    // AbortController ref for cancelling on unmount
-    const abortControllerRef = useRef<AbortController | null>(null);
-
-    // Cleanup on unmount to prevent memory leaks
-    useEffect(() => {
-        return () => {
-            abortControllerRef.current?.abort();
-        };
-    }, []);
-
-    const reset = useCallback(() => {
-        setResult({
-            thoughts: "",
-            content: "",
-            state: "idle",
-            error: null,
-        });
-    }, []);
-
-    const generateStream = useCallback(async (language: string, extraInstructions?: string) => {
-        if (!caseId) return;
-
-        // Track if any error events were received during streaming
-        let hasErrored = false;
-
-        // Reset state
-        setResult({
-            thoughts: "",
-            content: "",
-            state: "thinking", // Initial state
-            error: null,
-        });
-
-        try {
-            const token = await getToken();
-            if (!token) throw new Error("No token available");
-
-            // Cancel any existing stream
-            abortControllerRef.current?.abort();
-            abortControllerRef.current = new AbortController();
-
-            const baseUrl = getApiUrl()?.replace(/\/$/, "") || "";
-            const response = await fetch(
-                `${baseUrl}/api/v1/cases/${caseId}/final-report/stream`,
-                {
-                    method: "POST",
-                    headers: {
-                        "Authorization": `Bearer ${token}`,
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                        language,
-                        extra_instructions: extraInstructions
-                    }),
-                    signal: abortControllerRef.current.signal,
-                }
-            );
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.detail || `HTTP ${response.status}`);
-            }
-
-            const reader = response.body?.getReader();
-            const decoder = new TextDecoder();
-
-            if (!reader) {
-                throw new Error("No response body");
-            }
-
-            let buffer = "";
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split("\n");
-                buffer = lines.pop() || "";
-
-                for (const line of lines) {
-                    if (!line.trim()) continue;
-
-                    try {
-                        const event = JSON.parse(line);
-
-                        if (event.type === "thought") {
-                            setResult(prev => ({
-                                ...prev,
-                                thoughts: prev.thoughts + event.text,
-                                state: "thinking",
-                            }));
-                        } else if (event.type === "content") {
-                            setResult(prev => ({
-                                ...prev,
-                                content: prev.content + event.text,
-                                state: "streaming",
-                            }));
-                        } else if (event.type === "done") {
-                            setResult(prev => ({
-                                ...prev,
-                                state: "done",
-                            }));
-                        } else if (event.type === "error") {
-                            setResult(prev => ({
-                                ...prev,
-                                state: "error",
-                                error: event.text,
-                            }));
-                            toast.error(event.text);
-                            hasErrored = true;
-                        }
-                    } catch {
-                        // Skip
-                    }
-                }
-            }
-
-            // Flush buffer - check for both done AND error events
-            if (buffer.trim()) {
-                try {
-                    const event = JSON.parse(buffer);
-                    if (event.type === "done") {
-                        setResult(prev => ({ ...prev, state: "done" }));
-                    } else if (event.type === "error") {
-                        setResult(prev => ({ ...prev, state: "error", error: event.text }));
-                        toast.error(event.text);
-                        hasErrored = true;
-                    }
-                } catch { }
-            }
-
-            // Only show success toast if no errors occurred during streaming
-            if (!hasErrored) {
-                toast.success("Report finale generato");
-            }
-
-        } catch (err: any) {
-            // Ignore abort errors (user navigated away)
-            if (err?.name === "AbortError") {
-                return;
-            }
-            const message = err?.message || "Errore durante lo streaming";
-            setResult(prev => ({
-                ...prev,
-                state: "error",
-                error: message,
-            }));
-            toast.error(message);
-        }
-    }, [caseId, getToken]);
-
-    return {
-        ...result,
-        generateStream,
-        reset,
-        isStreaming: result.state === "thinking" || result.state === "streaming",
-    };
 }
 
-
+/**
+ * Hook for streaming Final Report.
+ * Targeting: /api/v1/cases/{caseId}/final-report/stream
+ *
+ * @param caseId - The case ID to generate report for
+ */
+export function useFinalReportStream(caseId: string | undefined) {
+    return useStreamingReport<[language: string, extraInstructions?: string]>(caseId, {
+        endpoint: "/api/v1/cases/{caseId}/final-report/stream",
+        successMessage: "Report finale generato",
+        getBody: (language: string, extraInstructions?: string) => ({
+            language,
+            extra_instructions: extraInstructions,
+        }),
+    });
+}

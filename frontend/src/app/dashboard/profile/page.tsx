@@ -6,8 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Loader2, User, Building2, Copy, Check } from "lucide-react";
+import { Loader2, User, Building2, Copy, Check, ShieldCheck } from "lucide-react";
 import { api } from "@/lib/api";
 
 export default function ProfilePage() {
@@ -28,14 +31,15 @@ export default function ProfilePage() {
         setSaving(true);
         try {
             const token = await getToken();
-            const updatedUser = await api.users.updateProfile(token, {
+            await api.users.updateProfile(token, {
                 first_name: firstName,
                 last_name: lastName,
             });
             toast.success("Profilo aggiornato con successo");
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Error updating profile:", error);
-            toast.error(error.message || "Errore durante l'aggiornamento del profilo");
+            const message = error instanceof Error ? error.message : "Errore durante l'aggiornamento del profilo";
+            toast.error(message);
         } finally {
             setSaving(false);
         }
@@ -52,8 +56,62 @@ export default function ProfilePage() {
 
     if (!user || !dbUser) {
         return (
-            <div className="flex h-full items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <div className="space-y-6">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight">Il Mio Profilo</h1>
+                    <Skeleton className="h-5 w-80 mt-1" />
+                </div>
+                <div className="grid gap-6 md:grid-cols-2">
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center space-x-2">
+                                <Skeleton className="h-5 w-5 rounded-full" />
+                                <Skeleton className="h-6 w-40" />
+                            </div>
+                            <Skeleton className="h-4 w-60 mt-2" />
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Skeleton className="h-4 w-20" />
+                                    <Skeleton className="h-10 w-full" />
+                                </div>
+                                <div className="space-y-2">
+                                    <Skeleton className="h-4 w-20" />
+                                    <Skeleton className="h-10 w-full" />
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Skeleton className="h-4 w-20" />
+                                <Skeleton className="h-10 w-full" />
+                            </div>
+                            <Skeleton className="h-10 w-32 pt-4" />
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center space-x-2">
+                                <Skeleton className="h-5 w-5 rounded-full" />
+                                <Skeleton className="h-6 w-40" />
+                            </div>
+                            <Skeleton className="h-4 w-60 mt-2" />
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            <div className="space-y-2">
+                                <Skeleton className="h-4 w-32" />
+                                <Skeleton className="h-10 w-full" />
+                            </div>
+                            <div className="space-y-2">
+                                <Skeleton className="h-4 w-32" />
+                                <div className="flex space-x-2">
+                                    <Skeleton className="h-10 flex-1" />
+                                    <Skeleton className="h-10 w-10" />
+                                </div>
+                            </div>
+                            <Skeleton className="h-24 w-full rounded-lg" />
+                        </CardContent>
+                    </Card>
+                </div>
             </div>
         );
     }
@@ -63,7 +121,7 @@ export default function ProfilePage() {
             <div>
                 <h1 className="text-3xl font-bold tracking-tight">Il Mio Profilo</h1>
                 <p className="text-muted-foreground">
-                    Gestisci le tue informazioni personali e visualizza i dettagli dell'organizzazione.
+                    Gestisci le tue informazioni personali e visualizza i dettagli dell&apos;organizzazione.
                 </p>
             </div>
 
@@ -106,11 +164,12 @@ export default function ProfilePage() {
                             <Input
                                 id="email"
                                 value={user.email || ""}
+                                readOnly
                                 disabled
-                                className="bg-muted text-muted-foreground"
+                                className="bg-muted text-muted-foreground select-all"
                             />
                             <p className="text-xs text-muted-foreground">
-                                L'email non può essere modificata.
+                                L&apos;email non può essere modificata.
                             </p>
                         </div>
 
@@ -137,21 +196,28 @@ export default function ProfilePage() {
                     <CardContent className="space-y-6">
                         <div className="space-y-2">
                             <Label>Nome Organizzazione</Label>
-                            <div className="p-3 bg-muted/50 rounded-md border text-sm font-medium">
-                                {dbUser.organization_name || "N/A"}
-                            </div>
+                            <Input
+                                value={dbUser.organization_name || "N/A"}
+                                readOnly
+                                disabled
+                                className="bg-muted/50"
+                            />
                         </div>
 
                         <div className="space-y-2">
                             <Label>ID Organizzazione</Label>
                             <div className="flex items-center space-x-2">
-                                <div className="flex-1 p-3 bg-muted/50 rounded-md border text-xs font-mono truncate">
-                                    {dbUser.organization_id}
-                                </div>
+                                <Input
+                                    value={dbUser.organization_id}
+                                    readOnly
+                                    disabled
+                                    className="flex-1 font-mono text-xs bg-muted/50"
+                                />
                                 <Button
                                     variant="outline"
                                     size="icon"
                                     onClick={copyOrgId}
+                                    className="shrink-0"
                                     title="Copia ID"
                                 >
                                     {copied ? (
@@ -166,21 +232,15 @@ export default function ProfilePage() {
                             </p>
                         </div>
 
-                        <div className="rounded-md bg-blue-50 p-4 border border-blue-100">
-                            <div className="flex">
-                                <div className="flex-shrink-0">
-                                    <User className="h-5 w-5 text-blue-400" aria-hidden="true" />
-                                </div>
-                                <div className="ml-3">
-                                    <h3 className="text-sm font-medium text-blue-800">Ruolo: {dbUser.role}</h3>
-                                    <div className="mt-2 text-sm text-blue-700">
-                                        <p>
-                                            Hai accesso come {dbUser.role === "ADMIN" ? "Amministratore" : "Membro"} a questa organizzazione.
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        <Alert className="bg-primary/5 border-primary/10">
+                            <ShieldCheck className="h-4 w-4 text-primary" />
+                            <AlertTitle className="flex items-center gap-2">
+                                Ruolo: <Badge variant="secondary" className="capitalize">{dbUser.role.toLowerCase()}</Badge>
+                            </AlertTitle>
+                            <AlertDescription>
+                                Hai accesso come {dbUser.role === "ADMIN" ? "Amministratore" : "Membro"} a questa organizzazione.
+                            </AlertDescription>
+                        </Alert>
                     </CardContent>
                 </Card>
             </div>
