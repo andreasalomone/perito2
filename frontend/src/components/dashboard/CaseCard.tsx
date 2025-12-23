@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useRef, useCallback, useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardHeader, CardContent, CardFooter } from "@/components/ui/card";
 import { BadgeWithDot } from "@/components/ui/base/badges/badges";
@@ -14,6 +15,7 @@ interface CaseCardProps {
 }
 
 export const CaseCard = memo(function CaseCard({ caseItem: c, index }: CaseCardProps) {
+    const router = useRouter();
     const cardRef = useRef<HTMLDivElement>(null);
     const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
     const rafRef = useRef<number | null>(null);
@@ -36,6 +38,10 @@ export const CaseCard = memo(function CaseCard({ caseItem: c, index }: CaseCardP
         });
     }, []);
 
+    const handleCardClick = useCallback(() => {
+        router.push(`/dashboard/cases/${c.id}`);
+    }, [router, c.id]);
+
     // Cleanup RAF on unmount
     useEffect(() => {
         return () => {
@@ -46,13 +52,14 @@ export const CaseCard = memo(function CaseCard({ caseItem: c, index }: CaseCardP
     }, []);
 
     return (
-        <Link href={`/dashboard/cases/${c.id}`} className={cn(
+        <div className={cn(
             "block",
             index === 0 ? "@lg:col-span-2 @lg:row-span-2" : "col-span-1"
         )}>
             <Card
                 ref={cardRef}
                 onMouseMove={handleMouseMove}
+                onClick={handleCardClick}
                 className={cn(
                     "transition-all hover:shadow-md hover:border-primary/20 group h-full cursor-pointer",
                     c.status === "CLOSED" && "opacity-70 grayscale-[20%]"
@@ -109,7 +116,17 @@ export const CaseCard = memo(function CaseCard({ caseItem: c, index }: CaseCardP
                             ) : (
                                 <Building2 className="h-3.5 w-3.5" />
                             )}
-                            <span className="font-medium text-foreground">{c.client_name || "Cliente non specificato"}</span>
+                            {c.client_id ? (
+                                <Link
+                                    href={`/dashboard/client/${c.client_id}`}
+                                    className="font-medium text-foreground hover:underline"
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    {c.client_name || "Cliente non specificato"}
+                                </Link>
+                            ) : (
+                                <span className="font-medium text-foreground">{c.client_name || "Cliente non specificato"}</span>
+                            )}
                         </div>
                         {/* Assicurato Badge */}
                         <div className="flex items-center gap-2">
@@ -130,6 +147,6 @@ export const CaseCard = memo(function CaseCard({ caseItem: c, index }: CaseCardP
                     </CardFooter>
                 )}
             </Card>
-        </Link>
+        </div>
     );
 });

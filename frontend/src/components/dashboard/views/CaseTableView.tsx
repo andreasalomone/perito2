@@ -62,21 +62,16 @@ export function CaseTableView({ cases }: Readonly<CaseTableViewProps>) {
                             <TableHead className="min-w-[180px] sticky top-0 bg-background/95 backdrop-blur z-20">Creato da</TableHead>
                         </TableRow>
                     </TableHeader>
-                    <TableBody>
-                        {/* Spacer row to create scroll height for virtualization */}
-                        <tr style={{ height: virtualizer.getTotalSize() }}>
-                            <td colSpan={5} style={{ padding: 0, border: 0 }} />
-                        </tr>
+                    <TableBody className="relative">
                         {virtualizer.getVirtualItems().map((virtualRow) => {
                             const c = cases[virtualRow.index];
                             return (
                                 <TableRow
                                     key={c.id}
                                     data-index={virtualRow.index}
-                                    className="cursor-pointer hover:bg-muted/50 transition-colors absolute w-full"
+                                    className="cursor-pointer hover:bg-muted/50 transition-colors"
                                     style={{
                                         height: `${virtualRow.size}px`,
-                                        transform: `translateY(${virtualRow.start}px)`,
                                     }}
                                     onClick={() => handleRowClick(c.id)}
                                     role="button"
@@ -97,9 +92,22 @@ export function CaseTableView({ cases }: Readonly<CaseTableViewProps>) {
                                             ) : (
                                                 <Building2 className="h-4 w-4 text-muted-foreground" />
                                             )}
-                                            <span className="font-medium">
-                                                {c.client_name || "N/D"}
-                                            </span>
+                                            {c.client_id ? (
+                                                <button
+                                                    type="button"
+                                                    className="font-medium hover:underline text-left"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        router.push(`/dashboard/client/${c.client_id}`);
+                                                    }}
+                                                >
+                                                    {c.client_name || "N/D"}
+                                                </button>
+                                            ) : (
+                                                <span className="font-medium">
+                                                    {c.client_name || "N/D"}
+                                                </span>
+                                            )}
                                         </div>
                                     </TableCell>
                                     <TableCell>

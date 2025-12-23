@@ -141,7 +141,7 @@ export function useCaseDetail(id: string | undefined) {
 
     // 7. Derive current workflow step from displayData (merged, most up-to-date)
     // NOTE: Closure panel is reached via manualStep only
-    // CLOSED cases are redirected to /summary page, so they never show in the workflow
+    // CLOSED cases stay on main page and show closed-state UI
     const currentStep = useMemo((): WorkflowStep => {
         if (!displayData) return 1;
 
@@ -150,11 +150,10 @@ export function useCaseDetail(id: string | undefined) {
             return 'ERROR';
         }
 
-        // CLOSED cases should redirect to /summary, but return 3 as fallback
-        // The page.tsx handles the actual redirect
+        // CLOSED cases: show step 3 (Review) with closed-state UI
         if (displayData.status === 'CLOSED' ||
             displayData.report_versions?.some(v => v.is_final)) {
-            return 3; // Will redirect, but show Review if redirect fails
+            return 3;
         }
 
         // Review: Draft exists but not finalized

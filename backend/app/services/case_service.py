@@ -418,54 +418,6 @@ def finalize_case(db: Session, case_id: UUID, org_id: UUID, final_docx_path: str
 
     db.commit()
 
-    # 5. Generate summary in background (triggered by status CLOSED)
-    # FIX: Use threading.Thread instead of asyncio.create_task() because this
-    # function is called from a sync FastAPI endpoint running in a worker thread
-    # with no event loop. This matches the pattern in trigger_extraction_task().
-    if ai_version and ai_version.ai_raw_output:
-        report_text = ai_version.ai_raw_output
-        # Capture variables for the thread closure
-        _case_id = case_id
-        _org_id = org_id
-
-        def _run_summary_generation():
-            import asyncio
-
-            async def _generate_summary():
-                try:
-                    async with AsyncSessionLocal() as bg_db:
-                        from app.services import summary_service
-
-                        # Set RLS context for background session
-                        await bg_db.execute(
-                            text(SET_ORG_ID_CONFIG_SQL),
-                            {"org_id": str(_org_id)},
-                        )
-
-                        summary = await summary_service.generate_summary(report_text)
-                        if summary:
-                            result = await bg_db.execute(
-                                select(Case)
-                                .filter(Case.id == _case_id)
-                                .with_for_update()
-                            )
-                            if c := result.scalars().first():
-                                c.ai_summary = summary
-                                await bg_db.commit()
-                                logger.info(
-                                    f"✅ Background summary generated for case {_case_id}"
-                                )
-                except Exception as e:
-                    logger.warning(f"⚠️ Background summary generation failed: {e}")
-
-            asyncio.run(_generate_summary())
-
-        import threading
-
-        thread = threading.Thread(target=_run_summary_generation, daemon=True)
-        thread.start()
-        logger.info(f"[SUMMARY] Started background summary thread for case {case_id}")
-
     return final_version
 
 

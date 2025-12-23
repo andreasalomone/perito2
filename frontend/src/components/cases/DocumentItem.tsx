@@ -4,7 +4,7 @@ import { memo } from "react";
 import { Document } from "@/types";
 import { StatusBadge, StatusTransition } from "@/components/primitives";
 import { Button } from "@/components/ui/button";
-import { File as FileIcon, X, ExternalLink, Download } from "lucide-react";
+import { File as FileIcon, X, ExternalLink, Download, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface DocumentItemProps {

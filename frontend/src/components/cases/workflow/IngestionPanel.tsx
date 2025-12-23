@@ -8,14 +8,13 @@ import { DocumentItem } from "@/components/cases/DocumentItem";
 import { DocumentAnalysisCard } from "@/components/cases/DocumentAnalysisCard";
 import { PreliminaryReportCard } from "@/components/cases/PreliminaryReportCard";
 import { FinalReportCard } from "@/components/cases/FinalReportCard";
-
 import { TemplateType } from "@/components/cases/VersionItem";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Upload, UploadCloud, AlertCircle, Loader2 } from "lucide-react";
+import { AlertCircle, Loader2 } from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import { StaggerList, StaggerItem } from "@/components/primitives/motion/StaggerList";
 import { FadeIn } from "@/components/primitives/motion/FadeIn";
@@ -94,6 +93,8 @@ export function IngestionPanel({
 }: Readonly<IngestionPanelProps>) {
     const { getToken } = useAuth();
     const documents = caseData?.documents || [];
+    // Determine if case is closed (finalized)
+    const isClosed = caseData.status === "CLOSED" || caseData.report_versions?.some(v => v.is_final);
     // Determine if generating final report
     const isGeneratingFinal = caseData.status === "GENERATING" || finalReportStreamState === "thinking" || finalReportStreamState === "streaming";
 
@@ -149,49 +150,59 @@ export function IngestionPanel({
 
     return (
         <div className="space-y-6">
-            {/* Unified Ingestion Card */}
+            {/* FinalReportCard at TOP when case is closed */}
+            {isClosed && (
+                <FinalReportCard
+                    caseData={caseData}
+                    isGenerating={false}
+                    onGenerate={onGenerateFinalReport}
+                    onUpdateNotes={onUpdateNotes}
+                    onDownload={onDownloadFinalReport}
+                    onFinalize={onFinalizeCase}
+                    onConfirmDocs={onConfirmDocs}
+                    onOpenInDocs={onOpenInDocs}
+                    streamingEnabled={false}
+                />
+            )}
+
+            {/* Document List Card */}
             <Card className="border">
-                <CardHeader className="pb-4">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <CardTitle className="text-xl flex items-center gap-2">
-                                <Upload className="h-5 w-5 text-primary" />
-                                Gestione Documenti
-                            </CardTitle>
-                            <CardDescription>
-                                {documents.length > 0
-                                    ? `${documents.length} documenti caricati. Carica altri file se necessario.`
-                                    : "Carica i documenti del sinistro per iniziare l'analisi."}
-                            </CardDescription>
-                        </div>
-                        {documents.length > 0 && (
-                            <CaseFileUploader
-                                caseId={caseId}
-                                onUploadComplete={() => onUpload()}
-                            />
-                        )}
-                    </div>
-                </CardHeader>
-                <CardContent>
-                    {documents.length === 0 ? (
+                {isClosed ? (
+                    /* Closed state: read-only, scrollable, alphabetical document list */
+                    <>
+                        <CardHeader className="pb-3">
+                            <CardTitle className="text-base">Documenti del Sinistro</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="max-h-64 overflow-y-auto space-y-2 pr-2">
+                                {[...documents]
+                                    .sort((a, b) => a.filename.localeCompare(b.filename))
+                                    .map((doc) => {
+                                        const urlData = urlMap.get(doc.id);
+                                        return (
+                                            <DocumentItem
+                                                key={doc.id}
+                                                doc={doc}
+                                                url={urlData?.url}
+                                                canPreview={urlData?.canPreview}
+                                            /* No onDelete - read-only */
+                                            />
+                                        );
+                                    })}
+                            </div>
+                        </CardContent>
+                    </>
+                ) : (
+                    /* Open state: ALWAYS show uploader + document list below */
+                    <CardContent className="space-y-4">
+                        {/* CaseFileUploader ALWAYS visible for OPEN cases */}
                         <CaseFileUploader
                             caseId={caseId}
                             onUploadComplete={() => onUpload()}
-                            trigger={
-                                <div className="flex flex-col items-center justify-center py-12 px-4 rounded-lg border-2 border-dashed border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50 cursor-pointer transition-all">
-                                    <div className="p-4 rounded-full bg-background shadow-sm mb-4">
-                                        <UploadCloud className="h-8 w-8 text-primary" />
-                                    </div>
-                                    <h3 className="font-semibold text-lg mb-1">Carica file del sinistro</h3>
-                                    <p className="text-sm text-muted-foreground text-center max-w-sm mb-4">
-                                        Supporta PDF, DOCX, XLSX, Immagini, e EML.
-                                    </p>
-                                    <Button variant="default">Seleziona File</Button>
-                                </div>
-                            }
                         />
-                    ) : (
-                        <div className="space-y-4">
+
+                        {/* Document list (when documents exist) */}
+                        {documents.length > 0 && (
                             <StaggerList className="grid gap-2">
                                 <AnimatePresence mode="popLayout">
                                     {documents.map((doc) => {
@@ -209,21 +220,22 @@ export function IngestionPanel({
                                     })}
                                 </AnimatePresence>
                             </StaggerList>
-                            {/* Guidance when all documents are in error state */}
-                            {documents.length > 0 && documents.every(d => d.ai_status === 'ERROR') && (
-                                <div className="p-3 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-sm">
-                                    <p>⚠️ Tutti i file hanno errori. Ricarica i file corretti o procedi con documenti validi.</p>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </CardContent>
+                        )}
+
+                        {/* Guidance when all documents are in error state */}
+                        {documents.length > 0 && documents.every(d => d.ai_status === 'ERROR') && (
+                            <div className="p-3 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+                                <p>⚠️ Tutti i file hanno errori. Ricarica i file corretti o procedi con documenti validi.</p>
+                            </div>
+                        )}
+                    </CardContent>
+                )}
             </Card>
 
             {/* Case Details Panel moved to parent page layout */}
 
             {/* Early Analysis Section - Always render to prevent CLS */}
-            <div className="grid md:grid-cols-2 gap-4 min-h-[200px]">
+            <div className={cn("grid md:grid-cols-2 gap-4 min-h-[200px]", isClosed && "opacity-50 pointer-events-none")}>
                 {/* Document Analysis Card or Skeleton */}
                 {documentAnalysis ? (
                     documentAnalysis.isLoading && !documentAnalysis.analysis ? (
@@ -288,53 +300,61 @@ export function IngestionPanel({
             </div>
 
             {/* Error Warning */}
-            {hasErrors && (
-                <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>
-                        {errorDocs.length} documento/i non elaborato/i correttamente.
-                        Puoi eliminarli e ricaricarli, oppure procedere senza.
-                    </AlertDescription>
-                </Alert>
-            )}
+            {
+                hasErrors && (
+                    <Alert variant="destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>
+                            {errorDocs.length} documento/i non elaborato/i correttamente.
+                            Puoi eliminarli e ricaricarli, oppure procedere senza.
+                        </AlertDescription>
+                    </Alert>
+                )
+            }
 
             {/* Processing Notice */}
-            {isProcessingDocs && (
-                <Alert>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <AlertDescription>
-                        Elaborazione documenti in corso... ({pendingDocs.length} rimanenti)
-                    </AlertDescription>
-                </Alert>
-            )}
+            {
+                isProcessingDocs && (
+                    <Alert>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <AlertDescription>
+                            Elaborazione documenti in corso... ({pendingDocs.length} rimanenti)
+                        </AlertDescription>
+                    </Alert>
+                )
+            }
 
             {/* Optimistic Report Skeleton - Shows immediately when generation starts */}
-            {isGenerating && (
-                <FadeIn>
-                    <ReportGeneratingSkeleton
-                        variant="report"
-                        estimatedTime="~30 sec"
-                        className="mt-4"
-                    />
-                </FadeIn>
-            )}
+            {
+                isGenerating && (
+                    <FadeIn>
+                        <ReportGeneratingSkeleton
+                            variant="report"
+                            estimatedTime="~30 sec"
+                            className="mt-4"
+                        />
+                    </FadeIn>
+                )
+            }
 
-            {/* 3. Final Report Card (Replaces old footer) */}
-            <FinalReportCard
-                caseData={caseData}
-                isGenerating={isGeneratingFinal}
-                onGenerate={onGenerateFinalReport}
-                onUpdateNotes={onUpdateNotes}
-                onDownload={onDownloadFinalReport}
-                onFinalize={onFinalizeCase}
-                onConfirmDocs={onConfirmDocs}
-                onOpenInDocs={onOpenInDocs}
-                streamingEnabled={true}
-                streamState={finalReportStreamState}
-                streamedThoughts={finalReportStreamedThoughts}
-                streamedContent={finalReportStreamedContent}
-                streamError={finalReportStreamError}
-            />
+            {/* 3. Final Report Card - only show at bottom when NOT closed (shown at top when closed) */}
+            {!isClosed && (
+                <FinalReportCard
+                    caseData={caseData}
+                    isGenerating={isGeneratingFinal}
+                    onGenerate={onGenerateFinalReport}
+                    onUpdateNotes={onUpdateNotes}
+                    onDownload={onDownloadFinalReport}
+                    onFinalize={onFinalizeCase}
+                    onConfirmDocs={onConfirmDocs}
+                    onOpenInDocs={onOpenInDocs}
+                    streamingEnabled={true}
+                    streamState={finalReportStreamState}
+                    streamedThoughts={finalReportStreamedThoughts}
+                    streamedContent={finalReportStreamedContent}
+                    streamError={finalReportStreamError}
+                />
+            )}
         </div>
     );
 }

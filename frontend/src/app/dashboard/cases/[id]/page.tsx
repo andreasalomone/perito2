@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { useConfig } from "@/context/ConfigContext";
 import { ReportVersion } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, RefreshCw, Trash2 } from "lucide-react";
+import { AlertCircle, Building2, RefreshCw, Trash2, Umbrella } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
 import { handleApiError } from "@/lib/error";
@@ -80,19 +81,6 @@ export default function CaseWorkspace() {
             mutatePreliminary(); // Refresh preliminary report data
         }
     }, [preliminaryStreamHook.state, mutatePreliminary]);
-
-
-    // Redirect CLOSED/finalized cases to summary page
-    useEffect(() => {
-        if (!caseData || isLoading) return;
-
-        const isClosed = caseData.status === 'CLOSED';
-        const hasFinalVersion = caseData.report_versions?.some(v => v.is_final);
-
-        if (isClosed || hasFinalVersion) {
-            router.replace(`/dashboard/cases/${caseId}/summary`);
-        }
-    }, [caseData, isLoading, caseId, router]);
 
 
     // --- Handlers ---
@@ -313,13 +301,37 @@ export default function CaseWorkspace() {
         <div className="max-w-[95%] mx-auto p-4 space-y-6">
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
+                <div className="flex items-center gap-4">
                     <h1 className="text-3xl font-bold tracking-tight">{caseData.reference_code}</h1>
                     {caseData.client_name && (
-                        <p className="text-muted-foreground">
-                            Cliente: <span className="font-medium text-foreground">{caseData.client_name}</span>
-                        </p>
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                            {caseData.client_logo_url ? (
+                                <img
+                                    src={caseData.client_logo_url}
+                                    alt={caseData.client_name}
+                                    className="h-6 w-6 rounded-full object-contain"
+                                />
+                            ) : (
+                                <Building2 className="h-5 w-5" />
+                            )}
+                            {caseData.client_id ? (
+                                <Link
+                                    href={`/dashboard/client/${caseData.client_id}`}
+                                    className="font-medium text-foreground hover:underline"
+                                >
+                                    {caseData.client_name}
+                                </Link>
+                            ) : (
+                                <span className="font-medium text-foreground">{caseData.client_name}</span>
+                            )}
+                        </div>
                     )}
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                        <Umbrella className="h-5 w-5" />
+                        <span className="font-medium text-muted-foreground">
+                            {caseData.assicurato_display || caseData.assicurato || "Assicurato non specificato"}
+                        </span>
+                    </div>
                 </div>
                 <div className="flex items-center gap-3">
                     <Badge

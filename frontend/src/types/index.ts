@@ -156,6 +156,8 @@ export const CaseBaseSchema = z.object({
     organization_id: z.string().uuid(),
     reference_code: z.string(),
     client_name: z.string().optional().nullable(), // Handle Python None
+    client_id: z.string().uuid().optional().nullable(), // For linking to client page
+    client_logo_url: z.string().optional().nullable(), // Helper from backend (ICE)
     status: z.enum(["OPEN", "CLOSED", "ARCHIVED", "PROCESSING", "GENERATING", "ERROR"]),
     created_at: z.string().datetime(),
     error_message: z.string().optional().nullable(),

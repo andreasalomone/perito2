@@ -50,7 +50,7 @@ class CaseDetailsExtractionSchema(BaseModel):
     Exception: 'cliente' is extracted but mapped to client_id via fuzzy match.
     """
 
-    # Dati Generali
+    # Riferimenti
     ns_rif: Optional[int] = Field(
         None, description="Numero di riferimento interno (es: 1234)"
     )

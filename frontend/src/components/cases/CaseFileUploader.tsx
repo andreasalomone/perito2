@@ -189,85 +189,82 @@ export function CaseFileUploader({ caseId, onUploadComplete, trigger }: CaseFile
         }
     }, [handleFiles]);
 
-    // If trigger is provided, render simplified version
-    if (trigger) {
-        return (
-            <div onClick={() => inputRef.current?.click()} className="cursor-pointer">
-                <Input
-                    ref={inputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                    accept=".pdf,.docx,.xlsx,.txt,.eml,.png,.jpg,.jpeg,.webp,.gif"
-                    onChange={handleInputChange}
-                    data-testid="file-upload-input"
-                />
-                {trigger}
-            </div>
-        );
-    }
-
     return (
         <div className="w-full space-y-4">
-            {/* Magnetic Dropzone */}
-            <motion.div
-                role="button"
-                tabIndex={0}
-                aria-label="Trascina documenti qui o premi Invio per selezionare file"
-                layout
-                className={cn(
-                    "relative group cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed p-8 transition-colors duration-300 ease-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
-                    dragActive
-                        ? "border-primary bg-primary/5 scale-[1.02]"
-                        : "border-muted-foreground/20 hover:border-primary/50 hover:bg-muted/30"
-                )}
-                onDragEnter={(e) => handleDrag(e, true)}
-                onDragLeave={(e) => handleDrag(e, false)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={handleDrop}
-                onClick={() => inputRef.current?.click()}
-                onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        inputRef.current?.click();
-                    }
-                }}
-                whileTap={{ scale: 0.98 }}
-            >
-                <Input
-                    ref={inputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                    accept=".pdf,.docx,.xlsx,.txt,.eml,.png,.jpg,.jpeg,.webp,.gif"
-                    onChange={handleInputChange}
-                    data-testid="file-upload-input"
-                />
-
-                <div className="flex flex-col items-center justify-center space-y-4 text-center">
-                    {/* Animated Icon */}
-                    <motion.div
-                        animate={dragActive ? { y: -8, scale: 1.1 } : { y: 0, scale: 1 }}
-                        className="rounded-full bg-background p-4 shadow-lg ring-1 ring-border/50"
-                    >
-                        <UploadCloud
-                            className={cn(
-                                "h-8 w-8 transition-colors",
-                                dragActive ? "text-primary" : "text-muted-foreground"
-                            )}
-                        />
-                    </motion.div>
-
-                    <div className="space-y-1">
-                        <p className="text-lg font-medium tracking-tight text-foreground">
-                            Trascina i documenti qui
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                            PDF, DOCX, immagini, email
-                        </p>
-                    </div>
+            {/* Trigger mode or Magnetic Dropzone */}
+            {trigger ? (
+                <div onClick={() => inputRef.current?.click()} className="cursor-pointer">
+                    <Input
+                        ref={inputRef}
+                        type="file"
+                        multiple
+                        className="hidden"
+                        accept=".pdf,.docx,.xlsx,.txt,.eml,.png,.jpg,.jpeg,.webp,.gif"
+                        onChange={handleInputChange}
+                        data-testid="file-upload-input"
+                    />
+                    {trigger}
                 </div>
-            </motion.div>
+            ) : (
+                <motion.div
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Trascina documenti qui o premi Invio per selezionare file"
+                    layout
+                    className={cn(
+                        "relative group cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed p-8 transition-colors duration-300 ease-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
+                        dragActive
+                            ? "border-primary bg-primary/5 scale-[1.02]"
+                            : "border-muted-foreground/20 hover:border-primary/50 hover:bg-muted/30"
+                    )}
+                    onDragEnter={(e) => handleDrag(e, true)}
+                    onDragLeave={(e) => handleDrag(e, false)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={handleDrop}
+                    onClick={() => inputRef.current?.click()}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            inputRef.current?.click();
+                        }
+                    }}
+                    whileTap={{ scale: 0.98 }}
+                >
+                    <Input
+                        ref={inputRef}
+                        type="file"
+                        multiple
+                        className="hidden"
+                        accept=".pdf,.docx,.xlsx,.txt,.eml,.png,.jpg,.jpeg,.webp,.gif"
+                        onChange={handleInputChange}
+                        data-testid="file-upload-input"
+                    />
+
+                    <div className="flex flex-col items-center justify-center space-y-4 text-center">
+                        {/* Animated Icon */}
+                        <motion.div
+                            animate={dragActive ? { y: -8, scale: 1.1 } : { y: 0, scale: 1 }}
+                            className="rounded-full bg-background p-4 shadow-lg ring-1 ring-border/50"
+                        >
+                            <UploadCloud
+                                className={cn(
+                                    "h-8 w-8 transition-colors",
+                                    dragActive ? "text-primary" : "text-muted-foreground"
+                                )}
+                            />
+                        </motion.div>
+
+                        <div className="space-y-1">
+                            <p className="text-lg font-medium tracking-tight text-foreground">
+                                Carica i documenti
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                                PDF, DOCX, XLXS, TXT, EML, PNG, JPG, JPEG
+                            </p>
+                        </div>
+                    </div>
+                </motion.div>
+            )}
 
             {/* Optimistic File List */}
             <div className="space-y-2">

@@ -102,10 +102,10 @@ export function DocumentAnalysisCard({
 
     // Determine status for badge
     const getStatus = () => {
-        if (isBlocked) return { label: "In attesa", variant: "secondary" as const, icon: Clock };
+        if (isBlocked) return { label: "In attesa", variant: "outline" as const, icon: Clock };
         if (isStale) return { label: "Da aggiornare", variant: "outline" as const, icon: RefreshCw };
-        if (hasAnalysis) return { label: "Completata", variant: "default" as const, icon: CheckCircle2 };
-        return { label: "Non effettuata", variant: "secondary" as const, icon: FileSearch };
+        if (hasAnalysis) return { label: "Completata", variant: "outline" as const, icon: CheckCircle2 };
+        return { label: "Non effettuata", variant: "outline" as const, icon: FileSearch };
     };
 
     const status = getStatus();

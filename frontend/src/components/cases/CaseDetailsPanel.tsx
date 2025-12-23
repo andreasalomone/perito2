@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
     ChevronDown,
     ChevronUp,
+    Code,
     Users,
     Truck,
     Euro,
@@ -51,10 +52,10 @@ type FieldDef = {
 // Section Config with Icons - using design system color classes
 const SECTIONS = [
     {
-        id: "Dati Generali",
-        icon: FileSpreadsheet,
-        colorClass: "text-primary",
-        bgClass: "bg-primary/10",
+        id: "Riferimenti",
+        icon: Code,
+        colorClass: "text-system-green",
+        bgClass: "bg-system-green/10",
         fields: [
             { key: "reference_code", label: "Ns. Rif", type: "text" },
             { key: "polizza", label: "Polizza", type: "text" },
@@ -126,7 +127,7 @@ const SECTIONS = [
 
 // Column layout configuration - extracted to prevent inline object creation on each render
 const COLUMN_CONFIG = [
-    { id: "left-col", sections: ["Dati Generali", "Merci e Trasporti", "Luogo e Lavorazione", "Note"] },
+    { id: "left-col", sections: ["Riferimenti", "Merci e Trasporti", "Luogo e Lavorazione", "Note"] },
     { id: "right-col", sections: ["Parti Coinvolte", "Economici"] }
 ] as const;
 

@@ -63,10 +63,10 @@ export function PreliminaryReportCard({
 
     // Determine status for badge
     const getStatus = () => {
-        if (isStreaming) return { label: "In generazione", variant: "secondary" as const, icon: BrainCircuit };
-        if (isBlocked) return { label: "In attesa", variant: "secondary" as const, icon: Clock };
-        if (hasReport || hasStreamedContent) return { label: "Disponibile", variant: "default" as const, icon: CheckCircle2 };
-        return { label: "Non generato", variant: "secondary" as const, icon: FileText };
+        if (isStreaming) return { label: "In generazione", variant: "outline" as const, icon: BrainCircuit };
+        if (isBlocked) return { label: "In attesa", variant: "outline" as const, icon: Clock };
+        if (hasReport || hasStreamedContent) return { label: "Disponibile", variant: "outline" as const, icon: CheckCircle2 };
+        return { label: "Non generato", variant: "outline" as const, icon: FileText };
     };
 
     const status = getStatus();
