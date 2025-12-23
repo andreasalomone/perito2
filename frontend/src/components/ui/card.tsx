@@ -22,7 +22,7 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
         <div
             data-slot="card-header"
             className={cn(
-                "flex flex-col gap-2 p-4 group-data-[size=sm]/card:p-3 group-data-[size=sm]/card:gap-1.5",
+                "flex flex-col gap-2 p-4 pb-0 group-data-[size=sm]/card:p-3 group-data-[size=sm]/card:pb-0 group-data-[size=sm]/card:gap-1.5",
                 className
             )}
             {...props}
@@ -67,7 +67,7 @@ function CardContent({ className, ...props }: React.ComponentProps<"div">) {
     return (
         <div
             data-slot="card-content"
-            className={cn("px-4 pb-4 group-data-[size=sm]/card:px-3 group-data-[size=sm]/card:pb-3", className)}
+            className={cn("p-4 group-data-[size=sm]/card:p-3", className)}
             {...props}
         />
     )

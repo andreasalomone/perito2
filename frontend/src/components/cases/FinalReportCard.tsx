@@ -178,7 +178,7 @@ export function FinalReportCard({
                         </div>
 
                         {/* Description: Full Width below Header Row */}
-                        <CardDescription className="text-base mt-2 max-w-none">
+                        <CardDescription className="text-base max-w-none">
                             Genera, revisiona e finalizza la perizia completa.
                         </CardDescription>
                     </CardHeader>

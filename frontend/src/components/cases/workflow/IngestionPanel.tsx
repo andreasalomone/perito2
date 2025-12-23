@@ -158,7 +158,7 @@ export function IngestionPanel({
                                 <Upload className="h-5 w-5 text-primary" />
                                 Gestione Documenti
                             </CardTitle>
-                            <CardDescription className="mt-1">
+                            <CardDescription>
                                 {documents.length > 0
                                     ? `${documents.length} documenti caricati. Carica altri file se necessario.`
                                     : "Carica i documenti del sinistro per iniziare l'analisi."}
