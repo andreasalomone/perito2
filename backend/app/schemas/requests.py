@@ -62,7 +62,9 @@ class CasesListQuery(BaseModel):
     client_id: Optional[UUID] = None
     status: Optional[CaseStatus] = None
     scope: Literal["all", "mine"] = "all"
-    year: Optional[int] = Field(default=None, ge=2000, le=2100, description="Filter by creation year")
+    year: Optional[int] = Field(
+        default=None, ge=2000, le=2100, description="Filter by creation year"
+    )
 
     @field_validator("search")
     @classmethod

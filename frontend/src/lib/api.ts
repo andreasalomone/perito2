@@ -194,12 +194,20 @@ export const api = {
                 { method: "POST", data: { force } }
             ),
 
-        // Documents List with URLs for preview/download
         listDocuments: (token: string, caseId: string) =>
             fetchWithValidation<DocumentsListResponse>(
                 `${getBaseUrl()}/api/v1/cases/${caseId}/documents`,
                 token,
                 DocumentsListResponseSchema
+            ),
+
+        // AI Extraction for CaseDetailsPanel
+        extractDetails: (token: string, caseId: string) =>
+            fetchWithValidation<CaseDetail>(
+                `${getBaseUrl()}/api/v1/cases/${caseId}/extract-details`,
+                token,
+                CaseDetailSchema,
+                { method: "POST" }
             ),
     },
     clients: {

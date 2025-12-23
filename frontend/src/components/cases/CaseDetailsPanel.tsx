@@ -12,7 +12,9 @@ import {
     Euro,
     MapPin,
     ClipboardList,
-    FileSpreadsheet
+    FileSpreadsheet,
+    Loader2,
+    Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +31,10 @@ type Props = {
     caseDetail: CaseDetail;
     onUpdate: (updatedCase: CaseDetail) => void;
     defaultOpen?: boolean;
+    // AI Extraction
+    canExtract?: boolean;      // true when docs > 0 AND all terminal
+    isExtracting?: boolean;    // true during API call
+    onExtract?: () => void;    // Trigger extraction
 };
 
 // --- Field Configuration ---
@@ -240,7 +246,7 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
 };
 
 
-export default function CaseDetailsPanel({ caseDetail, onUpdate, defaultOpen }: Props) {
+export default function CaseDetailsPanel({ caseDetail, onUpdate, defaultOpen, canExtract, isExtracting, onExtract }: Props) {
     const { getToken } = useAuth();
     const [editingKey, setEditingKey] = useState<string | null>(null);
     const [isOpen, setIsOpen] = useState(defaultOpen ?? false); // Default from prop or collapsed
@@ -308,6 +314,25 @@ export default function CaseDetailsPanel({ caseDetail, onUpdate, defaultOpen }: 
                 </div>
 
                 <div className="flex items-center gap-2">
+                    {onExtract && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={!canExtract || isExtracting}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onExtract();
+                            }}
+                            className="gap-1.5"
+                        >
+                            {isExtracting ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                                <Sparkles className="h-3.5 w-3.5" />
+                            )}
+                            Compila con AI
+                        </Button>
+                    )}
                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         {isOpen ? "Chiudi" : "Espandi"}
                     </span>

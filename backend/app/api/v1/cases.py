@@ -50,7 +50,9 @@ def list_cases(
     client_id: Optional[UUID] = Query(None),
     status: Optional[CaseStatus] = Query(None),
     scope: str = Query("all", pattern="^(all|mine)$"),
-    year: Optional[int] = Query(None, ge=2000, le=2100, description="Filter by creation year"),
+    year: Optional[int] = Query(
+        None, ge=2000, le=2100, description="Filter by creation year"
+    ),
 ) -> List[Case]:
     """
     Fetches cases with RLS and Soft Delete filtering.
@@ -112,7 +114,8 @@ def list_cases(
     # 4. Filter by Year
     if year:
         from sqlalchemy import extract
-        stmt = stmt.where(extract('year', Case.created_at) == year)
+
+        stmt = stmt.where(extract("year", Case.created_at) == year)
 
     return list(db.scalars(stmt.offset(skip).limit(limit)).all())
 
@@ -1052,69 +1055,8 @@ async def create_document_analysis(
             force=force,
         )
 
-        # NEW: Extract case details from same documents (non-blocking)
-        try:
-            from app.models.documents import Document
-            from app.schemas.enums import ExtractionStatus
-            from app.services.case_details_extractor import (
-                extract_case_details_from_text,
-                update_case_from_extraction,
-            )
-
-            # Build combined text from document extractions
-            docs_stmt = select(Document).where(
-                Document.case_id == case_id,
-                Document.ai_status == ExtractionStatus.SUCCESS,
-            )
-            docs_result = await async_db.execute(docs_stmt)
-            docs = docs_result.scalars().all()
-
-            all_text = []
-            for doc in docs:
-                if doc.ai_extracted_data:
-                    # ai_extracted_data is a LIST of entries, not a dict
-                    # Format: [{"type": "text", "content": "..."}, ...]
-                    entries = (
-                        doc.ai_extracted_data
-                        if isinstance(doc.ai_extracted_data, list)
-                        else (
-                            doc.ai_extracted_data.get("entries", [])
-                            if isinstance(doc.ai_extracted_data, dict)
-                            else []
-                        )
-                    )
-                    for entry in entries:
-                        if isinstance(entry, dict) and entry.get("type") == "text":
-                            content = entry.get("content", "")
-                            if content:
-                                all_text.append(content)
-
-            combined = "\n\n---\n\n".join(all_text)
-
-            # Diagnostic: Log why we might skip extraction
-            if not combined or len(combined) <= 100:
-                logger.info(
-                    f"Case details extraction skipped for {case_id}: "
-                    f"text too short ({len(combined)} chars, need >100)"
-                )
-            else:
-                extraction_result = await extract_case_details_from_text(combined)
-                if extraction_result.extraction_success:
-                    await update_case_from_extraction(
-                        case_id=str(case_id),
-                        org_id=str(case.organization_id),
-                        extraction_result=extraction_result,
-                        db=async_db,
-                        overwrite_existing=False,  # NEVER overwrite user data
-                    )
-                    logger.info(f"Case details extraction completed for {case_id}")
-                else:
-                    logger.info(
-                        f"Case details extraction returned no success for {case_id}"
-                    )
-        except Exception as e:
-            # Non-blocking - log and continue
-            logger.warning(f"Case details extraction failed (non-critical): {e}")
+        # NOTE: Case details extraction removed - now triggered by "Compila con AI" button
+        # via POST /cases/{case_id}/extract-details endpoint
 
         return {"analysis": analysis, "generated": True}
 
@@ -1131,6 +1073,87 @@ async def create_document_analysis(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Analysis generation failed, please retry.",
         ) from None
+
+
+# =============================================================================
+# CASE DETAILS AI EXTRACTION
+# =============================================================================
+
+
+@router.post(
+    "/{case_id}/extract-details",
+    response_model=schemas.CaseDetail,
+    summary="Extract Case Details with AI",
+    description="Trigger AI extraction of structured case details from documents (text + vision).",
+)
+async def extract_case_details(
+    case_id: UUID,
+    async_db: Annotated[AsyncSession, Depends(get_async_db)],
+) -> Case:
+    """
+    Extract structured case details from documents using AI (text + vision).
+
+    Triggered by "Compila con AI" button in CaseDetailsPanel.
+    """
+    from app.services.case_details_extractor import (
+        extract_case_details_multimodal,
+        update_case_from_extraction,
+    )
+
+    # 1. Verify case exists (RLS via get_async_db)
+    result = await async_db.execute(
+        select(Case)
+        .options(
+            selectinload(Case.documents),
+            selectinload(Case.client),
+            selectinload(Case.assicurato_rel),
+            selectinload(Case.creator).load_only(
+                User.email, User.first_name, User.last_name
+            ),
+            selectinload(Case.report_versions),
+        )
+        .where(Case.id == case_id, Case.deleted_at.is_(None))
+    )
+    case = result.scalar_one_or_none()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    # 2. Block if docs still processing
+    pending = [
+        d
+        for d in case.documents
+        if d.ai_status in (ExtractionStatus.PENDING, ExtractionStatus.PROCESSING)
+    ]
+    if pending:
+        raise HTTPException(
+            status_code=409, detail=f"{len(pending)} documenti ancora in elaborazione"
+        )
+
+    # 3. Run multimodal extraction (non-blocking: always return case)
+    try:
+        extraction_result = await extract_case_details_multimodal(
+            case_id, str(case.organization_id), async_db
+        )
+
+        if extraction_result.extraction_success:
+            fields_updated = await update_case_from_extraction(
+                case_id=str(case_id),
+                org_id=str(case.organization_id),
+                extraction_result=extraction_result,
+                db=async_db,
+                overwrite_existing=False,
+            )
+            logger.info(f"Extracted {fields_updated} fields for case {case_id}")
+        else:
+            logger.warning(f"Extraction failed: {extraction_result.error_message}")
+
+    except Exception as e:
+        # Partial success: log error but still return the case
+        logger.error(f"Case details extraction failed: {e}", exc_info=True)
+
+    # 4. Refresh and return (always succeeds, even if extraction failed)
+    await async_db.refresh(case)
+    return case
 
 
 # =============================================================================

@@ -295,6 +295,217 @@ async def extract_case_details_from_text(
     return await _call_extraction_llm(combined_text)
 
 
+async def extract_case_details_multimodal(
+    case_id: UUID, org_id: str, db: AsyncSession
+) -> CaseDetailsExtractionResult:
+    """
+    Extract case details using text + vision (multimodal).
+
+    Pattern follows document_analysis_service._extract_document_contents()
+    """
+    from app.models.documents import Document
+    from app.schemas.enums import ExtractionStatus
+
+    # 1. Fetch successful documents
+    result = await db.execute(
+        select(Document).where(
+            Document.case_id == case_id,
+            Document.ai_status == ExtractionStatus.SUCCESS,
+        )
+    )
+    docs = result.scalars().all()
+
+    if not docs:
+        return CaseDetailsExtractionResult(
+            extraction_success=False, error_message="Nessun documento disponibile"
+        )
+
+    # 2. Extract text and vision
+    all_text: list[str] = []
+    vision_parts: list[types.Part] = []
+
+    for doc in docs:
+        if not doc.ai_extracted_data:
+            continue
+
+        entries = (
+            doc.ai_extracted_data
+            if isinstance(doc.ai_extracted_data, list)
+            else (
+                doc.ai_extracted_data.get("entries", [])
+                if isinstance(doc.ai_extracted_data, dict)
+                else []
+            )
+        )
+
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+
+            if entry.get("type") == "text":
+                content = entry.get("content", "")
+                if content:
+                    all_text.append(content[:10000])  # Limit per doc
+
+            elif entry.get("type") == "vision":
+                gcs_path = entry.get("gcs_path")
+                mime_type = entry.get("mime_type")
+                if gcs_path and mime_type:
+                    try:
+                        vision_parts.append(
+                            types.Part.from_uri(file_uri=gcs_path, mime_type=mime_type)
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to create Part: {e}")
+
+    combined_text = "\n\n---\n\n".join(all_text)
+
+    # 3. Check minimum content
+    if len(combined_text) < MIN_CONTENT_CHARS and not vision_parts:
+        return CaseDetailsExtractionResult(
+            extraction_success=False,
+            error_message="Contenuto insufficiente per l'estrazione",
+        )
+
+    # 4. Call LLM
+    return await _call_extraction_llm_multimodal(combined_text, vision_parts)
+
+
+def _parse_extraction_response(raw_text: str) -> CaseDetailsExtractionResult:
+    """Parse JSON response from Gemini extraction."""
+    data = json.loads(raw_text)
+
+    result = CaseDetailsExtractionResult(
+        ns_rif=_parse_int(data.get("ns_rif")),
+        reference_code=data.get("reference_code"),
+        polizza=data.get("polizza"),
+        tipo_perizia=data.get("tipo_perizia"),
+        data_sinistro=_parse_date(data.get("data_sinistro")),
+        data_incarico=_parse_date(data.get("data_incarico")),
+        riserva=_parse_decimal(data.get("riserva")),
+        importo_liquidato=_parse_decimal(data.get("importo_liquidato")),
+        cliente=data.get("cliente"),
+        rif_cliente=data.get("rif_cliente"),
+        assicurato=data.get("assicurato"),
+        riferimento_assicurato=data.get("riferimento_assicurato"),
+        broker=data.get("broker"),
+        riferimento_broker=data.get("riferimento_broker"),
+        perito=data.get("perito"),
+        gestore=data.get("gestore"),
+        mittenti=data.get("mittenti"),
+        destinatari=data.get("destinatari"),
+        merce=data.get("merce"),
+        descrizione_merce=data.get("descrizione_merce"),
+        mezzo_di_trasporto=data.get("mezzo_di_trasporto"),
+        descrizione_mezzo_di_trasporto=data.get("descrizione_mezzo_di_trasporto"),
+        luogo_intervento=data.get("luogo_intervento"),
+        genere_lavorazione=data.get("genere_lavorazione"),
+        note=data.get("note"),
+        raw_response=raw_text,
+        extraction_success=True,
+    )
+
+    # Count non-null fields
+    fields = [
+        result.ns_rif,
+        result.reference_code,
+        result.polizza,
+        result.tipo_perizia,
+        result.data_sinistro,
+        result.data_incarico,
+        result.riserva,
+        result.importo_liquidato,
+        result.cliente,
+        result.rif_cliente,
+        result.assicurato,
+        result.riferimento_assicurato,
+        result.broker,
+        result.riferimento_broker,
+        result.perito,
+        result.gestore,
+        result.mittenti,
+        result.destinatari,
+        result.merce,
+        result.descrizione_merce,
+        result.mezzo_di_trasporto,
+        result.descrizione_mezzo_di_trasporto,
+        result.luogo_intervento,
+        result.genere_lavorazione,
+        result.note,
+    ]
+    result.fields_extracted = sum(1 for f in fields if f is not None)
+
+    return result
+
+
+async def _call_extraction_llm_multimodal(
+    text_content: str,
+    vision_parts: list[types.Part],
+) -> CaseDetailsExtractionResult:
+    """Call Gemini with text + vision content."""
+    prompt = EXTRACTION_PROMPT.format(report_text=text_content[:MAX_REPORT_CHARS])
+
+    # Add vision context
+    if vision_parts:
+        prompt += (
+            f"\n\n[ALLEGATI VISIVI: {len(vision_parts)} file PDF/immagini allegati. "
+            "Analizzali per estrarre ulteriori informazioni.]"
+        )
+
+    content_parts = [prompt, *vision_parts]
+
+    try:
+        async for attempt in AsyncRetrying(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=2, max=30),
+            retry=retry_if_exception(_is_retryable_error),
+        ):
+            with attempt:
+                client = genai.Client(
+                    vertexai=True,
+                    project=settings.GOOGLE_CLOUD_PROJECT,
+                    location=settings.GEMINI_API_LOCATION,
+                )
+
+                response = await client.aio.models.generate_content(
+                    model=settings.GEMINI_DETAILS_MODEL,
+                    contents=content_parts,  # type: ignore[arg-type]
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=CaseDetailsExtractionSchema,
+                        temperature=0.1,
+                        max_output_tokens=2000,
+                    ),
+                )
+
+                if not response or not response.text:
+                    return CaseDetailsExtractionResult(
+                        extraction_success=False,
+                        error_message="Empty response from model",
+                    )
+
+                result = _parse_extraction_response(response.text.strip())
+                logger.info(
+                    f"Multimodal extraction successful: {result.fields_extracted}/25 fields"
+                )
+                return result
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse Gemini JSON: {e}")
+        return CaseDetailsExtractionResult(
+            extraction_success=False, error_message=f"JSON parse error: {e}"
+        )
+    except Exception as e:
+        logger.error(f"Multimodal extraction failed: {e}", exc_info=True)
+        return CaseDetailsExtractionResult(
+            extraction_success=False, error_message=f"LLM error: {str(e)[:100]}"
+        )
+
+    return CaseDetailsExtractionResult(
+        extraction_success=False, error_message="Unexpected flow"
+    )
+
+
 async def extract_case_details_from_docx(
     gcs_path: str,
 ) -> CaseDetailsExtractionResult:

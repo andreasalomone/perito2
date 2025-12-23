@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useConfig } from "@/context/ConfigContext";
@@ -35,6 +35,9 @@ export default function CaseWorkspace() {
 
     // Delete confirmation dialog state
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+    // AI Details Extraction state
+    const [isExtractingDetails, setIsExtractingDetails] = useState(false);
 
 
 
@@ -107,6 +110,30 @@ export default function CaseWorkspace() {
             handleApiError(error, "Errore salvataggio note");
         }
     }, [caseId, getToken, mutate]);
+
+    // Derive if AI extraction is possible (docs > 0 AND all terminal)
+    const canExtractDetails = useMemo(() => {
+        if (!caseData?.documents.length) return false;
+        return !caseData.documents.some(d =>
+            d.ai_status === "PENDING" || d.ai_status === "PROCESSING"
+        );
+    }, [caseData?.documents]);
+
+    // Handler for AI details extraction
+    const handleExtractDetails = useCallback(async () => {
+        if (!caseId || isExtractingDetails) return;
+        setIsExtractingDetails(true);
+        try {
+            const token = await getToken();
+            const updated = await api.cases.extractDetails(token, caseId);
+            toast.success("Dati estratti con successo");
+            mutate(updated, false);
+        } catch (error) {
+            handleApiError(error, "Errore estrazione dati");
+        } finally {
+            setIsExtractingDetails(false);
+        }
+    }, [caseId, getToken, mutate, isExtractingDetails]);
 
     const handleDownload = useCallback(async (v: ReportVersion, template: TemplateType) => {
         try {
@@ -365,6 +392,9 @@ export default function CaseWorkspace() {
                                 caseDetail={caseData}
                                 onUpdate={(updated) => mutate(updated, false)}
                                 defaultOpen={true}
+                                canExtract={canExtractDetails}
+                                isExtracting={isExtractingDetails}
+                                onExtract={handleExtractDetails}
                             />
                         </div>
                     </div>
