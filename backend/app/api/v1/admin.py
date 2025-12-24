@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from sqlalchemy import func, select, union
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.api.dependencies import get_raw_db, get_superadmin_user
 from app.models import AllowedEmail, Case, Document, Organization, ReportVersion, User
@@ -93,6 +93,20 @@ class UserSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class UserCaseItem(BaseModel):
+    """Case summary with status flags for admin table."""
+
+    id: uuid.UUID
+    reference_code: str | None
+    created_at: datetime
+    has_dati_generali: bool
+    has_doc_analysis: bool
+    has_prelim_report: bool
+    has_final_report: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class GlobalStatsResponse(BaseModel):
     """Platform-wide statistics for superadmin."""
 
@@ -124,6 +138,7 @@ class UserStatsResponse(BaseModel):
     cases_today: int
     cases_last_7_days: int
     cases_by_status: CaseCountsByStatus
+    cases: list[UserCaseItem] = []
 
 
 # ============= Endpoints =============
@@ -769,6 +784,45 @@ def get_user_stats(
 
         logger.info(f"User stats requested for {user.email} ({user_id})")
 
+        # Query user's cases with relationships for status detection
+        cases_stmt = (
+            select(Case)
+            .options(
+                selectinload(Case.document_analyses),
+                selectinload(Case.report_versions),
+            )
+            .where(Case.creator_id == user_id, Case.deleted_at.is_(None))
+            .order_by(Case.created_at.desc())
+            .limit(100)  # Pagination for performance
+        )
+        cases = db.scalars(cases_stmt).all()
+
+        # Build case items with status flags
+        case_items = [
+            UserCaseItem(
+                id=c.id,
+                reference_code=c.reference_code,
+                created_at=c.created_at,
+                has_dati_generali=any(
+                    [
+                        c.cliente,
+                        c.polizza,
+                        c.tipo_perizia,
+                        c.data_sinistro,
+                        c.assicurato,
+                    ]
+                ),
+                has_doc_analysis=len(c.document_analyses) > 0,
+                has_prelim_report=any(
+                    v.source == "preliminary" for v in c.report_versions
+                ),
+                has_final_report=any(
+                    v.source == "final" or v.is_final for v in c.report_versions
+                ),
+            )
+            for c in cases
+        ]
+
         return UserStatsResponse(
             user_id=user_id,
             user_email=user.email,
@@ -776,6 +830,7 @@ def get_user_stats(
             cases_today=cases_today,
             cases_last_7_days=cases_last_7_days,
             cases_by_status=case_counts,
+            cases=case_items,
         )
 
     except HTTPException:

@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,8 @@ export function NotesDialog({ isOpen, onClose, initialNotes, onSave }: NotesDial
     const [notes, setNotes] = useState(initialNotes);
 
     // Sync state when dialog opens or initialNotes changes
+    // This is a valid use case - syncing props to local state for controlled form input
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     useEffect(() => {
         setNotes(initialNotes);
     }, [initialNotes, isOpen]);
@@ -31,7 +34,7 @@ export function NotesDialog({ isOpen, onClose, initialNotes, onSave }: NotesDial
                     <DialogTitle>Istruzioni Aggiuntive</DialogTitle>
                     <DialogDescription>
                         Aggiungi note o istruzioni specifiche per la generazione del report.
-                        L'IA terrà conto di queste informazioni.
+                        L&apos;IA terrà conto di queste informazioni.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
@@ -42,7 +45,7 @@ export function NotesDialog({ isOpen, onClose, initialNotes, onSave }: NotesDial
                             value={notes}
                             onChange={(e) => setNotes(e.target.value)}
                             placeholder="Es. Enfatizzare i danni alla carrozzeria..."
-                            className="min-h-[150px]"
+                            className="min-h-[150px] max-h-[200px] overflow-y-auto"
                         />
                     </div>
                 </div>

@@ -19,11 +19,11 @@ interface ThinkingProcessProps {
  * - Auto-scroll as thoughts appear
  * - Character count badge
  * - Animated cursor during streaming
- * - Auto-collapse when complete
  * - Smooth, refined design that matches the app aesthetic
  */
 export function ThinkingProcess({ thoughts, state, className }: Readonly<ThinkingProcessProps>) {
-    const [isExpanded, setIsExpanded] = useState(true);
+    // Derive initial expanded state from props - collapsed if already done on mount
+    const [isExpanded, setIsExpanded] = useState(state !== "done");
     const scrollRef = useRef<HTMLDivElement>(null);
 
     // Auto-scroll to bottom as thoughts stream in
@@ -32,11 +32,6 @@ export function ThinkingProcess({ thoughts, state, className }: Readonly<Thinkin
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
     }, [thoughts, isExpanded]);
-
-    // Auto-collapse when done (optional UX choice)
-    useEffect(() => {
-        if (state === "done") setIsExpanded(false);
-    }, [state]);
 
     if (!thoughts && state === "idle") return null;
 

@@ -14,6 +14,7 @@
 
 import { useMemo, useRef } from 'react'
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type noop = (this: any, ...args: any[]) => any
 
 type PickFunction<T extends noop> = (

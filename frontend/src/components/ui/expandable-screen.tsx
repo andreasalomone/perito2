@@ -159,11 +159,8 @@ export function ExpandableScreenContent({
     closeButtonClassName?: string;
 }>) {
     const context = useContext(ExpandableScreenContext);
-    const [mounted, setMounted] = useState(false);
-
-    useEffect(() => {
-        setMounted(true);
-    }, []);
+    // Use lazy initialization to check if we're on the client
+    const [mounted] = useState(() => typeof window !== "undefined");
 
     if (!context) throw new Error("ExpandableScreenContent must be used within ExpandableScreen");
     if (!mounted) return null;

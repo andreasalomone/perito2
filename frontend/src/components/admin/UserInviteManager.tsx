@@ -43,9 +43,9 @@ export default function UserInviteManager({ selectedOrgId }: Props) {
             setNewEmail("");
             setNewRole("MEMBER");
             mutate(); // Refresh list
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Error inviting user:", error);
-            toast.error(error.message || "Failed to invite user");
+            toast.error(error instanceof Error ? error.message : "Failed to invite user");
         } finally {
             setInviting(false);
         }
@@ -58,9 +58,9 @@ export default function UserInviteManager({ selectedOrgId }: Props) {
             await api.admin.deleteInvite(token, inviteId);
             toast.success(`Removed ${email}`);
             mutate(); // Refresh list
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Error deleting invite:", error);
-            toast.error(error.message || "Failed to remove invite");
+            toast.error(error instanceof Error ? error.message : "Failed to remove invite");
         }
     };
 

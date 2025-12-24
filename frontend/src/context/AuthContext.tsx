@@ -46,6 +46,7 @@ export function AuthProvider({ children, firebaseConfig }: Readonly<AuthProvider
             if (!firebaseConfig?.apiKey) {
                 throw new Error("Missing Firebase API Key. Please check your environment variables or build configuration.");
             }
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { auth } = initFirebase(firebaseConfig as any);
             authRef.current = auth;
             initialized.current = true;

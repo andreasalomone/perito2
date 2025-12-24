@@ -40,6 +40,17 @@ export const OrgStatsSchema = z.object({
 });
 export type OrgStats = z.infer<typeof OrgStatsSchema>;
 
+export const UserCaseItemSchema = z.object({
+    id: z.string(),
+    reference_code: z.string().nullable(),
+    created_at: z.string(),
+    has_dati_generali: z.boolean(),
+    has_doc_analysis: z.boolean(),
+    has_prelim_report: z.boolean(),
+    has_final_report: z.boolean(),
+});
+export type UserCaseItem = z.infer<typeof UserCaseItemSchema>;
+
 export const UserStatsSchema = z.object({
     user_id: z.string(),
     user_email: z.string().email(),
@@ -47,5 +58,6 @@ export const UserStatsSchema = z.object({
     cases_today: z.number(),
     cases_last_7_days: z.number(),
     cases_by_status: CaseCountsByStatusSchema,
+    cases: z.array(UserCaseItemSchema).default([]),
 });
 export type UserStats = z.infer<typeof UserStatsSchema>;

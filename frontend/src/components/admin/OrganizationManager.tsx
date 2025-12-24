@@ -36,9 +36,9 @@ export default function OrganizationManager({ onSelectOrganization }: Props) {
             toast.success("Organization created successfully");
             setNewOrgName("");
             mutate(); // Refresh list
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Error creating organization:", error);
-            toast.error(error.message || "Failed to create organization");
+            toast.error(error instanceof Error ? error.message : "Failed to create organization");
         } finally {
             setCreating(false);
         }

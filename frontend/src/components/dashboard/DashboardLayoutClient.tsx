@@ -1,8 +1,9 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { useAuth } from "@/context/AuthContext";
 import { useRouter, usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { ShieldCheck, LayoutDashboard, FilePlus, LogOut, User as UserIcon, Users } from "lucide-react";
 import { Sidebar, SidebarBody, SidebarLink, useSidebar } from "@/components/ui/aceternity-sidebar";
@@ -17,6 +18,8 @@ export function DashboardLayoutClient({
     const { user, dbUser, loading, logout } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
+    const prevPathnameRef = useRef(pathname);
+    // Initialize as closed - will only open when user explicitly opens it
     const [open, setOpen] = useState(false);
 
     useEffect(() => {
@@ -26,9 +29,14 @@ export function DashboardLayoutClient({
     }, [user, loading, router]);
 
     // Close mobile menu on route change
+    // This is a valid use case for setState in effect - syncing UI state with external navigation
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     useEffect(() => {
-        setOpen(false);
-    }, [pathname]);
+        if (prevPathnameRef.current !== pathname && open) {
+            setOpen(false);
+        }
+        prevPathnameRef.current = pathname;
+    }, [pathname, open]);
 
     if (loading) {
         return <div className="min-h-screen flex items-center justify-center bg-background text-muted-foreground">Caricamento...</div>;
@@ -48,7 +56,7 @@ export function DashboardLayoutClient({
                 <h1 className="text-2xl font-bold">Accesso Negato</h1>
                 <p className="text-muted-foreground max-w-md">
                     Il tuo account non è autorizzato ad accedere a questa applicazione.
-                    Contatta l'amministratore per richiedere l'accesso.
+                    Contatta l&apos;amministratore per richiedere l&apos;accesso.
                 </p>
                 <Button variant="outline" onClick={() => logout()}>
                     Torna al Login

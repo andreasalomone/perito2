@@ -133,9 +133,12 @@ const COLUMN_CONFIG = [
 
 // --- Subcomponent: FieldCell ---
 
+// Type for displayable field values (excludes complex array types from CaseDetail)
+type FieldValue = string | number | null | undefined;
+
 interface FieldCellProps {
     field: FieldDef;
-    value: any;
+    value: FieldValue;
     isEditing: boolean;
     onStartEdit: () => void;
     onSave: (val: string | number | null) => void;
@@ -143,9 +146,9 @@ interface FieldCellProps {
 }
 
 const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: FieldCellProps) => {
-    const [tempValue, setTempValue] = useState(value === null ? "" : value);
+    const [tempValue, setTempValue] = useState<string | number>(value === null || value === undefined ? "" : value);
 
-    const formatValue = (val: any) => {
+    const formatValue = (val: FieldValue): React.ReactNode => {
         if (val === null || val === undefined || val === "") {
             return <span className="text-muted-foreground/50 font-normal italic">Non definito</span>;
         }
@@ -158,13 +161,13 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
         // Date Formatting
         if (field.type === "date") {
             try {
-                return new Intl.DateTimeFormat('it-IT').format(new Date(val));
+                return new Intl.DateTimeFormat('it-IT').format(new Date(String(val)));
             } catch {
-                return val;
+                return String(val);
             }
         }
 
-        return val;
+        return String(val);
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -254,7 +257,7 @@ export default function CaseDetailsPanel({ caseDetail, onUpdate, defaultOpen, ca
 
     const handleSave = async (key: string, newVal: string | number | null) => {
         // Optimistic check
-        const currentVal = (caseDetail as any)[key];
+        const currentVal = (caseDetail as Record<string, unknown>)[key];
         // Weak comparison for numbers/strings equality
         if (newVal == currentVal && newVal !== "") {
             setEditingKey(null);
@@ -262,7 +265,7 @@ export default function CaseDetailsPanel({ caseDetail, onUpdate, defaultOpen, ca
         }
 
         try {
-            const payload: any = { [key]: newVal };
+            const payload: Record<string, string | number | null> = { [key]: newVal };
 
             // Number parsing
             const allFields = SECTIONS.flatMap(s => s.fields);
@@ -375,7 +378,7 @@ export default function CaseDetailsPanel({ caseDetail, onUpdate, defaultOpen, ca
                                                         <TableCell className="p-0">
                                                             <FieldCell
                                                                 field={field}
-                                                                value={(caseDetail as any)[field.key] ?? (field.key === "client_name" ? caseDetail.client_name : null)}
+                                                                value={((caseDetail as Record<string, unknown>)[field.key as string] ?? (field.key === "client_name" ? caseDetail.client_name : null)) as FieldValue}
                                                                 isEditing={editingKey === field.key}
                                                                 onStartEdit={() => setEditingKey(field.key as string)}
                                                                 onSave={(val) => handleSave(field.key as string, val)}

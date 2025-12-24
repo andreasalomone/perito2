@@ -153,7 +153,7 @@ export function PreliminaryReportCard({
                                             Report Preliminare
                                         </h2>
                                         <p className="text-muted-foreground">
-                                            Bozza di lavoro generata dall'AI.
+                                            Bozza di lavoro generata dall&apos;AI.
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-3">

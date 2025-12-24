@@ -7,6 +7,7 @@
 
 import { useCallback, useRef } from 'react'
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function useLockFn<P extends any[] = any[], V = any>(
   fn: (...args: P) => Promise<V>,
 ) {

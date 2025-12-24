@@ -5,6 +5,8 @@ import { useRouter, useParams } from "next/navigation";
 import { useEffect } from "react";
 import useSWR from "swr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2, ShieldAlert, ArrowLeft, Calendar, Clock, FolderOpen } from "lucide-react";
 import { api } from "@/lib/api";
@@ -169,6 +171,57 @@ export default function UserStatsPage() {
                                     <div className="text-sm text-muted-foreground">Archived</div>
                                 </div>
                             </div>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {/* User Cases Table */}
+                {stats && stats.cases.length > 0 && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Casi dell&apos;utente</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Riferimento</TableHead>
+                                        <TableHead>Data</TableHead>
+                                        <TableHead className="text-center">Riferimenti</TableHead>
+                                        <TableHead className="text-center">Analisi Doc.</TableHead>
+                                        <TableHead className="text-center">Report Prel.</TableHead>
+                                        <TableHead className="text-center">Report Finale</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {stats.cases.map((c) => (
+                                        <TableRow key={c.id}>
+                                            <TableCell className="font-medium">{c.reference_code || "N/D"}</TableCell>
+                                            <TableCell>{new Date(c.created_at).toLocaleDateString("it-IT")}</TableCell>
+                                            <TableCell className="text-center">
+                                                <Badge variant={c.has_dati_generali ? "success" : "outline"}>
+                                                    {c.has_dati_generali ? "✓" : "✗"}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="text-center">
+                                                <Badge variant={c.has_doc_analysis ? "success" : "outline"}>
+                                                    {c.has_doc_analysis ? "✓" : "✗"}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="text-center">
+                                                <Badge variant={c.has_prelim_report ? "success" : "outline"}>
+                                                    {c.has_prelim_report ? "✓" : "✗"}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="text-center">
+                                                <Badge variant={c.has_final_report ? "success" : "outline"}>
+                                                    {c.has_final_report ? "✓" : "✗"}
+                                                </Badge>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
                         </CardContent>
                     </Card>
                 )}

@@ -68,9 +68,12 @@ const SECTIONS = [
 
 // --- Subcomponent: FieldCell ---
 
+// Type for displayable field values
+type FieldValue = string | null | undefined;
+
 interface FieldCellProps {
     field: FieldDef;
-    value: any;
+    value: FieldValue;
     isEditing: boolean;
     onStartEdit: () => void;
     onSave: (val: string | null) => void;
@@ -78,9 +81,9 @@ interface FieldCellProps {
 }
 
 const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: FieldCellProps) => {
-    const [tempValue, setTempValue] = useState(value === null ? "" : value);
+    const [tempValue, setTempValue] = useState<string>(value ?? "");
 
-    const formatValue = (val: any) => {
+    const formatValue = (val: FieldValue): React.ReactNode => {
         if (val === null || val === undefined || val === "") {
             return <span className="text-muted-foreground font-normal">—</span>;
         }
@@ -149,7 +152,7 @@ export default function ClientDetailsPanel({ client, onUpdate }: Props) {
 
     const handleSave = async (key: string, newVal: string | null) => {
         // Optimistic check
-        const currentVal = (client as any)[key];
+        const currentVal = (client as Record<string, unknown>)[key];
         // Weak comparison for strings equality
         if (newVal == currentVal && newVal !== "") {
             setEditingKey(null);
@@ -157,7 +160,7 @@ export default function ClientDetailsPanel({ client, onUpdate }: Props) {
         }
 
         try {
-            const payload: any = { [key]: newVal };
+            const payload: Record<string, string | null> = { [key]: newVal };
 
             const token = await getToken();
             const updated = await api.clients.update(token!, client.id, payload);
@@ -212,7 +215,7 @@ export default function ClientDetailsPanel({ client, onUpdate }: Props) {
                                         <div key={field.key as string} className="col-span-1">
                                             <FieldCell
                                                 field={field}
-                                                value={(client as any)[field.key] ?? null}
+                                                value={((client as Record<string, unknown>)[field.key as string] ?? null) as FieldValue}
                                                 isEditing={editingKey === field.key}
                                                 onStartEdit={() => setEditingKey(field.key as string)}
                                                 onSave={(val) => handleSave(field.key as string, val)}

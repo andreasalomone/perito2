@@ -60,8 +60,8 @@ export function useDocumentAnalysis(caseId: string | undefined, shouldPoll: bool
             }
 
             return result;
-        } catch (err: any) {
-            const message = err?.message || "Errore durante l'analisi";
+        } catch (err: unknown) {
+            const message = (err as Error)?.message || "Errore durante l'analisi";
             toast.error(message);
             throw err;
         } finally {
@@ -134,8 +134,8 @@ export function usePreliminaryReport(caseId: string | undefined, shouldPoll: boo
             }
 
             return result;
-        } catch (err: any) {
-            const message = err?.message || "Errore durante la generazione";
+        } catch (err: unknown) {
+            const message = (err as Error)?.message || "Errore durante la generazione";
             toast.error(message);
             throw err;
         } finally {
@@ -170,6 +170,7 @@ interface StreamingConfig {
     /** Success toast message */
     successMessage: string;
     /** Optional request body factory */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     getBody?: (...args: any[]) => object | undefined;
 }
 
@@ -180,6 +181,7 @@ interface StreamingConfig {
  * @param caseId - The case ID to generate report for
  * @param config - Streaming configuration (endpoint, messages, body factory)
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function useStreamingReport<TArgs extends any[] = []>(
     caseId: string | undefined,
     config: StreamingConfig
@@ -334,12 +336,12 @@ function useStreamingReport<TArgs extends any[] = []>(
                 toast.success(config.successMessage);
             }
 
-        } catch (err: any) {
+        } catch (err: unknown) {
             // Ignore abort errors (user navigated away)
-            if (err?.name === "AbortError") {
+            if ((err as Error)?.name === "AbortError") {
                 return;
             }
-            const message = err?.message || "Errore durante lo streaming";
+            const message = (err as Error)?.message || "Errore durante lo streaming";
             setResult(prev => ({
                 ...prev,
                 state: "error",

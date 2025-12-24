@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { CaseDetail, DocumentWithUrl, ReportVersion } from "@/types";
 import type { StreamState } from "@/hooks/useEarlyAnalysis";
 import { CaseFileUploader } from "@/components/cases/CaseFileUploader";
@@ -100,6 +100,8 @@ export function IngestionPanel({
 
     // Document URLs for preview/download
     const [documentUrls, setDocumentUrls] = useState<DocumentWithUrl[]>([]);
+    // Track if we've ever fetched to avoid resetting on empty successfulDocIds
+    const hasFetchedRef = useRef(false);
 
     // Create stable dependency: only refetch when SUCCESS doc IDs change
     const successfulDocIds = useMemo(
@@ -109,10 +111,11 @@ export function IngestionPanel({
 
     // Fetch document URLs when successful docs change
     useEffect(() => {
-        if (!successfulDocIds) {
-            setDocumentUrls([]);
-            return;
-        }
+        // Skip if no successful docs and we've never fetched
+        if (!successfulDocIds && !hasFetchedRef.current) return;
+
+        // Mark that we've initiated a fetch cycle (ref mutation doesn't trigger re-render)
+        hasFetchedRef.current = true;
 
         let cancelled = false;
         const fetchUrls = async () => {
@@ -122,7 +125,9 @@ export function IngestionPanel({
                 const response = await api.cases.listDocuments(token, caseId);
                 if (!cancelled) setDocumentUrls(response.documents);
             } catch (error) {
-                if (!cancelled) console.error("Failed to fetch document URLs:", error);
+                if (!cancelled) {
+                    console.error("Failed to fetch document URLs:", error);
+                }
             }
         };
 

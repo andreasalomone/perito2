@@ -1,6 +1,6 @@
 "use client";
 import { motion } from "motion/react";
-import { ReactNode, useEffect, useState, useRef } from "react";
+import { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 interface StatusTransitionProps {
@@ -12,7 +12,7 @@ interface StatusTransitionProps {
 
 /**
  * StatusTransition - Micro-interaction wrapper for status changes.
- * Adds a subtle "pop" animation when status prop changes.
+ * Uses motion's key-based remounting to animate on status change.
  *
  * @example
  * <StatusTransition status={doc.ai_status}>
@@ -20,22 +20,10 @@ interface StatusTransitionProps {
  * </StatusTransition>
  */
 export function StatusTransition({ status, children, className }: StatusTransitionProps) {
-    const [shouldAnimate, setShouldAnimate] = useState(false);
-    const prevStatus = useRef(status);
-
-    useEffect(() => {
-        if (prevStatus.current !== status) {
-            setShouldAnimate(true);
-            prevStatus.current = status;
-            const timer = setTimeout(() => setShouldAnimate(false), 500);
-            return () => clearTimeout(timer);
-        }
-    }, [status]);
-
     return (
         <motion.div
             key={status}
-            initial={shouldAnimate ? { scale: 0.9, opacity: 0 } : false}
+            initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: "spring", stiffness: 400, damping: 25 }}
             className={cn(className)}

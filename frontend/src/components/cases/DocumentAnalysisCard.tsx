@@ -180,7 +180,7 @@ export function DocumentAnalysisCard({
                                             Analisi Documenti
                                         </h2>
                                         <p className="text-muted-foreground">
-                                            Dettaglio dell'estrazione informazioni e verifica completezza.
+                                            Dettaglio dell&apos;estrazione informazioni e verifica completezza.
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-2">

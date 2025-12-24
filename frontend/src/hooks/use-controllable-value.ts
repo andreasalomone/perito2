@@ -11,6 +11,7 @@ export interface Options<T> {
   trigger?: string
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Props = Record<string, any>
 
 export interface StandardProps<T> {
@@ -19,13 +20,17 @@ export interface StandardProps<T> {
   onChange: (val: T) => void
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function useControllableValue<T = any>(
   props: StandardProps<T>,
 ): [T, (v: SetStateAction<T>) => void]
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function useControllableValue<T = any>(
   props?: Props,
   options?: Options<T>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): [T, (v: SetStateAction<T>, ...args: any[]) => void]
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function useControllableValue<T = any>(
   defaultProps?: Props,
   options: Options<T> = {},
@@ -57,11 +62,13 @@ function useControllableValue<T = any>(
 
   const stateRef = useRef(initialValue)
   if (isControlled) {
+    // eslint-disable-next-line react-hooks/refs
     stateRef.current = value
   }
 
   const update = useUpdate()
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const setState = (v: SetStateAction<T>, ...args: any[]) => {
     const r = isFunction(v) ? v(stateRef.current) : v
 
@@ -74,6 +81,7 @@ function useControllableValue<T = any>(
     }
   }
 
+  // eslint-disable-next-line react-hooks/refs
   return [stateRef.current, useMemoizedFn(setState)] as const
 }
 

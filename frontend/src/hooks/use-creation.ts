@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/refs */
 import { isEqual } from 'es-toolkit/predicate'
 import { useRef } from 'react'
 import type { DependencyList } from 'react'

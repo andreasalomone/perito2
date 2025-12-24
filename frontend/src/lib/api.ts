@@ -59,6 +59,7 @@ async function fetchWithValidation<T>(
     url: string,
     token: string,
     schema: z.ZodType<T>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     options: { method?: string; data?: any; params?: any } = {}
 ): Promise<T> {
     try {

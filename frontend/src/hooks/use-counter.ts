@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/preserve-manual-memoization */
 import { useMemo, useReducer } from 'react'
 
 function reducer(
