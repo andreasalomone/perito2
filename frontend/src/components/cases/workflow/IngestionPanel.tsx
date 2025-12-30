@@ -1,3 +1,14 @@
+/**
+ * @deprecated This component is deprecated as of the tab refactor (Dec 2024).
+ *
+ * Responsibilities have been split into:
+ * - `DocumentsTab` - Document upload, list, and analysis
+ * - `ReportTab` - Preliminary and final report generation
+ * - `CaseDetailsPanel` - Case field editing (used directly)
+ *
+ * This file is kept for reference. Remove after confirming all functionality
+ * works correctly in the new tab components.
+ */
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";

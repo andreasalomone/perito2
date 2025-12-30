@@ -8,7 +8,8 @@ import { useConfig } from "@/context/ConfigContext";
 import { ReportVersion } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, Building2, RefreshCw, Trash2, Umbrella } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { AlertCircle, Building2, Loader2, RefreshCw, Trash2, Umbrella } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
 import { handleApiError } from "@/lib/error";
@@ -22,9 +23,9 @@ import { mutate as globalMutate } from 'swr';
 
 import {
     ErrorStateOverlay,
-    IngestionPanel,
 } from "@/components/cases/workflow";
 import CaseDetailsPanel from "@/components/cases/CaseDetailsPanel";
+import { DocumentsTab, ReportTab } from "@/components/cases/tabs";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 export default function CaseWorkspace() {
@@ -361,55 +362,95 @@ export default function CaseWorkspace() {
                         onRetryGeneration={() => finalReportStreamHook.generateStream("italian")} // Simple retry
                     />
                 ) : (
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                        {/* Left Column: Ingestion & Reports */}
-                        <div className="space-y-6">
-                            <IngestionPanel
-                                caseData={caseData}
-                                caseId={caseId as string}
-                                onUpload={async () => {
-                                    await mutate();
-                                }}
-                                onRemoveDocument={handleDeleteDocument}
-                                documentAnalysis={documentAnalysisHook}
-                                preliminaryReport={preliminaryReportHook}
-                                isProcessingDocs={isProcessingDocs ?? false}
+                    // 3-Tab Layout with forceMount for state preservation
+                    (() => {
+                        // Derived state for tab UI
+                        const isClosed = caseData.status === "CLOSED" || caseData.report_versions?.some(v => v.is_final);
+                        const pendingDocs = caseData.documents.filter(d => ['PENDING', 'PROCESSING'].includes(d.ai_status)).length;
+                        const isStreamingReport = finalReportStreamHook.state === "thinking" || finalReportStreamHook.state === "streaming";
 
-                                // Streaming Props (Preliminary)
-                                preliminaryStreamState={preliminaryStreamHook.state}
-                                preliminaryStreamedThoughts={preliminaryStreamHook.thoughts}
-                                preliminaryStreamedContent={preliminaryStreamHook.content}
-                                onPreliminaryGenerateStream={preliminaryStreamHook.generateStream}
+                        return (
+                            <Tabs defaultValue="dati-generali" className="w-full">
+                                <TabsList variant="line" className="mb-6">
+                                    <TabsTrigger value="dati-generali">Dati Generali</TabsTrigger>
+                                    <TabsTrigger value="documenti">
+                                        Documenti
+                                        {pendingDocs > 0 && (
+                                            <Badge variant="secondary" className="ml-2 text-xs">
+                                                {pendingDocs}
+                                            </Badge>
+                                        )}
+                                    </TabsTrigger>
+                                    <TabsTrigger value="report">
+                                        Report
+                                        {isStreamingReport && (
+                                            <Loader2 className="ml-2 h-3 w-3 animate-spin" />
+                                        )}
+                                    </TabsTrigger>
+                                </TabsList>
 
-                                // Streaming Props (Final Report)
-                                onGenerateFinalReport={finalReportStreamHook.generateStream}
-                                finalReportStreamState={finalReportStreamHook.state}
-                                finalReportStreamedThoughts={finalReportStreamHook.thoughts}
-                                finalReportStreamedContent={finalReportStreamHook.content}
-                                finalReportStreamError={finalReportStreamHook.error}
+                                {/* All tabs use forceMount + hidden to preserve state */}
+                                <TabsContent
+                                    value="dati-generali"
+                                    forceMount
+                                    className="data-[state=inactive]:hidden"
+                                >
+                                    <CaseDetailsPanel
+                                        caseDetail={caseData}
+                                        onUpdate={(updated) => mutate(updated, false)}
+                                        alwaysOpen={true}
+                                        canExtract={canExtractDetails}
+                                        isExtracting={isExtractingDetails}
+                                        onExtract={handleExtractDetails}
+                                    />
+                                </TabsContent>
 
-                                // Actions
-                                onUpdateNotes={handleUpdateNotes}
-                                onDownloadFinalReport={handleDownload}
-                                onFinalizeCase={handleFinalize}
-                                onConfirmDocs={handleConfirmDocs}
-                                onOpenInDocs={handleOpenInDocs}
-                                onCaseUpdate={(updated) => mutate(updated, false)}
-                            />
-                        </div>
+                                <TabsContent
+                                    value="documenti"
+                                    forceMount
+                                    className="data-[state=inactive]:hidden"
+                                >
+                                    <DocumentsTab
+                                        caseData={caseData}
+                                        caseId={caseId as string}
+                                        isClosed={isClosed}
+                                        onUpload={async () => { mutate(); }}
+                                        onRemoveDocument={handleDeleteDocument}
+                                        documentAnalysis={documentAnalysisHook}
+                                        isProcessingDocs={isProcessingDocs ?? false}
+                                    />
+                                </TabsContent>
 
-                        {/* Right Column: Case Details */}
-                        <div>
-                            <CaseDetailsPanel
-                                caseDetail={caseData}
-                                onUpdate={(updated) => mutate(updated, false)}
-                                defaultOpen={true}
-                                canExtract={canExtractDetails}
-                                isExtracting={isExtractingDetails}
-                                onExtract={handleExtractDetails}
-                            />
-                        </div>
-                    </div>
+                                <TabsContent
+                                    value="report"
+                                    forceMount
+                                    className="data-[state=inactive]:hidden"
+                                >
+                                    <ReportTab
+                                        caseData={caseData}
+                                        isClosed={isClosed}
+                                        // Preliminary props
+                                        preliminaryReport={preliminaryReportHook}
+                                        preliminaryStreamState={preliminaryStreamHook.state}
+                                        preliminaryStreamedThoughts={preliminaryStreamHook.thoughts}
+                                        preliminaryStreamedContent={preliminaryStreamHook.content}
+                                        onPreliminaryGenerateStream={preliminaryStreamHook.generateStream}
+                                        // Final Report props
+                                        onGenerateFinalReport={finalReportStreamHook.generateStream}
+                                        onUpdateNotes={handleUpdateNotes}
+                                        onDownloadFinalReport={handleDownload}
+                                        onFinalizeCase={handleFinalize}
+                                        onConfirmDocs={handleConfirmDocs}
+                                        onOpenInDocs={handleOpenInDocs}
+                                        finalReportStreamState={finalReportStreamHook.state}
+                                        finalReportStreamedThoughts={finalReportStreamHook.thoughts}
+                                        finalReportStreamedContent={finalReportStreamHook.content}
+                                        finalReportStreamError={finalReportStreamHook.error}
+                                    />
+                                </TabsContent>
+                            </Tabs>
+                        );
+                    })()
                 )}
             </main>
 

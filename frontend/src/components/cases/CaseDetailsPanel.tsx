@@ -32,6 +32,8 @@ type Props = {
     caseDetail: CaseDetail;
     onUpdate: (updatedCase: CaseDetail) => void;
     defaultOpen?: boolean;
+    /** When true, content is always expanded and collapse controls are hidden */
+    alwaysOpen?: boolean;
     // AI Extraction
     canExtract?: boolean;      // true when docs > 0 AND all terminal
     isExtracting?: boolean;    // true during API call
@@ -250,10 +252,12 @@ const FieldCell = ({ field, value, isEditing, onStartEdit, onSave, onCancel }: F
 };
 
 
-export default function CaseDetailsPanel({ caseDetail, onUpdate, defaultOpen, canExtract, isExtracting, onExtract }: Props) {
+export default function CaseDetailsPanel({ caseDetail, onUpdate, defaultOpen, alwaysOpen, canExtract, isExtracting, onExtract }: Props) {
     const { getToken } = useAuth();
     const [editingKey, setEditingKey] = useState<string | null>(null);
     const [isOpen, setIsOpen] = useState(defaultOpen ?? false); // Default from prop or collapsed
+    // When alwaysOpen is true, override the internal isOpen state
+    const effectiveIsOpen = alwaysOpen || isOpen;
 
     const handleSave = async (key: string, newVal: string | number | null) => {
         // Optimistic check
@@ -290,13 +294,16 @@ export default function CaseDetailsPanel({ caseDetail, onUpdate, defaultOpen, ca
     return (
         <Card className="border shadow-md overflow-hidden bg-background">
             <CardHeader
-                className="flex flex-row items-center justify-between py-5 px-6 cursor-pointer transition-all group"
-                role="button"
-                tabIndex={0}
-                aria-expanded={isOpen}
+                className={cn(
+                    "flex flex-row items-center justify-between py-5 px-6 transition-all group",
+                    !alwaysOpen && "cursor-pointer"
+                )}
+                role={alwaysOpen ? undefined : "button"}
+                tabIndex={alwaysOpen ? undefined : 0}
+                aria-expanded={effectiveIsOpen}
                 aria-controls="case-details-content"
-                onClick={() => setIsOpen(!isOpen)}
-                onKeyDown={(e) => {
+                onClick={alwaysOpen ? undefined : () => setIsOpen(!isOpen)}
+                onKeyDown={alwaysOpen ? undefined : (e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
                         setIsOpen(!isOpen);
@@ -337,16 +344,20 @@ export default function CaseDetailsPanel({ caseDetail, onUpdate, defaultOpen, ca
                             Compila con AI
                         </Button>
                     )}
-                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {isOpen ? "Chiudi" : "Espandi"}
-                    </span>
-                    <Button variant="outline" size="icon" className="h-8 w-8 rounded-full border-muted-foreground/20" aria-hidden="true" tabIndex={-1}>
-                        {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                    </Button>
+                    {!alwaysOpen && (
+                        <>
+                            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                {effectiveIsOpen ? "Chiudi" : "Espandi"}
+                            </span>
+                            <Button variant="outline" size="icon" className="h-8 w-8 rounded-full border-muted-foreground/20" aria-hidden="true" tabIndex={-1}>
+                                {effectiveIsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                            </Button>
+                        </>
+                    )}
                 </div>
             </CardHeader>
 
-            {isOpen && (
+            {effectiveIsOpen && (
                 <CardContent id="case-details-content" className="p-0">
                     <div className="grid grid-cols-1 md:grid-cols-2">
                         {COLUMN_CONFIG.map((column, colIdx) => (

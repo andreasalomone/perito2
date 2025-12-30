@@ -189,7 +189,7 @@ export function SearchableCombobox<T>({
                                         )}
                                     >
                                         <PlusIcon />
-                                        Crea "{query}"
+                                        Crea &quot;{query}&quot;
                                     </CommandItem>
                                 </CommandGroup>
                             </>
