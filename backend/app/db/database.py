@@ -37,6 +37,23 @@ def get_connector() -> Connector:
 # -----------------------------------------------------------------------------
 def getconn() -> Any:
     """Sync Connection Factory (for API endpoints)"""
+    # LOCAL DEV: Connect directly via Cloud SQL Proxy on localhost:5432
+    if settings.RUN_LOCALLY:
+        import pg8000
+        try:
+            conn = pg8000.connect(
+                host="127.0.0.1",
+                port=5432,
+                user=settings.DB_USER,
+                password=settings.DB_PASS,
+                database=settings.DB_NAME,
+            )
+            return conn
+        except Exception as e:
+            logger.error(f"Failed to connect via Cloud SQL Proxy: {e}")
+            raise
+
+    # PRODUCTION: Use Cloud SQL Connector
     connector = get_connector()
     try:
         return connector.connect(
@@ -54,6 +71,23 @@ def getconn() -> Any:
 
 async def getconn_async() -> Any:
     """Async Connection Factory (for AI Workers)"""
+    # LOCAL DEV: Connect directly via Cloud SQL Proxy on localhost:5432
+    if settings.RUN_LOCALLY:
+        import asyncpg
+        try:
+            conn = await asyncpg.connect(
+                host="127.0.0.1",
+                port=5432,
+                user=settings.DB_USER,
+                password=settings.DB_PASS,
+                database=settings.DB_NAME,
+            )
+            return conn
+        except Exception as e:
+            logger.error(f"Failed to connect via Cloud SQL Proxy (async): {e}")
+            raise
+
+    # PRODUCTION: Use Cloud SQL Connector
     if _async_connector is None:
         raise RuntimeError(
             "Async Connector not initialized. Ensure lifespan has started."

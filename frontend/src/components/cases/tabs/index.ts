@@ -1,3 +1,3 @@
 // Tab components barrel export
-export { DocumentsTab } from './DocumentsTab.js';
-export { ReportTab } from './ReportTab.js';
+export { DocumentsTab } from './DocumentsTab';
+export { ReportTab } from './ReportTab';
